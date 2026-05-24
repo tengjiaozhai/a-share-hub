@@ -1,9 +1,17 @@
 import json
 import uuid
+from datetime import datetime
 
 from sqlalchemy import select
 
-from src.storage.models import BrokerEventRow, ExecutionPlanRow, KillSwitchRow
+from src.storage.models import (
+    BrokerEventRow,
+    DecisionInputSnapshotRow,
+    DecisionRunRow,
+    ExecutionPlanRow,
+    KillSwitchRow,
+    TargetPositionRow,
+)
 
 
 class RuntimeStore:
@@ -72,3 +80,121 @@ class RuntimeStore:
             result = conn.execute(select(KillSwitchRow).where(KillSwitchRow.id == 1))
             row = result.one_or_none()
             return bool(row.active) if row is not None else False
+
+    def insert_decision_run(
+        self,
+        symbol: str,
+        prompt_hash: str,
+        model_name: str,
+        raw_output: str,
+        parsed_action: str,
+        confidence: int,
+        target_position_ratio: float,
+        reason: str,
+        input_snapshot: dict,
+    ) -> str:
+        decision_run_id = f"dr-{uuid.uuid4().hex[:12]}"
+        snapshot_id = f"snap-{uuid.uuid4().hex[:12]}"
+        with self.engine.begin() as conn:
+            conn.execute(
+                DecisionRunRow.__table__.insert().values(
+                    decision_run_id=decision_run_id,
+                    symbol=symbol,
+                    prompt_hash=prompt_hash,
+                    model_name=model_name,
+                    raw_output=raw_output,
+                    parsed_action=parsed_action,
+                    confidence=confidence,
+                    target_position_ratio=target_position_ratio,
+                    reason=reason,
+                )
+            )
+            conn.execute(
+                DecisionInputSnapshotRow.__table__.insert().values(
+                    snapshot_id=snapshot_id,
+                    decision_run_id=decision_run_id,
+                    payload_json=json.dumps(input_snapshot, ensure_ascii=True, sort_keys=True),
+                )
+            )
+        return decision_run_id
+
+    def get_decision_run(self, decision_run_id: str) -> dict:
+        with self.engine.begin() as conn:
+            run_result = conn.execute(
+                select(DecisionRunRow).where(DecisionRunRow.decision_run_id == decision_run_id)
+            )
+            run_row = run_result.fetchone()
+            snapshot_result = conn.execute(
+                select(DecisionInputSnapshotRow).where(DecisionInputSnapshotRow.decision_run_id == decision_run_id)
+            )
+            snapshot_row = snapshot_result.fetchone()
+            return {
+                "decision_run_id": run_row[0],
+                "symbol": run_row[1],
+                "parsed_action": run_row[5],
+                "confidence": run_row[6],
+                "target_position_ratio": run_row[7],
+                "reason": run_row[8],
+                "snapshot": json.loads(snapshot_row[2]),
+            }
+
+    def list_decision_runs(self) -> list[dict]:
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                select(DecisionRunRow).order_by(DecisionRunRow.created_at.desc())
+            ).fetchall()
+            return [
+                {
+                    "decision_run_id": row.decision_run_id,
+                    "symbol": row.symbol,
+                    "parsed_action": row.parsed_action,
+                    "confidence": row.confidence,
+                    "created_at": row.created_at.isoformat(),
+                }
+                for row in rows
+            ]
+
+    def insert_target_position(
+        self,
+        decision_run_id: str,
+        symbol: str,
+        action: str,
+        target_value: int,
+        target_position_ratio: float,
+        expires_at: str,
+    ) -> str:
+        target_position_id = f"tp-{uuid.uuid4().hex[:12]}"
+        with self.engine.begin() as conn:
+            conn.execute(
+                TargetPositionRow.__table__.insert().values(
+                    target_position_id=target_position_id,
+                    decision_run_id=decision_run_id,
+                    symbol=symbol,
+                    action=action,
+                    target_value=target_value,
+                    target_position_ratio=target_position_ratio,
+                    expires_at=datetime.fromisoformat(expires_at),
+                    status="ACTIVE",
+                )
+            )
+        return target_position_id
+
+    def list_active_target_positions(self) -> list[dict]:
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                select(TargetPositionRow)
+                .where(TargetPositionRow.status == "ACTIVE")
+                .order_by(TargetPositionRow.created_at.desc())
+            ).fetchall()
+            return [
+                {
+                    "target_position_id": row.target_position_id,
+                    "decision_run_id": row.decision_run_id,
+                    "symbol": row.symbol,
+                    "action": row.action,
+                    "target_value": row.target_value,
+                    "target_position_ratio": row.target_position_ratio,
+                    "expires_at": row.expires_at.isoformat(),
+                }
+                for row in rows
+            ]

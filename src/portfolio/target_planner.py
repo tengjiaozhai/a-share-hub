@@ -5,6 +5,7 @@ def build_target_position(
     action: str,
     target_position_ratio: float,
     net_asset_value: float,
+    expires_at: str = "",
 ) -> Dict[str, Any]:
     """构建目标仓位"""
     target_value = int(net_asset_value * target_position_ratio)
@@ -13,4 +14,5 @@ def build_target_position(
         "action": action,
         "target_value": target_value,
         "target_position_ratio": target_position_ratio,
+        "expires_at": expires_at,
     }

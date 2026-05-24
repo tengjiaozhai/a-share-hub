@@ -22,3 +22,24 @@ def create_decision_run(symbol: str, prompt_hash: str, input_snapshot: dict) -> 
         "prompt_hash": prompt_hash,
         "input_snapshot": input_snapshot,
     }
+
+def build_decision_run_record(
+    raw: str,
+    symbol: str,
+    prompt_hash: str,
+    input_snapshot: dict,
+    model_name: str,
+) -> dict:
+    """构建可持久化的决策记录"""
+    decision = parse_decision_output(raw)
+    return {
+        "symbol": symbol,
+        "prompt_hash": prompt_hash,
+        "model_name": model_name,
+        "raw_output": raw,
+        "parsed_action": decision.action,
+        "confidence": decision.confidence,
+        "target_position_ratio": decision.target_position_ratio,
+        "reason": decision.reason,
+        "input_snapshot": input_snapshot,
+    }

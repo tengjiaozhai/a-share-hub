@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -35,3 +35,41 @@ class KillSwitchRow(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class DecisionRunRow(Base):
+    __tablename__ = "decision_runs"
+
+    decision_run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(32), nullable=False)
+    prompt_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    model_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    raw_output: Mapped[str] = mapped_column(Text, nullable=False)
+    parsed_action: Mapped[str] = mapped_column(String(16), nullable=False)
+    confidence: Mapped[int] = mapped_column(Integer, nullable=False)
+    target_position_ratio: Mapped[float] = mapped_column(Float, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class DecisionInputSnapshotRow(Base):
+    __tablename__ = "decision_input_snapshots"
+
+    snapshot_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    decision_run_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class TargetPositionRow(Base):
+    __tablename__ = "target_positions"
+
+    target_position_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    decision_run_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    symbol: Mapped[str] = mapped_column(String(32), nullable=False)
+    action: Mapped[str] = mapped_column(String(16), nullable=False)
+    target_value: Mapped[int] = mapped_column(Integer, nullable=False)
+    target_position_ratio: Mapped[float] = mapped_column(Float, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE")
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
