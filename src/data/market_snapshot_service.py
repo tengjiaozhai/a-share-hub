@@ -1,9 +1,11 @@
 from datetime import datetime
 from typing import Optional, List
+import logging
 import pandas as pd
-from loguru import logger
 from src.data.providers.base import MarketSnapshot
 from src.data.providers.provider_chain import ProviderChain
+
+logger = logging.getLogger(__name__)
 
 
 class MarketSnapshotService:

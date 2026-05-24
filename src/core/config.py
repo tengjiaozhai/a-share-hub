@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -7,3 +8,4 @@ class Settings(BaseSettings):
     api_token: str = "change_me"
     enable_live_trading: bool = False
     execution_mode: str = "shadow"
+    runtime_store_path: Path = Path.home() / ".a-share-hub" / "runtime_store"
