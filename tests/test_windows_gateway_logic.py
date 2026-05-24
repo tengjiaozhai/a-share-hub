@@ -30,3 +30,15 @@ def test_heartbeat_structure():
     assert "agent_id" in heartbeat
     assert "timestamp" in heartbeat
     assert "status" in heartbeat
+
+def test_local_gate_rejects_sell_when_available_sell_is_insufficient():
+    result = local_gate(
+        trader_connected=True,
+        available_cash=100000,
+        requested_value=20000,
+        requested_quantity=300,
+        available_sell_quantity=100,
+        action="SELL",
+    )
+    assert result["approved"] is False
+    assert result["reason"] == "insufficient available sell quantity"
