@@ -1,9 +1,11 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import HTMLResponse
 from datetime import datetime
-import json
+
+from src.storage.dependencies import get_runtime_store
 
 router = APIRouter()
+
 
 @router.get("/dashboard", response_class=HTMLResponse)
 def get_dashboard():
@@ -11,80 +13,38 @@ def get_dashboard():
     with open("src/api/dashboard.html", "r", encoding="utf-8") as f:
         return f.read()
 
+
 @router.get("/api/v1/dashboard/status")
-def get_system_status():
+def get_system_status(store=Depends(get_runtime_store)):
     """获取系统状态"""
+    reconciliation = store.get_reconciliation_status()
     return {
         "timestamp": datetime.now().isoformat(),
-        "system": {
-            "name": "A股自动交易系统",
-            "version": "0.1.0",
-            "mode": "shadow",
-            "live_trading": False,
-        },
-        "components": {
-            "database": {"status": "connected", "type": "PostgreSQL"},
-            "llm": {"status": "connected", "provider": "DeepSeek"},
-            "data_source": {"status": "connected", "provider": "AkShare"},
-        },
-        "stats": {
-            "total_decisions": 0,
-            "total_orders": 0,
-            "success_rate": 0,
-            "last_update": datetime.now().isoformat(),
-        }
+        "mode": "shadow",
+        "open_orders": reconciliation["open_orders"],
+        "healthy": reconciliation["healthy"],
+        "active_targets": len(store.list_active_target_positions()),
+        "recent_decisions": len(store.list_decision_runs()),
     }
+
 
 @router.get("/api/v1/dashboard/decisions")
-def get_recent_decisions():
+def get_recent_decisions(store=Depends(get_runtime_store)):
     """获取最近的决策"""
-    return {
-        "decisions": [
-            {
-                "id": "D001",
-                "timestamp": datetime.now().isoformat(),
-                "symbol": "600519.SH",
-                "action": "BUY",
-                "confidence": 75,
-                "status": "executed",
-            }
-        ]
-    }
+    return {"decisions": store.list_decision_runs()[:10]}
+
 
 @router.get("/api/v1/dashboard/orders")
-def get_recent_orders():
+def get_recent_orders(store=Depends(get_runtime_store)):
     """获取最近的订单"""
-    return {
-        "orders": [
-            {
-                "id": "O001",
-                "timestamp": datetime.now().isoformat(),
-                "symbol": "600519.SH",
-                "side": "BUY",
-                "quantity": 100,
-                "status": "FILLED",
-                "pnl": 0,
-            }
-        ]
-    }
+    return {"orders": store.list_ready_execution_plans()[:10]}
+
 
 @router.get("/api/v1/dashboard/portfolio")
-def get_portfolio_summary():
+def get_portfolio_summary(store=Depends(get_runtime_store)):
     """获取组合摘要"""
+    targets = store.list_active_target_positions()
     return {
-        "total_value": 1000000,
-        "cash": 900000,
-        "positions_value": 100000,
-        "positions": [
-            {
-                "symbol": "600519.SH",
-                "quantity": 100,
-                "avg_price": 1420.0,
-                "current_price": 1425.0,
-                "pnl": 500,
-                "pnl_pct": 0.35,
-            }
-        ],
-        "daily_pnl": 500,
-        "total_pnl": 500,
+        "active_targets": len(targets),
+        "targets": targets[:10],
     }
