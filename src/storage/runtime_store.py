@@ -2,13 +2,15 @@ import json
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from src.storage.models import (
     BrokerEventRow,
     DecisionInputSnapshotRow,
     DecisionRunRow,
+    ExecutionOrderRow,
     ExecutionPlanRow,
+    KillSwitchEventRow,
     KillSwitchRow,
     TargetPositionRow,
 )
@@ -198,3 +200,74 @@ class RuntimeStore:
                 }
                 for row in rows
             ]
+
+    def insert_execution_order(
+        self,
+        target_position_id: str,
+        symbol: str,
+        action: str,
+        quantity: int,
+        limit_price: float,
+    ) -> str:
+        execution_order_id = f"eo-{uuid.uuid4().hex[:12]}"
+        with self.engine.begin() as conn:
+            conn.execute(
+                ExecutionOrderRow.__table__.insert().values(
+                    execution_order_id=execution_order_id,
+                    target_position_id=target_position_id,
+                    symbol=symbol,
+                    action=action,
+                    quantity=quantity,
+                    limit_price=limit_price,
+                    status="READY",
+                )
+            )
+        return execution_order_id
+
+    def insert_broker_order_event(
+        self,
+        execution_order_id: str,
+        event_id: str,
+        event_type: str,
+        payload: dict,
+    ) -> None:
+        with self.engine.begin() as conn:
+            conn.execute(
+                BrokerEventRow.__table__.insert().values(
+                    event_id=event_id,
+                    order_id=execution_order_id,
+                    event_type=event_type,
+                    payload_json=json.dumps(payload, ensure_ascii=True, sort_keys=True),
+                )
+            )
+
+    def get_reconciliation_status(self) -> dict:
+        with self.engine.begin() as conn:
+            open_orders = conn.execute(
+                select(func.count()).select_from(ExecutionOrderRow).where(ExecutionOrderRow.status != "FILLED")
+            ).scalar_one()
+            broker_event_count = conn.execute(
+                select(func.count()).select_from(BrokerEventRow)
+            ).scalar_one()
+        return {
+            "open_orders": open_orders,
+            "broker_event_count": broker_event_count,
+            "healthy": open_orders == 0 or broker_event_count > 0,
+        }
+
+    def insert_kill_switch_event(self, active: bool, reason: str) -> None:
+        event_id = f"kse-{uuid.uuid4().hex[:12]}"
+        with self.engine.begin() as conn:
+            conn.execute(
+                KillSwitchEventRow.__table__.insert().values(
+                    kill_switch_event_id=event_id,
+                    active=active,
+                    reason=reason,
+                )
+            )
+            # 同时更新 kill_switch_state
+            existing = conn.execute(select(KillSwitchRow).where(KillSwitchRow.id == 1)).scalar_one_or_none()
+            if existing is None:
+                conn.execute(KillSwitchRow.__table__.insert().values(id=1, active=active))
+            else:
+                conn.execute(KillSwitchRow.__table__.update().where(KillSwitchRow.id == 1).values(active=active))

@@ -73,3 +73,37 @@ class TargetPositionRow(Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE")
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class ExecutionOrderRow(Base):
+    __tablename__ = "execution_orders"
+
+    execution_order_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    target_position_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    symbol: Mapped[str] = mapped_column(String(32), nullable=False)
+    action: Mapped[str] = mapped_column(String(16), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    limit_price: Mapped[float] = mapped_column(Float, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="READY")
+    broker_order_id: Mapped[str] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class RiskGateEventRow(Base):
+    __tablename__ = "risk_gate_events"
+
+    risk_gate_event_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(32), nullable=False)
+    approved: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    rule_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class KillSwitchEventRow(Base):
+    __tablename__ = "kill_switch_events"
+
+    kill_switch_event_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
