@@ -42,3 +42,16 @@
 - `src/risk/`: 风险控制
 - `src/execution/`: 执行引擎
 - `windows_agent/`: Windows执行节点
+
+## 运行时存储
+
+运行时控制平面使用 PostgreSQL（通过 `DATABASE_URL`）。
+Redis 是可选的，必须保持禁用直到负载门控运行手册另有说明。
+
+## 引导
+
+1. 从 `.env.example` 配置 `.env`。
+2. 通过 `DATABASE_URL` 验证 PostgreSQL 连接。
+3. 运行 `/opt/anaconda3/envs/py311/bin/python3 -m alembic upgrade head`。
+4. 运行 `/opt/anaconda3/envs/py311/bin/python3 -m pytest -q`。
+5. 运行 `bash scripts/run_shadow_cycle.sh`。

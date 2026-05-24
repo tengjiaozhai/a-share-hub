@@ -10,6 +10,8 @@ echo "PYTHON: ${PYTHON}"
 
 cd "${REPO_ROOT}"
 
+"${PYTHON}" -m alembic upgrade head
+
 echo "Step 1: Syncing market data..."
 "${PYTHON}" -m src.main sync-market --all
 

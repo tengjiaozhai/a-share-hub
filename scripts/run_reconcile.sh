@@ -10,6 +10,8 @@ echo "PYTHON: ${PYTHON}"
 
 cd "${REPO_ROOT}"
 
+"${PYTHON}" -m alembic upgrade head
+
 "${PYTHON}" -m src.main reconcile --all
 
 echo "=== Reconciliation Complete ==="

@@ -59,3 +59,16 @@ def test_shadow_cycle_script_executes():
     # 检查脚本是否可执行
     assert script_path.exists(), "脚本文件必须存在"
     assert os.access(script_path, os.X_OK), "脚本必须可执行"
+
+
+def test_shadow_cycle_mentions_postgresql_migration_and_not_sqlite():
+    readme = Path("README.md").read_text()
+    assert "DATABASE_URL" in readme
+    assert "PostgreSQL" in readme
+    assert "runtime_store_path" not in readme
+
+
+def test_shadow_cycle_script_runs_migrations_before_runtime_commands():
+    script = Path("scripts/run_shadow_cycle.sh").read_text()
+    assert "alembic upgrade head" in script
+    assert '"${PYTHON}" -m src.main run-decision' in script
