@@ -7,4 +7,5 @@ execution
 indicators
 portfolio
 risk
+storage
 strategy
