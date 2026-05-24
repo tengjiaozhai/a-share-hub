@@ -1,14 +1,16 @@
-from fastapi import APIRouter
-from typing import Dict, Any
+from fastapi import APIRouter, Depends
+
+from src.storage.dependencies import get_runtime_store
 
 router = APIRouter(prefix="/api/v1")
 
-@router.post("/broker-events")
-def receive_broker_event(event: Dict[str, Any]) -> dict:
-    """接收经纪商事件"""
-    return {"received": True, "event_type": event.get("event_type", "")}
 
-@router.get("/reconciliation/status")
-def get_reconciliation_status() -> dict:
-    """获取对账状态"""
-    return {"reconciled": True, "last_check": "2026-05-23T15:00:00"}
+@router.post("/broker-events")
+def receive_broker_event(event: dict, store=Depends(get_runtime_store)) -> dict:
+    store.insert_broker_event(
+        event_id=event["event_id"],
+        order_id=event["order_id"],
+        event_type=event["event_type"],
+        payload=event,
+    )
+    return {"received": True, "event_type": event["event_type"]}

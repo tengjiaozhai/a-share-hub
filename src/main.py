@@ -1,9 +1,11 @@
 import argparse
 import sys
+
 from fastapi import FastAPI
-from src.api.routes_health import router as health_router
-from src.api.routes_execution_plans import router as execution_plans_router
+
 from src.api.routes_broker_events import router as broker_events_router
+from src.api.routes_execution_plans import router as execution_plans_router
+from src.api.routes_health import router as health_router
 from src.api.routes_kill_switch import router as kill_switch_router
 
 
