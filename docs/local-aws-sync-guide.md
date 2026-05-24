@@ -14,6 +14,77 @@
 | 项目路径 | /home/ec2-user/a-share-hub |
 | Python环境 | /home/ec2-user/miniconda3/envs/py311 |
 
+## 服务状态检查
+
+### 检查所有服务
+
+```bash
+ssh -i /Users/shenmingjie/.ssh/xingxing.pem ec2-user@13.214.201.113 "ps aux | grep -E 'uvicorn|postgres|redis' | grep -v grep"
+```
+
+### 检查端口监听
+
+```bash
+ssh -i /Users/shenmingjie/.ssh/xingxing.pem ec2-user@13.214.201.113 "netstat -tlnp | grep -E '8000|5432|6379'"
+```
+
+### 测试API健康
+
+```bash
+curl http://13.214.201.113:8000/health
+```
+
+## 重启AWS服务
+
+### 一键重启所有服务
+
+```bash
+ssh -i /Users/shenmingjie/.ssh/xingxing.pem ec2-user@13.214.201.113 << 'EOF'
+echo "=== 停止服务 ==="
+pkill -f 'uvicorn src.main:app' 2>/dev/null
+sudo systemctl stop redis
+sudo systemctl stop postgresql
+sleep 2
+
+echo "=== 启动服务 ==="
+sudo systemctl start postgresql
+sudo systemctl start redis
+cd /home/ec2-user/a-share-hub
+nohup ~/miniconda3/envs/py311/bin/python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 > /tmp/uvicorn.log 2>&1 &
+sleep 3
+
+echo "=== 验证服务 ==="
+ps aux | grep -E 'uvicorn|postgres|redis' | grep -v grep | head -5
+netstat -tlnp | grep -E '8000|5432|6379'
+curl -s http://localhost:8000/health
+EOF
+```
+
+### 单独重启PostgreSQL
+
+```bash
+ssh -i /Users/shenmingjie/.ssh/xingxing.pem ec2-user@13.214.201.113 "sudo systemctl restart postgresql && echo 'PostgreSQL 已重启'"
+```
+
+### 单独重启Redis
+
+```bash
+ssh -i /Users/shenmingjie/.ssh/xingxing.pem ec2-user@13.214.201.113 "sudo systemctl restart redis && echo 'Redis 已重启'"
+```
+
+### 单独重启Uvicorn (API服务)
+
+```bash
+ssh -i /Users/shenmingjie/.ssh/xingxing.pem ec2-user@13.214.201.113 << 'EOF'
+pkill -f 'uvicorn src.main:app'
+sleep 2
+cd /home/ec2-user/a-share-hub
+nohup ~/miniconda3/envs/py311/bin/python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 > /tmp/uvicorn.log 2>&1 &
+sleep 3
+curl -s http://localhost:8000/health
+EOF
+```
+
 ## 本地推送代码
 
 ### 1. 检查本地状态
@@ -189,6 +260,27 @@ lsof -i :8000
 kill <PID>
 ```
 
+### 问题5: Uvicorn启动失败 - "Attribute 'app' not found"
+
+**错误信息:**
+```
+ERROR: Error loading ASGI app. Attribute "app" not found in module "src.main".
+```
+
+**解决方案:**
+```bash
+# 检查src/main.py末尾是否有 app = build_app()
+ssh -i /Users/shenmingjie/.ssh/xingxing.pem ec2-user@13.214.201.113 "tail -5 /home/ec2-user/a-share-hub/src/main.py"
+
+# 如果没有，在文件末尾添加
+ssh -i /Users/shenmingjie/.ssh/xingxing.pem ec2-user@13.214.201.113 "echo 'app = build_app()' >> /home/ec2-user/a-share-hub/src/main.py"
+
+# 重启服务
+pkill -f 'uvicorn src.main:app'
+cd /home/ec2-user/a-share-hub
+nohup ~/miniconda3/envs/py311/bin/python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 > /tmp/uvicorn.log 2>&1 &
+```
+
 ## 环境变量配置
 
 ### .env文件位置
@@ -225,3 +317,6 @@ AWS_SSH_KEY_PATH=/home/ec2-user/xingxing.pem
 | 运行迁移 | `python -m alembic upgrade head` |
 | 启动服务 | `python -m src.main serve` |
 | 运行测试 | `python -m pytest -q` |
+| 重启所有服务 | 见"重启AWS服务"章节 |
+| 检查服务状态 | `ps aux | grep -E 'uvicorn|postgres|redis' \| grep -v grep` |
+| 查看API日志 | `tail -f /tmp/uvicorn.log` |
