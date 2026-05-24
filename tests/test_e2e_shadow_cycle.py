@@ -1,4 +1,7 @@
 import pytest
+import subprocess
+import os
+from pathlib import Path
 from src.core.config import Settings
 
 def test_shadow_cycle_produces_no_unreconciled_orders():
@@ -13,21 +16,46 @@ def test_live_flag_remains_disabled_without_release_marker():
     settings = Settings()
     assert settings.enable_live_trading is False
 
-def test_all_modules_importable():
-    """测试所有模块可以导入"""
-    from src.core.config import Settings
-    from src.core.enums import Decision
-    from src.core.market_clock import is_continuous_session
-    from src.core.market_rules import can_sell_position_same_day
-    from src.data.providers.provider_chain import ProviderChain
-    from src.indicators.technical_indicators import compute_feature_row
-    from src.strategy.candidate_filter import rank_candidates
-    from src.decision.input_builder import build_decision_input_snapshot
-    from src.decision.decision_runner import parse_decision_output
-    from src.agents.schemas import DecisionOutput
-    from src.portfolio.target_planner import build_target_position
-    from src.risk.pre_trade_risk import evaluate_risk_gate
-    from src.execution.state_machine import apply_broker_event
-    from src.execution.paper_broker import PaperBroker
-    from src.execution.reconciliation import reconcile_positions
-    assert True
+def test_shadow_cycle_script_is_fail_closed():
+    """测试影子周期脚本是fail-closed的"""
+    script_path = Path(__file__).parent.parent / "scripts" / "run_shadow_cycle.sh"
+    
+    # 读取脚本内容
+    with open(script_path, 'r') as f:
+        content = f.read()
+    
+    # 检查set -euo pipefail
+    assert 'set -euo pipefail' in content, "脚本必须包含 'set -euo pipefail'"
+    
+    # 检查没有|| echo
+    assert '|| echo' not in content, "脚本不能包含 '|| echo'"
+    
+    # 检查使用REPO_ROOT变量
+    assert 'REPO_ROOT=' in content, "脚本必须使用REPO_ROOT变量"
+    
+    # 检查没有硬编码路径
+    assert '/home/ec2-user' not in content, "脚本不能包含硬编码路径"
+    
+    # 检查实际执行CLI命令（不是只检查导入）
+    assert 'python -m src.main' in content or '"${PYTHON}" -m src.main' in content, "脚本必须实际执行CLI命令"
+
+def test_reconcile_script_is_fail_closed():
+    """测试对账脚本是fail-closed的"""
+    script_path = Path(__file__).parent.parent / "scripts" / "run_reconcile.sh"
+    
+    with open(script_path, 'r') as f:
+        content = f.read()
+    
+    assert 'set -euo pipefail' in content, "脚本必须包含 'set -euo pipefail'"
+    assert '|| echo' not in content, "脚本不能包含 '|| echo'"
+    assert 'REPO_ROOT=' in content, "脚本必须使用REPO_ROOT变量"
+    assert '/home/ec2-user' not in content, "脚本不能包含硬编码路径"
+    assert 'python -m src.main' in content or '"${PYTHON}" -m src.main' in content, "脚本必须实际执行CLI命令"
+
+def test_shadow_cycle_script_executes():
+    """测试影子周期脚本可以执行（模拟）"""
+    script_path = Path(__file__).parent.parent / "scripts" / "run_shadow_cycle.sh"
+    
+    # 检查脚本是否可执行
+    assert script_path.exists(), "脚本文件必须存在"
+    assert os.access(script_path, os.X_OK), "脚本必须可执行"

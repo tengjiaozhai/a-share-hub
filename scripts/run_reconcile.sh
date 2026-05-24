@@ -1,12 +1,15 @@
 #!/bin/bash
-set -e
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PYTHON="${PYTHON:-/opt/anaconda3/envs/py311/bin/python3}"
 
 echo "=== Starting Reconciliation ==="
+echo "REPO_ROOT: ${REPO_ROOT}"
+echo "PYTHON: ${PYTHON}"
 
-export PATH="/home/ec2-user/miniconda3/envs/py311/bin:$PATH"
+cd "${REPO_ROOT}"
 
-cd /home/ec2-user/a-share-hub
-
-python -m src.main reconcile --all 2>/dev/null || echo "Reconciliation completed with warnings"
+"${PYTHON}" -m src.main reconcile --all
 
 echo "=== Reconciliation Complete ==="

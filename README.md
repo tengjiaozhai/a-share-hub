@@ -16,15 +16,19 @@
 3. 配置 `.env` 文件
 4. 运行测试：`pytest tests/`
 
-## 配置说明
+## 影子模式
 
-系统通过环境变量或 `.env` 文件进行配置：
+系统使用fail-closed影子模式脚本进行安全测试：
 
-- `DATABASE_URL`: 数据库连接字符串
-- `API_TOKEN`: API认证令牌
-- `ENABLE_LIVE_TRADING`: 是否启用实盘交易（默认：false）
-- `EXECUTION_MODE`: 执行模式（默认：shadow）
-- `RUNTIME_STORE_PATH`: 运行时数据存储路径（默认：~/.a-share-hub/runtime_store）
+```bash
+# 运行影子周期
+./scripts/run_shadow_cycle.sh
+
+# 运行对账
+./scripts/run_reconcile.sh
+```
+
+所有脚本都遵循fail-closed原则：任何步骤失败都会导致整个脚本退出，确保问题不会被忽略。
 
 ## 模块说明
 

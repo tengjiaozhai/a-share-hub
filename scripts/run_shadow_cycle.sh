@@ -1,29 +1,31 @@
 #!/bin/bash
-set -e
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PYTHON="${PYTHON:-/opt/anaconda3/envs/py311/bin/python3}"
 
 echo "=== Starting Shadow Cycle ==="
+echo "REPO_ROOT: ${REPO_ROOT}"
+echo "PYTHON: ${PYTHON}"
 
-# 激活Python环境
-export PATH="/home/ec2-user/miniconda3/envs/py311/bin:$PATH"
-
-cd /home/ec2-user/a-share-hub
+cd "${REPO_ROOT}"
 
 echo "Step 1: Syncing market data..."
-python -m src.main sync-market --all 2>/dev/null || echo "Market sync skipped (no real data)"
+"${PYTHON}" -m src.main sync-market --all
 
 echo "Step 2: Building features..."
-python -m src.main build-features --all 2>/dev/null || echo "Feature building skipped"
+"${PYTHON}" -m src.main build-features --all
 
 echo "Step 3: Running decisions..."
-python -m src.main run-decision --all --mock-llm 2>/dev/null || echo "Decision running skipped"
+"${PYTHON}" -m src.main run-decision --all --mock-llm
 
 echo "Step 4: Planning execution..."
-python -m src.main plan-execution --all 2>/dev/null || echo "Execution planning skipped"
+"${PYTHON}" -m src.main plan-execution --all
 
 echo "Step 5: Shadow execution..."
-python -m src.main shadow-execute --all --mock-broker 2>/dev/null || echo "Shadow execution skipped"
+"${PYTHON}" -m src.main shadow-execute --all --mock-broker
 
 echo "Step 6: Reconciling..."
-python -m src.main reconcile --all 2>/dev/null || echo "Reconciliation skipped"
+"${PYTHON}" -m src.main reconcile --all
 
 echo "=== Shadow Cycle Complete ==="
