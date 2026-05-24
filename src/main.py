@@ -7,6 +7,7 @@ from src.api.routes_broker_events import router as broker_events_router
 from src.api.routes_execution_plans import router as execution_plans_router
 from src.api.routes_health import router as health_router
 from src.api.routes_kill_switch import router as kill_switch_router
+from src.api.routes_dashboard import router as dashboard_router
 
 
 def build_app() -> FastAPI:
@@ -15,6 +16,7 @@ def build_app() -> FastAPI:
     app.include_router(execution_plans_router)
     app.include_router(broker_events_router)
     app.include_router(kill_switch_router)
+    app.include_router(dashboard_router)
     return app
 
 
@@ -88,3 +90,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+# ASGI app for uvicorn
+app = build_app()
