@@ -12,22 +12,13 @@ cd "${REPO_ROOT}"
 
 "${PYTHON}" -m alembic upgrade head
 
-echo "Step 1: Syncing market data..."
-"${PYTHON}" -m src.main sync-market --all
+echo "Step 1: Running decisions..."
+"${PYTHON}" -m src.main decide --symbols 600519.SH --mock-llm
 
-echo "Step 2: Building features..."
-"${PYTHON}" -m src.main build-features --all
+echo "Step 2: Shadow execution..."
+"${PYTHON}" -m src.main shadow-execute --symbols 600519.SH --mock-broker
 
-echo "Step 3: Running decisions..."
-"${PYTHON}" -m src.main run-decision --all --mock-llm
-
-echo "Step 4: Planning execution..."
-"${PYTHON}" -m src.main plan-execution --all
-
-echo "Step 5: Shadow execution..."
-"${PYTHON}" -m src.main shadow-execute --all --mock-broker
-
-echo "Step 6: Reconciling..."
-"${PYTHON}" -m src.main reconcile --all
+echo "Step 3: Reconciling..."
+"${PYTHON}" -m src.main reconcile --symbols 600519.SH
 
 echo "=== Shadow Cycle Complete ==="

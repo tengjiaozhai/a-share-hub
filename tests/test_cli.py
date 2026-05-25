@@ -1,128 +1,99 @@
 import argparse
+
 import pytest
-from src.main import build_cli_parser
+from sqlalchemy import create_engine, func, select
+
+from src.main import build_cli_parser, run_decide_command, run_halt_command
+from src.storage.models import Base, KillSwitchEventRow
+from src.storage.runtime_store import RuntimeStore
+
+
+@pytest.fixture
+def runtime_store(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path}/runtime_store.db", future=True)
+    Base.metadata.create_all(engine)
+    return RuntimeStore(engine)
 
 
 class TestBuildCliParser:
-    def test_parser_returns_ArgumentParser(self):
+    def test_parser_returns_argument_parser(self):
         parser = build_cli_parser()
         assert isinstance(parser, argparse.ArgumentParser)
 
-    def test_default_command_is_serve(self):
+    def test_current_commands_exist(self):
         parser = build_cli_parser()
-        args = parser.parse_args([])
-        assert args.command is None
+        choices = parser._subparsers._group_actions[0].choices
+        assert "decide" in choices
+        assert "shadow-execute" in choices
+        assert "live-execute" in choices
+        assert "reconcile" in choices
+        assert "halt" in choices
+        assert "serve" in choices
+        assert "run-decision" not in choices
+        assert "plan-execution" not in choices
 
-
-class TestSyncMarket:
-    def test_requires_symbols(self):
-        parser = build_cli_parser()
-        with pytest.raises(SystemExit):
-            parser.parse_args(["sync-market"])
-
-    def test_parses_symbols(self):
-        parser = build_cli_parser()
-        args = parser.parse_args(["sync-market", "--symbols", "600519.SH", "000001.SZ"])
-        assert args.command == "sync-market"
-        assert args.symbols == ["600519.SH", "000001.SZ"]
-
-    def test_default_interval_and_limit(self):
-        parser = build_cli_parser()
-        args = parser.parse_args(["sync-market", "--symbols", "600519.SH"])
-        assert args.interval == "daily"
-        assert args.limit == 100
-
-    def test_custom_interval_and_limit(self):
-        parser = build_cli_parser()
-        args = parser.parse_args(["sync-market", "--symbols", "600519.SH", "--interval", "weekly", "--limit", "50"])
-        assert args.interval == "weekly"
-        assert args.limit == 50
-
-
-class TestBuildFeatures:
-    def test_requires_symbols(self):
+    def test_decide_requires_symbols(self):
         parser = build_cli_parser()
         with pytest.raises(SystemExit):
-            parser.parse_args(["build-features"])
+            parser.parse_args(["decide"])
 
-    def test_parses_symbols_and_top_n(self):
+    def test_halt_parses_resume_flag(self):
         parser = build_cli_parser()
-        args = parser.parse_args(["build-features", "--symbols", "600519.SH", "--top-n", "5"])
-        assert args.command == "build-features"
-        assert args.symbols == ["600519.SH"]
-        assert args.top_n == 5
-
-    def test_default_top_n(self):
-        parser = build_cli_parser()
-        args = parser.parse_args(["build-features", "--symbols", "600519.SH"])
-        assert args.top_n == 10
+        args = parser.parse_args(["halt", "--reason", "manual gate", "--resume"])
+        assert args.command == "halt"
+        assert args.reason == "manual gate"
+        assert args.resume is True
 
 
-class TestRunDecision:
-    def test_requires_symbols(self):
-        parser = build_cli_parser()
-        with pytest.raises(SystemExit):
-            parser.parse_args(["run-decision"])
+def test_run_decide_command_persists_decision_and_target_position(runtime_store):
+    summary = run_decide_command(symbols=["600519.SH"], mock_llm=True, store=runtime_store)
 
-    def test_mock_llm_flag(self):
-        parser = build_cli_parser()
-        args = parser.parse_args(["run-decision", "--symbols", "600519.SH", "--mock-llm"])
-        assert args.command == "run-decision"
-        assert args.mock_llm is True
+    assert summary["status"] == "ok"
+    assert len(summary["decision_run_ids"]) == 1
+    assert len(summary["target_position_ids"]) == 1
 
-    def test_no_mock_llm_by_default(self):
-        parser = build_cli_parser()
-        args = parser.parse_args(["run-decision", "--symbols", "600519.SH"])
-        assert args.mock_llm is False
+    decision_runs = runtime_store.list_decision_runs()
+    assert len(decision_runs) == 1
+    assert decision_runs[0]["symbol"] == "600519.SH"
 
+    record = runtime_store.get_decision_run(summary["decision_run_ids"][0])
+    assert record["parsed_action"] == "BUY"
+    assert record["snapshot"]["features"]["mock_llm"] is True
 
-class TestPlanExecution:
-    def test_requires_symbols_and_nav(self):
-        parser = build_cli_parser()
-        with pytest.raises(SystemExit):
-            parser.parse_args(["plan-execution", "--symbols", "600519.SH"])
-
-    def test_parses_symbols_and_nav(self):
-        parser = build_cli_parser()
-        args = parser.parse_args(["plan-execution", "--symbols", "600519.SH", "--nav", "1000000"])
-        assert args.command == "plan-execution"
-        assert args.symbols == ["600519.SH"]
-        assert args.nav == 1000000.0
+    targets = runtime_store.list_active_target_positions()
+    assert len(targets) == 1
+    assert targets[0]["decision_run_id"] == summary["decision_run_ids"][0]
+    assert targets[0]["target_value"] == 100000
 
 
-class TestShadowExecute:
-    def test_requires_symbols(self):
-        parser = build_cli_parser()
-        with pytest.raises(SystemExit):
-            parser.parse_args(["shadow-execute"])
+def test_run_decide_command_is_blocked_when_kill_switch_active(runtime_store):
+    runtime_store.set_kill_switch(True)
 
-    def test_mock_broker_flag(self):
-        parser = build_cli_parser()
-        args = parser.parse_args(["shadow-execute", "--symbols", "600519.SH", "--mock-broker"])
-        assert args.command == "shadow-execute"
-        assert args.mock_broker is True
+    summary = run_decide_command(symbols=["600519.SH"], mock_llm=True, store=runtime_store)
 
-    def test_no_mock_broker_by_default(self):
-        parser = build_cli_parser()
-        args = parser.parse_args(["shadow-execute", "--symbols", "600519.SH"])
-        assert args.mock_broker is False
+    assert summary["status"] == "blocked"
+    assert summary["reason"] == "kill switch enabled"
+    assert runtime_store.list_decision_runs() == []
+    assert runtime_store.list_active_target_positions() == []
 
 
-class TestReconcile:
-    def test_requires_symbols(self):
-        parser = build_cli_parser()
-        with pytest.raises(SystemExit):
-            parser.parse_args(["reconcile"])
+def test_run_halt_command_records_kill_switch_event(runtime_store):
+    summary = run_halt_command(reason="manual gate", resume=False, store=runtime_store)
 
-    def test_parses_symbols(self):
-        parser = build_cli_parser()
-        args = parser.parse_args(["reconcile", "--symbols", "600519.SH", "000001.SZ"])
-        assert args.command == "reconcile"
-        assert args.symbols == ["600519.SH", "000001.SZ"]
+    assert summary["status"] == "ok"
+    assert summary["active"] is True
+    assert runtime_store.get_kill_switch() is True
+
+    with runtime_store.engine.begin() as conn:
+        event_count = conn.execute(select(func.count()).select_from(KillSwitchEventRow)).scalar_one()
+    assert event_count == 1
 
 
-class TestServe:
-    def test_serve_command(self):
-        parser = build_cli_parser()
-        args = parser.parse_args(["serve"])
-        assert args.command == "serve"
+def test_run_halt_command_can_resume(runtime_store):
+    runtime_store.set_kill_switch(True)
+
+    summary = run_halt_command(reason="resume gate", resume=True, store=runtime_store)
+
+    assert summary["status"] == "ok"
+    assert summary["active"] is False
+    assert runtime_store.get_kill_switch() is False

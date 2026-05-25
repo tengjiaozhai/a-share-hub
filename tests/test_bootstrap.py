@@ -17,6 +17,21 @@ def test_execution_plans_ready_route():
     routes = {route.path for route in app.routes}
     assert "/api/v1/execution-plans/ready" in routes
 
+def test_decision_runs_route():
+    app = build_app()
+    routes = {route.path for route in app.routes}
+    assert "/api/v1/decision-runs" in routes
+
+def test_portfolio_targets_route():
+    app = build_app()
+    routes = {route.path for route in app.routes}
+    assert "/api/v1/portfolio-targets/active" in routes
+
+def test_reconciliation_status_route():
+    app = build_app()
+    routes = {route.path for route in app.routes}
+    assert "/api/v1/reconciliation/status" in routes
+
 def test_broker_events_route():
     app = build_app()
     routes = {route.path for route in app.routes}

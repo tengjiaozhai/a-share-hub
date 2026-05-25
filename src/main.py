@@ -1,8 +1,13 @@
 import argparse
+from datetime import datetime, timedelta
+from hashlib import sha256
 import sys
 
 from fastapi import FastAPI
 
+from src.agents.llm_client import LLMClient
+from src.decision.decision_runner import build_decision_run_record
+from src.decision.input_builder import build_decision_input_snapshot
 from src.api.routes_broker_events import router as broker_events_router
 from src.api.routes_decision_runs import router as decision_runs_router
 from src.api.routes_execution_plans import router as execution_plans_router
@@ -11,6 +16,70 @@ from src.api.routes_kill_switch import router as kill_switch_router
 from src.api.routes_portfolio_targets import router as portfolio_targets_router
 from src.api.routes_reconciliation import router as reconciliation_router
 from src.api.routes_dashboard import router as dashboard_router
+from src.portfolio.target_planner import build_target_position
+from src.storage.dependencies import get_runtime_store
+
+
+def run_decide_command(symbols: list[str], mock_llm: bool, store=None) -> dict:
+    runtime_store = store or get_runtime_store()
+    if runtime_store.get_kill_switch():
+        return {"status": "blocked", "reason": "kill switch enabled", "decision_run_ids": [], "target_position_ids": []}
+
+    client = LLMClient(provider="mock")
+    decision_run_ids: list[str] = []
+    target_position_ids: list[str] = []
+
+    for symbol in symbols:
+        prompt = f"Generate a shadow trading decision for {symbol}."
+        input_snapshot = build_decision_input_snapshot(
+            symbol=symbol,
+            features={"source": "cli", "mock_llm": mock_llm},
+            market_context={"mode": "shadow"},
+        )
+        raw_output = client.generate(prompt)
+        if raw_output is None:
+            raise RuntimeError("LLM client returned no output")
+
+        record = build_decision_run_record(
+            raw=raw_output,
+            symbol=symbol,
+            prompt_hash=sha256(prompt.encode("utf-8")).hexdigest(),
+            input_snapshot=input_snapshot,
+            model_name=client.model,
+        )
+        decision_run_id = runtime_store.insert_decision_run(**record)
+        decision_run_ids.append(decision_run_id)
+
+        if record["parsed_action"] in {"BUY", "SELL"} and record["target_position_ratio"] > 0:
+            target = build_target_position(
+                symbol=symbol,
+                action=record["parsed_action"],
+                target_position_ratio=record["target_position_ratio"],
+                net_asset_value=1_000_000.0,
+                expires_at=(datetime.utcnow() + timedelta(hours=1)).isoformat(),
+            )
+            target_position_id = runtime_store.insert_target_position(
+                decision_run_id=decision_run_id,
+                symbol=target["symbol"],
+                action=target["action"],
+                target_value=target["target_value"],
+                target_position_ratio=target["target_position_ratio"],
+                expires_at=target["expires_at"],
+            )
+            target_position_ids.append(target_position_id)
+
+    return {
+        "status": "ok",
+        "decision_run_ids": decision_run_ids,
+        "target_position_ids": target_position_ids,
+    }
+
+
+def run_halt_command(reason: str, resume: bool, store=None) -> dict:
+    runtime_store = store or get_runtime_store()
+    active = not resume
+    runtime_store.insert_kill_switch_event(active=active, reason=reason)
+    return {"status": "ok", "active": active, "reason": reason, "resume": resume}
 
 
 def build_app() -> FastAPI:
@@ -61,7 +130,14 @@ def build_cli_parser() -> argparse.ArgumentParser:
 
 def dispatch_command(args: argparse.Namespace) -> None:
     if args.command == "decide":
-        print(f"decide: symbols={args.symbols}, mock_llm={args.mock_llm}")
+        summary = run_decide_command(args.symbols, args.mock_llm)
+        if summary["status"] == "blocked":
+            print(f"decide: blocked ({summary['reason']})")
+        else:
+            print(
+                f"decide: persisted {len(summary['decision_run_ids'])} runs, "
+                f"{len(summary['target_position_ids'])} targets"
+            )
     elif args.command == "shadow-execute":
         print(f"shadow-execute: symbols={args.symbols}, mock_broker={args.mock_broker}")
     elif args.command == "live-execute":
@@ -69,7 +145,9 @@ def dispatch_command(args: argparse.Namespace) -> None:
     elif args.command == "reconcile":
         print(f"reconcile: symbols={args.symbols}")
     elif args.command == "halt":
-        print(f"halt: reason={args.reason}, resume={args.resume}")
+        summary = run_halt_command(args.reason, args.resume)
+        state = "resumed" if summary["active"] is False else "halted"
+        print(f"halt: {state}, reason={summary['reason']}")
     elif args.command == "serve" or args.command is None:
         import uvicorn
         app = build_app()

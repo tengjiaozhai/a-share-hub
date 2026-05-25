@@ -71,4 +71,6 @@ def test_shadow_cycle_mentions_postgresql_migration_and_not_sqlite():
 def test_shadow_cycle_script_runs_migrations_before_runtime_commands():
     script = Path("scripts/run_shadow_cycle.sh").read_text()
     assert "alembic upgrade head" in script
-    assert '"${PYTHON}" -m src.main run-decision' in script
+    assert '"${PYTHON}" -m src.main decide --symbols 600519.SH --mock-llm' in script
+    assert '"${PYTHON}" -m src.main shadow-execute --symbols 600519.SH --mock-broker' in script
+    assert '"${PYTHON}" -m src.main reconcile --symbols 600519.SH' in script
