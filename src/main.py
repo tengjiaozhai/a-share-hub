@@ -15,6 +15,7 @@ from src.api.routes_health import router as health_router
 from src.api.routes_kill_switch import router as kill_switch_router
 from src.api.routes_portfolio_targets import router as portfolio_targets_router
 from src.api.routes_reconciliation import router as reconciliation_router
+from src.api.routes_market import router as market_router
 from src.api.routes_dashboard import router as dashboard_router
 from src.portfolio.target_planner import build_target_position
 from src.storage.dependencies import get_runtime_store
@@ -91,6 +92,7 @@ def build_app() -> FastAPI:
     app.include_router(broker_events_router)
     app.include_router(reconciliation_router)
     app.include_router(kill_switch_router)
+    app.include_router(market_router)
     app.include_router(dashboard_router)
     return app
 

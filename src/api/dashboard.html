@@ -162,6 +162,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .badge-filled{background:rgba(59,130,246,.2);color:var(--blue)}
 .badge-pending{background:rgba(234,179,8,.15);color:var(--yellow)}
 .badge-error{background:rgba(239,68,68,.15);color:var(--red)}
+.quote-up{color:var(--green)}
+.quote-down{color:var(--red)}
 
 /* ── SCROLLBAR ── */
 ::-webkit-scrollbar{width:6px;height:6px}
@@ -285,6 +287,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
       <button class="active" onclick="switchTab(this,'tab-decisions')">最近决策</button>
       <button onclick="switchTab(this,'tab-orders')">最近订单</button>
       <button onclick="switchTab(this,'tab-targets')">当前目标仓位</button>
+      <button onclick="switchTab(this,'tab-market')">实时行情</button>
       <button onclick="switchTab(this,'tab-errors')">异常事件</button>
     </div>
     <div class="tab-content">
@@ -297,6 +300,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
       <div class="tab-pane" id="tab-targets">
         <table><thead><tr><th>股票</th><th>目标数量</th><th>目标权重</th><th>理由</th></tr></thead><tbody id="tb-targets"><tr><td colspan="4" style="color:var(--dim)">暂无数据</td></tr></tbody></table>
       </div>
+      <div class="tab-pane" id="tab-market">
+        <table><thead><tr><th>时间</th><th>股票</th><th>最新价</th><th>今开</th><th>最高</th><th>最低</th><th>涨跌幅</th><th>成交量</th></tr></thead><tbody id="tb-market"><tr><td colspan="8" style="color:var(--dim)">暂无数据</td></tr></tbody></table>
+      </div>
       <div class="tab-pane" id="tab-errors">
         <table><thead><tr><th>时间</th><th>级别</th><th>消息</th></tr></thead><tbody id="tb-errors"><tr><td colspan="3" style="color:var(--dim)">暂无异常</td></tr></tbody></table>
       </div>
@@ -308,6 +314,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 <script>
 const WORKBENCH_API = '/api/v1/dashboard/workbench';
 const RUN_API = '/api/v1/dashboard/run';
+const MARKET_QUOTE_API = '/api/v1/market/quote';
 const KILL_SWITCH_STATUS_API = '/api/v1/kill-switch/status';
 const KILL_SWITCH_ACTIVATE_API = '/api/v1/kill-switch/activate';
 const KILL_SWITCH_DEACTIVATE_API = '/api/v1/kill-switch/deactivate';
@@ -394,6 +401,28 @@ function formatCurrency(raw) {
   if (!Number.isFinite(n)) return normalizeText(raw);
   const sign = n > 0 ? '+' : '';
   return `${sign}¥${n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function formatNumber(raw, digits = 2) {
+  if (raw === null || raw === undefined || raw === '') return '--';
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return normalizeText(raw);
+  return n.toFixed(digits);
+}
+
+function formatSignedPercent(raw) {
+  if (raw === null || raw === undefined || raw === '') return '--';
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return normalizeText(raw);
+  const sign = n > 0 ? '+' : '';
+  return `${sign}${n.toFixed(2)}%`;
+}
+
+function formatVolume(raw) {
+  if (raw === null || raw === undefined || raw === '') return '--';
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return normalizeText(raw);
+  return n.toLocaleString('zh-CN');
 }
 
 function toList(value) {
@@ -534,6 +563,62 @@ function renderTargets(list) {
     const reason = normalizeText(pickFirst(item, ['reason', 'rationale'], '--'));
     return `<tr><td>${escapeHtml(symbol)}</td><td>${escapeHtml(quantity)}</td><td>${escapeHtml(weight)}</td><td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(reason)}">${escapeHtml(reason)}</td></tr>`;
   }).join('');
+}
+
+function buildQuoteSymbols() {
+  return document.getElementById('cfg-watchlist').value
+    .split(',')
+    .map(s => s.trim().toUpperCase())
+    .filter(Boolean)
+    .slice(0, 10);
+}
+
+function renderMarketQuotes(quotes) {
+  const tb = document.getElementById('tb-market');
+  const rows = toList(quotes);
+  if (!rows.length) {
+    tb.innerHTML = '<tr><td colspan="8" style="color:var(--dim)">暂无行情数据</td></tr>';
+    return;
+  }
+  tb.innerHTML = rows.map(item => {
+    const symbol = normalizeText(item.symbol, '--');
+    const time = formatTime(item.timestamp);
+    const close = Number(item.close);
+    const open = Number(item.open);
+    const changePct = Number.isFinite(close) && Number.isFinite(open) && open !== 0
+      ? ((close - open) / open) * 100
+      : null;
+    const cls = (changePct ?? 0) > 0 ? 'quote-up' : (changePct ?? 0) < 0 ? 'quote-down' : '';
+    return `<tr>
+      <td>${escapeHtml(time)}</td>
+      <td>${escapeHtml(symbol)}</td>
+      <td class="${cls}">${escapeHtml(formatNumber(item.close))}</td>
+      <td>${escapeHtml(formatNumber(item.open))}</td>
+      <td>${escapeHtml(formatNumber(item.high))}</td>
+      <td>${escapeHtml(formatNumber(item.low))}</td>
+      <td class="${cls}">${escapeHtml(formatSignedPercent(changePct))}</td>
+      <td>${escapeHtml(formatVolume(item.volume))}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function refreshMarketQuotes() {
+  const symbols = buildQuoteSymbols();
+  if (!symbols.length) {
+    renderMarketQuotes([]);
+    return;
+  }
+  const responses = await Promise.all(symbols.map(async symbol => {
+    try {
+      const res = await fetch(`${MARKET_QUOTE_API}?symbol=${encodeURIComponent(symbol)}`);
+      const body = await parseResponseBody(res);
+      if (!res.ok) return null;
+      return body;
+    } catch (error) {
+      return null;
+    }
+  }));
+  renderMarketQuotes(responses.filter(Boolean));
 }
 
 function renderRisk(risk, targets) {
@@ -706,6 +791,7 @@ async function loadDashboard() {
       throw new Error(extractErrorMessage(killStatusBody, `Kill Switch 状态加载失败 (${killStatusRes.status})`));
     }
     renderWorkbench(workbenchBody, killStatusBody);
+    await refreshMarketQuotes();
   } catch (error) {
     addAlert('err', `数据加载失败: ${error.message}`);
   }
@@ -812,6 +898,11 @@ setInterval(() => {
     loadDashboard();
   }
 }, 30000);
+setInterval(() => {
+  if (!simRunning) {
+    refreshMarketQuotes();
+  }
+}, 10000);
 </script>
 </body>
 </html>

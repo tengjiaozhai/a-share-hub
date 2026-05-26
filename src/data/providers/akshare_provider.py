@@ -16,20 +16,30 @@ class AkshareProvider(DataProvider):
         """获取单股实时行情，symbol 格式如 600519.SH / 000001.SZ"""
         try:
             import akshare as ak
-            code, market = _split(symbol)
+            code, _ = _split(symbol)
             df = ak.stock_zh_a_spot_em()
             row = df[df["代码"] == code]
             if row.empty:
                 logger.warning(f"AkshareProvider: 未找到 {symbol}")
                 return None
             r = row.iloc[0]
+            last_price = _to_float(r.get("最新价"), default=0.0) or 0.0
+            open_price = _to_float(r.get("今开"), default=last_price) or last_price
+            high_price = _to_float(r.get("最高"), default=last_price) or last_price
+            low_price = _to_float(r.get("最低"), default=last_price) or last_price
             return MarketSnapshot(
                 symbol=symbol,
-                name=str(r.get("名称", "")),
-                price=float(r.get("最新价", 0) or 0),
-                change_pct=float(r.get("涨跌幅", 0) or 0),
-                volume=float(r.get("成交量", 0) or 0),
                 timestamp=datetime.now(),
+                open=open_price,
+                high=high_price,
+                low=low_price,
+                close=last_price,
+                volume=_to_int(r.get("成交量"), default=0) or 0,
+                amount=_to_float(r.get("成交额"), default=0.0) or 0.0,
+                bid_price=_to_float(r.get("买一"), default=None),
+                bid_volume=_to_int(r.get("买一量"), default=None),
+                ask_price=_to_float(r.get("卖一"), default=None),
+                ask_volume=_to_int(r.get("卖一量"), default=None),
             )
         except Exception as e:
             logger.warning(f"AkshareProvider.get_realtime_quote({symbol}) 失败: {e}")
@@ -91,3 +101,22 @@ def _split(symbol: str) -> tuple[str, str]:
     """600519.SH -> ('600519', 'SH')"""
     parts = symbol.split(".")
     return parts[0], (parts[1] if len(parts) > 1 else "")
+
+
+def _to_float(value, default: float | None) -> float | None:
+    if value is None or (isinstance(value, str) and not value.strip()) or pd.isna(value):
+        return default
+    try:
+        return float(str(value).replace(",", ""))
+    except (TypeError, ValueError):
+        return default
+
+
+def _to_int(value, default: int | None) -> int | None:
+    numeric = _to_float(value, default=None)
+    if numeric is None:
+        return default
+    try:
+        return int(numeric)
+    except (TypeError, ValueError):
+        return default
