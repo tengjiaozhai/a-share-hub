@@ -53,5 +53,6 @@ Redis 是可选的，必须保持禁用直到负载门控运行手册另有说�
 1. 从 `.env.example` 配置 `.env`。
 2. 通过 `DATABASE_URL` 验证 PostgreSQL 连接。
 3. 运行 `/opt/anaconda3/envs/py311/bin/python3 -m alembic upgrade head`。
+   若数据库中只有 `alembic_version` 或没有业务表，应用在首次初始化 `RuntimeStore` 时会自动补齐运行时表。
 4. 运行 `/opt/anaconda3/envs/py311/bin/python3 -m pytest -q`。
 5. 运行 `bash scripts/run_shadow_cycle.sh`。

@@ -49,7 +49,7 @@ def test_dashboard_workbench_route_exists(test_app):
     assert response.status_code == 200
 
 
-def test_workbench_payload_uses_runtime_store_metrics(test_app, pg_store):
+def test_workbench_payload_has_stable_contract(test_app, pg_store):
     decision_run_id, target_position_id, execution_order_id = seed_dashboard_records(pg_store)
     client = TestClient(test_app)
 
@@ -57,60 +57,81 @@ def test_workbench_payload_uses_runtime_store_metrics(test_app, pg_store):
     payload = response.json()
 
     assert response.status_code == 200
-    assert payload["summary"] == {
-        "active_target_count": 1,
-        "active_target_value": 100000,
-        "open_orders": 1,
-        "recent_decisions": 1,
+    required_top_level = {
+        "mode",
+        "trade_date",
+        "last_run_at",
+        "services",
+        "kill_switch",
+        "risk",
+        "latest_run",
+        "history",
     }
-    assert payload["history"]["decisions"][0]["decision_run_id"] == decision_run_id
-    assert payload["history"]["targets"][0]["target_position_id"] == target_position_id
-    assert payload["history"]["orders"][0]["execution_order_id"] == execution_order_id
-    assert "daily_pnl" not in payload["summary"]
+    assert required_top_level.issubset(payload.keys())
+
+    required_history = {"decisions", "orders", "targets", "events"}
+    assert required_history.issubset(payload["history"].keys())
+
+    decision = payload["history"]["decisions"][0]
+    assert decision["decision_run_id"] == decision_run_id
+    assert decision["action"] == "BUY"
+    assert decision["parsed_action"] == "BUY"
+
+    target = payload["history"]["targets"][0]
+    assert target["target_position_id"] == target_position_id
+
+    order = payload["history"]["orders"][0]
+    assert order["execution_order_id"] == execution_order_id
+    assert {"symbol", "action", "quantity", "limit_price", "status", "created_at"}.issubset(order.keys())
 
 
-def test_kill_switch_activate_records_event_and_updates_workbench(test_app):
+def test_run_endpoint_returns_full_workbench_payload(test_app):
+    client = TestClient(test_app)
+
+    response = client.post(
+        "/api/v1/dashboard/run",
+        json={
+            "capital_base": 1_000_000,
+            "watchlist": ["600519.SH"],
+            "max_position_ratio": 0.2,
+            "execution_mode": "full",
+        },
+    )
+    payload = response.json()
+    assert response.status_code == 200
+    assert {"mode", "trade_date", "last_run_at", "services", "kill_switch", "risk", "latest_run", "history"}.issubset(
+        payload.keys()
+    )
+    assert len(payload["history"]["decisions"]) >= 1
+    assert len(payload["history"]["targets"]) >= 1
+    assert len(payload["history"]["orders"]) >= 1
+    assert {"symbol", "action", "quantity", "limit_price", "status", "created_at"}.issubset(
+        payload["history"]["orders"][0].keys()
+    )
+    assert payload["history"]["decisions"][0]["action"] in {"BUY", "SELL", "HOLD"}
+
+
+def test_kill_switch_events_are_visible_in_workbench_history(test_app):
     client = TestClient(test_app)
 
     activate = client.post("/api/v1/kill-switch/activate", json={"reason": "dashboard manual halt"})
     assert activate.status_code == 200
+    assert activate.json()["reason"] == "dashboard manual halt"
 
     payload = client.get("/api/v1/dashboard/workbench").json()
-    assert payload["risk"]["kill_switch_active"] is True
-    assert payload["history"]["kill_switch_events"][0]["reason"] == "dashboard manual halt"
-
-
-def test_kill_switch_deactivate_records_resume_event(test_app):
-    client = TestClient(test_app)
-    client.post("/api/v1/kill-switch/activate", json={"reason": "dashboard manual halt"})
+    assert payload["kill_switch"]["active"] is True
+    assert any(
+        event["type"] == "kill_switch_event" and event["active"] is True and event["reason"] == "dashboard manual halt"
+        for event in payload["history"]["events"]
+    )
 
     deactivate = client.post("/api/v1/kill-switch/deactivate", json={"reason": "dashboard manual resume"})
     assert deactivate.status_code == 200
+    assert deactivate.json()["reason"] == "dashboard manual resume"
 
     payload = client.get("/api/v1/dashboard/workbench").json()
-    assert payload["risk"]["kill_switch_active"] is False
-    assert payload["history"]["kill_switch_events"][0]["reason"] == "dashboard manual resume"
-
-
-def test_workbench_reflects_latest_simulation_run(test_app):
-    client = TestClient(test_app)
-
-    response = client.post(
-        "/api/v1/dashboard/simulations",
-        json={
-            "capital_base": 1000000,
-            "watchlist": ["600519.SH"],
-            "manual_symbols": "300750.SZ",
-            "max_position_ratio": 0.2,
-            "stop_loss_ratio": 0.03,
-            "daily_loss_limit_ratio": 0.05,
-            "execution_mode": "full_cycle",
-        },
+    assert payload["kill_switch"]["active"] is False
+    assert any(
+        event["type"] == "kill_switch_event" and event["active"] is False and event["reason"] == "dashboard manual resume"
+        for event in payload["history"]["events"]
     )
-    assert response.status_code == 200
-
-    workbench = client.get("/api/v1/dashboard/workbench").json()
-    assert workbench["summary"]["recent_decisions"] >= 1
-    assert len(workbench["history"]["decisions"]) >= 1
-    assert len(workbench["history"]["orders"]) >= 1
-    assert workbench["risk"]["healthy"] is True

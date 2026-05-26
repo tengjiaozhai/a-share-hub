@@ -1,1502 +1,806 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>A股自动交易系统 - 交易工作台</title>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Orbitron:wght@400;500;600;700;800;900&display=swap');
-
-        :root {
-            --bg-primary: #0a0a0f;
-            --bg-secondary: #0d0d14;
-            --bg-tertiary: #12121a;
-            --bg-panel: #0f0f17;
-            --border-primary: #1a1a2e;
-            --border-active: #2d2d4a;
-            --text-primary: #e0e0e8;
-            --text-secondary: #8888a0;
-            --text-muted: #555570;
-            --accent-green: #00ff88;
-            --accent-green-dim: #00cc6a;
-            --accent-red: #ff3366;
-            --accent-red-dim: #cc2952;
-            --accent-amber: #ffaa00;
-            --accent-amber-dim: #cc8800;
-            --accent-cyan: #00ddff;
-            --accent-cyan-dim: #00aacc;
-            --accent-blue: #4466ff;
-            --glow-green: 0 0 10px rgba(0, 255, 136, 0.3);
-            --glow-red: 0 0 10px rgba(255, 51, 102, 0.3);
-            --glow-amber: 0 0 10px rgba(255, 170, 0, 0.3);
-            --glow-cyan: 0 0 10px rgba(0, 221, 255, 0.3);
-            --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-            --font-display: 'Orbitron', 'JetBrains Mono', monospace;
-            --scanline: repeating-linear-gradient(
-                0deg,
-                transparent,
-                transparent 2px,
-                rgba(0, 255, 136, 0.03) 2px,
-                rgba(0, 255, 136, 0.03) 4px
-            );
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: var(--font-mono);
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            min-height: 100vh;
-            overflow: hidden;
-            position: relative;
-        }
-
-        body::before {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: var(--scanline);
-            pointer-events: none;
-            z-index: 1000;
-        }
-
-        body::after {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: radial-gradient(ellipse at center, transparent 0%, rgba(0,0,0,0.3) 100%);
-            pointer-events: none;
-            z-index: 999;
-        }
-
-        .workbench {
-            display: grid;
-            grid-template-rows: 48px 1fr 240px;
-            grid-template-columns: 280px 1fr 300px;
-            height: 100vh;
-            gap: 1px;
-            background: var(--border-primary);
-        }
-
-        /* 顶部状态条 */
-        .status-bar {
-            grid-column: 1 / -1;
-            background: var(--bg-secondary);
-            display: flex;
-            align-items: center;
-            padding: 0 16px;
-            border-bottom: 1px solid var(--border-primary);
-            position: relative;
-            overflow: hidden;
-        }
-
-        .status-bar::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, var(--accent-green), transparent);
-            animation: scanline-move 3s linear infinite;
-        }
-
-        @keyframes scanline-move {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(100%); }
-        }
-
-        .status-bar-left {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-
-        .system-title {
-            font-family: var(--font-display);
-            font-size: 14px;
-            font-weight: 700;
-            letter-spacing: 2px;
-            color: var(--accent-green);
-            text-shadow: var(--glow-green);
-        }
-
-        .status-indicator {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 11px;
-            color: var(--text-secondary);
-        }
-
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--accent-green);
-            box-shadow: var(--glow-green);
-            animation: pulse 2s ease-in-out infinite;
-        }
-
-        .status-dot.warning {
-            background: var(--accent-amber);
-            box-shadow: var(--glow-amber);
-        }
-
-        .status-dot.error {
-            background: var(--accent-red);
-            box-shadow: var(--glow-red);
-        }
-
-        .status-dot.unknown {
-            background: var(--text-muted);
-            box-shadow: none;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-
-        .status-bar-right {
-            margin-left: auto;
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }
-
-        .mode-badge {
-            padding: 4px 12px;
-            border-radius: 2px;
-            font-size: 10px;
-            font-weight: 600;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-        }
-
-        .mode-badge.shadow {
-            background: rgba(0, 221, 255, 0.15);
-            color: var(--accent-cyan);
-            border: 1px solid var(--accent-cyan-dim);
-        }
-
-        .mode-badge.live {
-            background: rgba(255, 51, 102, 0.15);
-            color: var(--accent-red);
-            border: 1px solid var(--accent-red-dim);
-        }
-
-        .trade-date {
-            font-size: 12px;
-            color: var(--text-secondary);
-        }
-
-        .trade-date span {
-            color: var(--accent-amber);
-            font-weight: 600;
-        }
-
-        /* 左侧策略配置 */
-        .config-panel {
-            background: var(--bg-panel);
-            border-right: 1px solid var(--border-primary);
-            display: flex;
-            flex-direction: column;
-            overflow-y: auto;
-        }
-
-        .panel-header {
-            padding: 12px 16px;
-            border-bottom: 1px solid var(--border-primary);
-            font-size: 11px;
-            font-weight: 600;
-            letter-spacing: 1px;
-            color: var(--accent-green);
-            text-transform: uppercase;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .panel-header::before {
-            content: '▸';
-            color: var(--accent-green);
-        }
-
-        .config-section {
-            padding: 12px 16px;
-            border-bottom: 1px solid var(--border-primary);
-        }
-
-        .config-section:last-child {
-            border-bottom: none;
-        }
-
-        .config-label {
-            font-size: 10px;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 6px;
-        }
-
-        .config-input {
-            width: 100%;
-            background: var(--bg-primary);
-            border: 1px solid var(--border-primary);
-            color: var(--text-primary);
-            padding: 8px 10px;
-            font-family: var(--font-mono);
-            font-size: 12px;
-            border-radius: 2px;
-            transition: border-color 0.2s;
-        }
-
-        .config-input:focus {
-            outline: none;
-            border-color: var(--accent-green);
-            box-shadow: 0 0 0 1px var(--accent-green-dim);
-        }
-
-        .config-input:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .watchlist-container {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            margin-top: 6px;
-        }
-
-        .watchlist-tag {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            padding: 4px 8px;
-            background: rgba(0, 255, 136, 0.1);
-            border: 1px solid var(--accent-green-dim);
-            border-radius: 2px;
-            font-size: 11px;
-            color: var(--accent-green);
-        }
-
-        .watchlist-tag .remove {
-            cursor: pointer;
-            opacity: 0.6;
-            transition: opacity 0.2s;
-        }
-
-        .watchlist-tag .remove:hover {
-            opacity: 1;
-        }
-
-        .add-stock-input {
-            display: flex;
-            gap: 6px;
-            margin-top: 8px;
-        }
-
-        .add-stock-input input {
-            flex: 1;
-        }
-
-        .btn {
-            padding: 8px 16px;
-            border: 1px solid var(--border-primary);
-            background: var(--bg-secondary);
-            color: var(--text-primary);
-            font-family: var(--font-mono);
-            font-size: 11px;
-            font-weight: 600;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-            cursor: pointer;
-            transition: all 0.2s;
-            border-radius: 2px;
-        }
-
-        .btn:hover {
-            background: var(--bg-tertiary);
-            border-color: var(--border-active);
-        }
-
-        .btn-primary {
-            background: rgba(0, 255, 136, 0.15);
-            border-color: var(--accent-green-dim);
-            color: var(--accent-green);
-        }
-
-        .btn-primary:hover {
-            background: rgba(0, 255, 136, 0.25);
-        }
-
-        .btn-danger {
-            background: rgba(255, 51, 102, 0.15);
-            border-color: var(--accent-red-dim);
-            color: var(--accent-red);
-        }
-
-        .btn-danger:hover {
-            background: rgba(255, 51, 102, 0.25);
-        }
-
-        .btn:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-
-        .config-actions {
-            padding: 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            margin-top: auto;
-        }
-
-        /* 中央时间线 */
-        .timeline-panel {
-            background: var(--bg-panel);
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        .timeline-header {
-            padding: 12px 16px;
-            border-bottom: 1px solid var(--border-primary);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .timeline-title {
-            font-size: 11px;
-            font-weight: 600;
-            letter-spacing: 1px;
-            color: var(--accent-green);
-            text-transform: uppercase;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .timeline-title::before {
-            content: '▸';
-            color: var(--accent-green);
-        }
-
-        .run-status {
-            font-size: 10px;
-            padding: 3px 8px;
-            border-radius: 2px;
-            letter-spacing: 1px;
-        }
-
-        .run-status.idle {
-            background: rgba(136, 136, 160, 0.15);
-            color: var(--text-secondary);
-        }
-
-        .run-status.running {
-            background: rgba(0, 255, 136, 0.15);
-            color: var(--accent-green);
-            animation: pulse 1s ease-in-out infinite;
-        }
-
-        .run-status.completed {
-            background: rgba(0, 221, 255, 0.15);
-            color: var(--accent-cyan);
-        }
-
-        .run-status.blocked {
-            background: rgba(255, 51, 102, 0.15);
-            color: var(--accent-red);
-        }
-
-        .timeline-content {
-            flex: 1;
-            overflow-y: auto;
-            padding: 16px;
-        }
-
-        .timeline-steps {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-
-        .timeline-step {
-            display: grid;
-            grid-template-columns: 100px 1fr;
-            gap: 12px;
-            padding: 12px;
-            background: var(--bg-secondary);
-            border-left: 3px solid var(--border-primary);
-            border-radius: 0 2px 2px 0;
-            transition: all 0.2s;
-            animation: step-appear 0.3s ease-out;
-        }
-
-        @keyframes step-appear {
-            from {
-                opacity: 0;
-                transform: translateX(-10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateX(0);
-            }
-        }
-
-        .timeline-step.done {
-            border-left-color: var(--accent-green);
-        }
-
-        .timeline-step.running {
-            border-left-color: var(--accent-amber);
-            background: rgba(255, 170, 0, 0.05);
-        }
-
-        .timeline-step.error {
-            border-left-color: var(--accent-red);
-        }
-
-        .timeline-step.blocked {
-            border-left-color: var(--accent-red);
-            background: rgba(255, 51, 102, 0.05);
-        }
-
-        .step-stage {
-            font-size: 11px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-
-        .step-time {
-            font-size: 10px;
-            color: var(--text-muted);
-            font-weight: 400;
-        }
-
-        .step-content {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .step-items {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-        }
-
-        .step-item {
-            padding: 4px 8px;
-            background: var(--bg-primary);
-            border: 1px solid var(--border-primary);
-            border-radius: 2px;
-            font-size: 11px;
-        }
-
-        .step-item.buy {
-            border-color: var(--accent-green-dim);
-            color: var(--accent-green);
-        }
-
-        .step-item.sell {
-            border-color: var(--accent-red-dim);
-            color: var(--accent-red);
-        }
-
-        .step-item.hold {
-            border-color: var(--text-muted);
-            color: var(--text-secondary);
-        }
-
-        .step-message {
-            font-size: 11px;
-            color: var(--text-secondary);
-        }
-
-        .timeline-empty {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            color: var(--text-muted);
-            font-size: 12px;
-            gap: 8px;
-        }
-
-        .timeline-empty .icon {
-            font-size: 32px;
-            opacity: 0.3;
-        }
-
-        /* 右侧风控面板 */
-        .risk-panel {
-            background: var(--bg-panel);
-            border-left: 1px solid var(--border-primary);
-            display: flex;
-            flex-direction: column;
-            overflow-y: auto;
-        }
-
-        .risk-section {
-            padding: 12px 16px;
-            border-bottom: 1px solid var(--border-primary);
-        }
-
-        .risk-section:last-child {
-            border-bottom: none;
-        }
-
-        .risk-metric {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 6px 0;
-        }
-
-        .risk-metric-label {
-            font-size: 11px;
-            color: var(--text-secondary);
-        }
-
-        .risk-metric-value {
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-
-        .risk-metric-value.warning {
-            color: var(--accent-amber);
-        }
-
-        .risk-metric-value.danger {
-            color: var(--accent-red);
-        }
-
-        .alerts-list {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .alert-item {
-            padding: 8px;
-            background: var(--bg-secondary);
-            border-radius: 2px;
-            font-size: 11px;
-            display: flex;
-            gap: 8px;
-        }
-
-        .alert-item .level {
-            font-weight: 600;
-            text-transform: uppercase;
-            font-size: 10px;
-            padding: 2px 4px;
-            border-radius: 2px;
-        }
-
-        .alert-item .level.info {
-            color: var(--accent-cyan);
-            background: rgba(0, 221, 255, 0.1);
-        }
-
-        .alert-item .level.warning {
-            color: var(--accent-amber);
-            background: rgba(255, 170, 0, 0.1);
-        }
-
-        .alert-item .level.error {
-            color: var(--accent-red);
-            background: rgba(255, 51, 102, 0.1);
-        }
-
-        .alert-item .time {
-            color: var(--text-muted);
-            margin-left: auto;
-            font-size: 10px;
-        }
-
-        .kill-switch-section {
-            padding: 16px;
-            margin-top: auto;
-        }
-
-        .kill-switch-btn {
-            width: 100%;
-            padding: 12px;
-            font-size: 12px;
-            font-weight: 700;
-            letter-spacing: 2px;
-        }
-
-        .kill-switch-btn.active {
-            background: rgba(255, 51, 102, 0.3);
-            border-color: var(--accent-red);
-            animation: kill-pulse 1s ease-in-out infinite;
-        }
-
-        @keyframes kill-pulse {
-            0%, 100% { box-shadow: 0 0 5px rgba(255, 51, 102, 0.3); }
-            50% { box-shadow: 0 0 20px rgba(255, 51, 102, 0.5); }
-        }
-
-        /* 底部历史回放 */
-        .history-panel {
-            grid-column: 1 / -1;
-            background: var(--bg-panel);
-            border-top: 1px solid var(--border-primary);
-            display: flex;
-            flex-direction: column;
-        }
-
-        .history-tabs {
-            display: flex;
-            border-bottom: 1px solid var(--border-primary);
-        }
-
-        .history-tab {
-            padding: 8px 16px;
-            font-size: 11px;
-            font-weight: 600;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-            color: var(--text-muted);
-            cursor: pointer;
-            border-bottom: 2px solid transparent;
-            transition: all 0.2s;
-        }
-
-        .history-tab:hover {
-            color: var(--text-secondary);
-            background: var(--bg-secondary);
-        }
-
-        .history-tab.active {
-            color: var(--accent-green);
-            border-bottom-color: var(--accent-green);
-        }
-
-        .history-content {
-            flex: 1;
-            overflow-y: auto;
-            padding: 12px;
-        }
-
-        .history-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 11px;
-        }
-
-        .history-table th {
-            text-align: left;
-            padding: 8px 12px;
-            background: var(--bg-secondary);
-            color: var(--text-muted);
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            border-bottom: 1px solid var(--border-primary);
-            position: sticky;
-            top: 0;
-        }
-
-        .history-table td {
-            padding: 8px 12px;
-            border-bottom: 1px solid var(--border-primary);
-            color: var(--text-secondary);
-        }
-
-        .history-table tr:hover td {
-            background: var(--bg-secondary);
-        }
-
-        .action-badge {
-            padding: 2px 6px;
-            border-radius: 2px;
-            font-size: 10px;
-            font-weight: 600;
-        }
-
-        .action-badge.buy {
-            background: rgba(0, 255, 136, 0.15);
-            color: var(--accent-green);
-        }
-
-        .action-badge.sell {
-            background: rgba(255, 51, 102, 0.15);
-            color: var(--accent-red);
-        }
-
-        .action-badge.hold {
-            background: rgba(136, 136, 160, 0.15);
-            color: var(--text-secondary);
-        }
-
-        .status-badge {
-            padding: 2px 6px;
-            border-radius: 2px;
-            font-size: 10px;
-            font-weight: 600;
-        }
-
-        .status-badge.filled {
-            background: rgba(0, 255, 136, 0.15);
-            color: var(--accent-green);
-        }
-
-        .status-badge.pending {
-            background: rgba(255, 170, 0, 0.15);
-            color: var(--accent-amber);
-        }
-
-        .status-badge.cancelled {
-            background: rgba(136, 136, 160, 0.15);
-            color: var(--text-secondary);
-        }
-
-        .history-empty {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            color: var(--text-muted);
-            font-size: 12px;
-        }
-
-        /* 加载动画 */
-        .loading {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            color: var(--text-secondary);
-            font-size: 12px;
-        }
-
-        .loading-dots {
-            display: flex;
-            gap: 4px;
-        }
-
-        .loading-dots span {
-            width: 4px;
-            height: 4px;
-            background: var(--accent-green);
-            border-radius: 50%;
-            animation: loading-bounce 1.4s ease-in-out infinite;
-        }
-
-        .loading-dots span:nth-child(2) {
-            animation-delay: 0.2s;
-        }
-
-        .loading-dots span:nth-child(3) {
-            animation-delay: 0.4s;
-        }
-
-        @keyframes loading-bounce {
-            0%, 80%, 100% { transform: scale(0); }
-            40% { transform: scale(1); }
-        }
-
-        /* 滚动条样式 */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: var(--bg-primary);
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: var(--border-active);
-            border-radius: 3px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: var(--text-muted);
-        }
-
-        /* 响应式 */
-        @media (max-width: 1200px) {
-            .workbench {
-                grid-template-columns: 240px 1fr 260px;
-            }
-        }
-
-        @media (max-width: 900px) {
-            .workbench {
-                grid-template-columns: 1fr;
-                grid-template-rows: 48px auto auto auto 200px;
-            }
-
-            .config-panel,
-            .risk-panel {
-                border-right: none;
-                border-left: none;
-                border-bottom: 1px solid var(--border-primary);
-            }
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A股自动交易系统 - 工作台</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0f172a;--surface:#1e293b;--surface2:#334155;--border:#334155;
+  --fg:#e2e8f0;--muted:#94a3b8;--dim:#64748b;
+  --accent:#60a5fa;--blue:#3b82f6;--green:#22c55e;--red:#ef4444;--yellow:#eab308;
+  --radius:8px;--radius-lg:12px;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--fg);min-height:100vh;overflow-x:hidden}
+
+/* ── STATUS BAR ── */
+.status-bar{
+  background:var(--surface);border-bottom:1px solid var(--border);
+  padding:8px 20px;display:flex;align-items:center;gap:16px;font-size:13px;flex-wrap:wrap;
+}
+.status-bar .brand{font-size:15px;font-weight:700;color:var(--accent);margin-right:8px}
+.status-bar .sep{width:1px;height:16px;background:var(--border)}
+.status-bar .pill{display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:600}
+.status-bar .pill.mode{background:rgba(34,197,94,.2);color:var(--green)}
+.status-bar .pill.ok{background:rgba(34,197,94,.15);color:var(--green)}
+.status-bar .pill.warn{background:rgba(234,179,8,.15);color:var(--yellow)}
+.status-bar .pill.err{background:rgba(239,68,68,.15);color:var(--red)}
+.status-bar .dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.status-bar .dot.g{background:var(--green)}.status-bar .dot.y{background:var(--yellow)}.status-bar .dot.r{background:var(--red)}
+.status-bar .kill-btn{
+  margin-left:auto;background:var(--red);color:#fff;border:none;padding:4px 14px;
+  border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;
+}
+.status-bar .kill-btn:hover{background:#dc2626}
+
+/* ── MAIN LAYOUT ── */
+.main{display:grid;grid-template-columns:280px 1fr 280px;grid-template-rows:1fr auto;gap:0;min-height:calc(100vh - 40px)}
+
+/* ── LEFT PANEL ── */
+.panel-left{
+  background:var(--surface);border-right:1px solid var(--border);padding:16px;overflow-y:auto;
+  display:flex;flex-direction:column;gap:14px;
+}
+.panel-left h2{font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:12px;color:var(--dim);font-weight:500}
+.field input,.field select,.field textarea{
+  background:var(--bg);border:1px solid var(--border);color:var(--fg);
+  padding:8px 10px;border-radius:6px;font-size:13px;font-family:inherit;
+}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent)}
+.field textarea{resize:vertical;min-height:60px}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:6px 0}
+.toggle-row span{font-size:13px;color:var(--muted)}
+.toggle{
+  width:36px;height:20px;background:var(--border);border-radius:10px;position:relative;cursor:pointer;transition:.2s;
+}
+.toggle.on{background:var(--green)}
+.toggle::after{
+  content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;
+  background:#fff;border-radius:50%;transition:.2s;
+}
+.toggle.on::after{left:18px}
+.run-btn{
+  background:var(--blue);color:#fff;border:none;padding:12px;border-radius:8px;
+  font-size:14px;font-weight:700;cursor:pointer;margin-top:8px;transition:.15s;
+}
+.run-btn:hover{background:#2563eb}
+.run-btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* ── CENTER PANEL ── */
+.panel-center{padding:16px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.panel-center h2{font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.timeline{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:16px;flex:1;overflow-y:auto;min-height:300px;
+}
+.timeline-empty{
+  display:flex;align-items:center;justify-content:center;height:100%;
+  color:var(--dim);font-size:14px;
+}
+.tl-step{
+  border-left:2px solid var(--border);padding:0 0 16px 16px;position:relative;
+}
+.tl-step:last-child{border-left-color:transparent;padding-bottom:0}
+.tl-step::before{
+  content:'';position:absolute;left:-6px;top:2px;width:10px;height:10px;
+  border-radius:50%;background:var(--border);border:2px solid var(--bg);
+}
+.tl-step.done::before{background:var(--green)}
+.tl-step.running::before{background:var(--yellow);animation:pulse 1s infinite}
+.tl-step.error::before{background:var(--red)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.tl-step .step-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.tl-step .step-tag{
+  font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;text-transform:uppercase;
+}
+.tl-step .step-tag.decision{background:rgba(96,165,250,.2);color:var(--accent)}
+.tl-step .step-tag.target{background:rgba(34,197,94,.15);color:var(--green)}
+.tl-step .step-tag.execute{background:rgba(234,179,8,.15);color:var(--yellow)}
+.tl-step .step-tag.reconcile{background:rgba(139,92,246,.2);color:#a78bfa}
+.tl-step .step-time{font-size:11px;color:var(--dim)}
+.tl-step .step-body{font-size:13px;color:var(--muted);line-height:1.6}
+.tl-step .step-body table{width:100%;border-collapse:collapse;margin-top:6px}
+.tl-step .step-body th,.tl-step .step-body td{
+  padding:4px 8px;text-align:left;border-bottom:1px solid var(--border);font-size:12px;
+}
+.tl-step .step-body th{color:var(--dim);font-weight:500;font-size:11px;text-transform:uppercase}
+.tl-step pre{
+  background:var(--bg);padding:8px;border-radius:6px;font-size:12px;
+  overflow-x:auto;color:var(--fg);margin-top:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+
+/* ── RIGHT PANEL ── */
+.panel-right{
+  background:var(--surface);border-left:1px solid var(--border);padding:16px;overflow-y:auto;
+  display:flex;flex-direction:column;gap:14px;
+}
+.panel-right h2{font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.risk-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px}
+.risk-card .risk-label{font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:4px}
+.risk-card .risk-value{font-size:20px;font-weight:700}
+.risk-card .risk-value.green{color:var(--green)}.risk-card .risk-value.red{color:var(--red)}.risk-card .risk-value.yellow{color:var(--yellow)}
+.alert-item{
+  padding:8px 10px;border-radius:6px;font-size:12px;margin-bottom:6px;
+  border-left:3px solid;display:flex;align-items:flex-start;gap:6px;
+}
+.alert-item.warn{background:rgba(234,179,8,.08);border-color:var(--yellow);color:var(--yellow)}
+.alert-item.err{background:rgba(239,68,68,.08);border-color:var(--red);color:var(--red)}
+.alert-item.info{background:rgba(96,165,250,.08);border-color:var(--accent);color:var(--accent)}
+.mode-switch{display:flex;gap:4px;background:var(--bg);border-radius:6px;padding:3px}
+.mode-switch button{
+  flex:1;padding:6px 8px;border:none;border-radius:4px;font-size:12px;
+  font-weight:600;cursor:pointer;background:transparent;color:var(--muted);transition:.15s;
+}
+.mode-switch button.active{background:var(--blue);color:#fff}
+
+/* ── BOTTOM PANEL ── */
+.panel-bottom{
+  grid-column:1/-1;background:var(--surface);border-top:1px solid var(--border);
+  padding:0 20px;height:280px;min-height:200px;display:flex;flex-direction:column;
+}
+.tab-bar{display:flex;gap:0;border-bottom:1px solid var(--border)}
+.tab-bar button{
+  padding:10px 18px;border:none;background:transparent;color:var(--muted);
+  font-size:13px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;transition:.15s;
+}
+.tab-bar button.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-content{flex:1;overflow-y:auto;padding:12px 0}
+.tab-pane{display:none}.tab-pane.active{display:block}
+.tab-pane table{width:100%;border-collapse:collapse}
+.tab-pane th,.tab-pane td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);font-size:12px}
+.tab-pane th{color:var(--dim);font-weight:500;text-transform:uppercase;font-size:11px;position:sticky;top:0;background:var(--surface)}
+
+/* ── BADGES ── */
+.badge{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;display:inline-block}
+.badge-buy{background:rgba(34,197,94,.2);color:var(--green)}
+.badge-sell{background:rgba(239,68,68,.2);color:var(--red)}
+.badge-hold{background:rgba(148,163,184,.15);color:var(--muted)}
+.badge-filled{background:rgba(59,130,246,.2);color:var(--blue)}
+.badge-pending{background:rgba(234,179,8,.15);color:var(--yellow)}
+.badge-error{background:rgba(239,68,68,.15);color:var(--red)}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--dim)}
+</style>
 </head>
 <body>
-    <div class="workbench">
-        <!-- 顶部状态条 -->
-        <div class="status-bar">
-            <div class="status-bar-left">
-                <div class="system-title">A-SHARE TRADING HUB</div>
-                <div class="status-indicator">
-                    <div class="status-dot" id="db-status"></div>
-                    <span>数据库</span>
-                </div>
-                <div class="status-indicator">
-                    <div class="status-dot unknown" id="llm-status"></div>
-                    <span>LLM</span>
-                </div>
-                <div class="status-indicator">
-                    <div class="status-dot unknown" id="market-status"></div>
-                    <span>行情</span>
-                </div>
-            </div>
-            <div class="status-bar-right">
-                <div class="mode-badge shadow" id="mode-badge">SHADOW</div>
-                <div class="trade-date">交易日: <span id="trade-date">--</span></div>
-            </div>
-        </div>
 
-        <!-- 左侧策略配置 -->
-        <div class="config-panel">
-            <div class="panel-header">策略配置</div>
-            
-            <div class="config-section">
-                <div class="config-label">初始资金</div>
-                <input type="number" class="config-input" id="capital-base" value="1000000" min="0" step="10000">
-            </div>
+<!-- ════════ TOP STATUS BAR ════════ -->
+<div class="status-bar">
+  <span class="brand">A股模拟工作台</span>
+  <span class="sep"></span>
+  <span class="pill mode" id="mode-pill">影子模式</span>
+  <span class="sep"></span>
+  <span><span class="dot g" id="db-dot"></span> 数据库</span>
+  <span><span class="dot g" id="llm-dot"></span> LLM</span>
+  <span><span class="dot g" id="mkt-dot"></span> 行情</span>
+  <span class="sep"></span>
+  <span style="color:var(--dim)">交易日: <span id="trade-date">--</span></span>
+  <span style="color:var(--dim)">上次运行: <span id="last-run">--</span></span>
+  <button class="kill-btn" onclick="killSwitch()">KILL SWITCH</button>
+</div>
 
-            <div class="config-section">
-                <div class="config-label">监控列表</div>
-                <div class="watchlist-container" id="watchlist-container">
-                    <!-- 动态添加 -->
-                </div>
-                <div class="add-stock-input">
-                    <input type="text" class="config-input" id="add-stock-input" placeholder="输入股票代码">
-                    <button class="btn" id="add-stock-btn">+</button>
-                </div>
-            </div>
+<!-- ════════ MAIN 3-COL + BOTTOM ════════ -->
+<div class="main">
 
-            <div class="config-section">
-                <div class="config-label">最大持仓比例 (%)</div>
-                <input type="number" class="config-input" id="max-position-ratio" value="20" min="0" max="100" step="1">
-            </div>
-
-            <div class="config-section">
-                <div class="config-label">止损阈值 (%)</div>
-                <input type="number" class="config-input" id="stop-loss-ratio" value="5" min="0" max="100" step="0.5">
-            </div>
-
-            <div class="config-section">
-                <div class="config-label">单日最大亏损 (%)</div>
-                <input type="number" class="config-input" id="max-daily-loss-ratio" value="3" min="0" max="100" step="0.5">
-            </div>
-
-            <div class="config-section">
-                <div class="config-label">决策模式</div>
-                <select class="config-input" id="decision-mode">
-                    <option value="mock">Mock</option>
-                    <option value="real" disabled>Real (开发中)</option>
-                </select>
-            </div>
-
-            <div class="config-section">
-                <div class="config-label">执行模式</div>
-                <select class="config-input" id="execution-mode">
-                    <option value="full">Full</option>
-                    <option value="decision">Decision Only</option>
-                </select>
-            </div>
-
-            <div class="config-actions">
-                <button class="btn btn-primary" id="submit-run-btn">运行一轮</button>
-            </div>
-        </div>
-
-        <!-- 中央时间线 -->
-        <div class="timeline-panel">
-            <div class="timeline-header">
-                <div class="timeline-title">本轮运行时间线</div>
-                <div class="run-status idle" id="run-status">IDLE</div>
-            </div>
-            <div class="timeline-content" id="timeline-content">
-                <div class="timeline-empty">
-                    <div class="icon">▶</div>
-                    <div>点击"运行一轮"开始</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 右侧风控面板 -->
-        <div class="risk-panel">
-            <div class="panel-header">风控与监控</div>
-            
-            <div class="risk-section">
-                <div class="risk-metric">
-                    <span class="risk-metric-label">集中度限制</span>
-                    <span class="risk-metric-value" id="concentration-ratio">20%</span>
-                </div>
-                <div class="risk-metric">
-                    <span class="risk-metric-label">活跃目标数</span>
-                    <span class="risk-metric-value" id="active-target-count">0</span>
-                </div>
-                <div class="risk-metric">
-                    <span class="risk-metric-label">待执行订单</span>
-                    <span class="risk-metric-value" id="open-orders">0</span>
-                </div>
-            </div>
-
-            <div class="risk-section">
-                <div class="config-label">告警信息</div>
-                <div class="alerts-list" id="alerts-list">
-                    <!-- 动态添加 -->
-                </div>
-            </div>
-
-            <div class="kill-switch-section">
-                <button class="btn btn-danger kill-switch-btn" id="kill-switch-btn">
-                    KILL SWITCH
-                </button>
-            </div>
-        </div>
-
-        <!-- 底部历史回放 -->
-        <div class="history-panel">
-            <div class="history-tabs">
-                <div class="history-tab active" data-tab="decisions">最近决策</div>
-                <div class="history-tab" data-tab="orders">最近订单</div>
-                <div class="history-tab" data-tab="targets">当前目标仓位</div>
-                <div class="history-tab" data-tab="events">异常事件</div>
-            </div>
-            <div class="history-content" id="history-content">
-                <div class="history-empty">暂无数据</div>
-            </div>
-        </div>
+  <!-- ── LEFT: 策略与模拟配置 ── -->
+  <div class="panel-left">
+    <h2>策略配置</h2>
+    <div class="field">
+      <label>模拟总资金 (元)</label>
+      <input type="number" id="cfg-capital" value="1000000" step="100000">
     </div>
+    <div class="field">
+      <label>观察列表 (逗号分隔)</label>
+      <textarea id="cfg-watchlist" placeholder="600519.SH,000858.SZ,601318.SH">600519.SH,000858.SZ,601318.SH</textarea>
+    </div>
+    <div class="field">
+      <label>手动添加股票</label>
+      <input type="text" id="cfg-add-stock" placeholder="输入代码后回车添加">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>单票最大仓位 (%)</label>
+        <input type="number" id="cfg-max-pos" value="20" min="1" max="100">
+      </div>
+      <div class="field">
+        <label>止损阈值 (%)</label>
+        <input type="number" id="cfg-stop-loss" value="-5" step="0.5">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>单日最大亏损 (%)</label>
+        <input type="number" id="cfg-max-daily" value="-3" step="0.5">
+      </div>
+      <div class="field">
+        <label>决策模式</label>
+        <select id="cfg-mode">
+          <option value="mock">Mock (模拟)</option>
+          <option value="real">Real (实盘决策)</option>
+        </select>
+      </div>
+    </div>
+    <div class="toggle-row">
+      <span>允许新开仓</span>
+      <div class="toggle on" id="cfg-new-pos" onclick="this.classList.toggle('on')"></div>
+    </div>
+    <div class="toggle-row">
+      <span>仅生成决策 (不执行)</span>
+      <div class="toggle" id="cfg-decision-only" onclick="this.classList.toggle('on')"></div>
+    </div>
+    <button class="run-btn" id="run-btn" onclick="triggerRun()">运行一轮模拟交易</button>
+  </div>
 
-    <script>
-        // 状态管理
-        let state = {
-            config: {
-                capital_base: 1000000,
-                watchlist: ['600519.SH', '000858.SZ', '601318.SH'],
-                max_position_ratio: 0.2,
-                stop_loss_ratio: 0.05,
-                max_daily_loss_ratio: 0.03,
-                allow_new_positions: true,
-                decision_mode: 'mock',
-                execution_mode: 'full'
-            },
-            workbench: null,
-            killSwitchActive: false,
-            activeTab: 'decisions'
-        };
+  <!-- ── CENTER: 本轮运行主视图 ── -->
+  <div class="panel-center">
+    <h2>本轮运行</h2>
+    <div class="timeline" id="timeline">
+      <div class="timeline-empty" id="timeline-empty">
+        配置参数后点击「运行一轮模拟交易」开始
+      </div>
+    </div>
+  </div>
 
-        // DOM 元素
-        const elements = {
-            watchlistContainer: document.getElementById('watchlist-container'),
-            addStockInput: document.getElementById('add-stock-input'),
-            addStockBtn: document.getElementById('add-stock-btn'),
-            submitRunBtn: document.getElementById('submit-run-btn'),
-            killSwitchBtn: document.getElementById('kill-switch-btn'),
-            timelineContent: document.getElementById('timeline-content'),
-            runStatus: document.getElementById('run-status'),
-            alertsList: document.getElementById('alerts-list'),
-            historyContent: document.getElementById('history-content'),
-            tradeDate: document.getElementById('trade-date'),
-            modeBadge: document.getElementById('mode-badge'),
-            dbStatus: document.getElementById('db-status'),
-            llmStatus: document.getElementById('llm-status'),
-            marketStatus: document.getElementById('market-status'),
-            concentrationRatio: document.getElementById('concentration-ratio'),
-            activeTargetCount: document.getElementById('active-target-count'),
-            openOrders: document.getElementById('open-orders')
-        };
+  <!-- ── RIGHT: 风控与人工接管 ── -->
+  <div class="panel-right">
+    <h2>风控状态</h2>
+    <div class="risk-card">
+      <div class="risk-label">当日累计盈亏</div>
+      <div class="risk-value green" id="risk-pnl">¥0</div>
+    </div>
+    <div class="risk-card">
+      <div class="risk-label">持仓集中度</div>
+      <div class="risk-value" id="risk-concentration" style="color:var(--fg)">--</div>
+    </div>
+    <div class="risk-card">
+      <div class="risk-label">活跃目标仓位</div>
+      <div class="risk-value" id="risk-targets" style="color:var(--accent)">0</div>
+    </div>
+    <div class="risk-card">
+      <div class="risk-label">未完成订单</div>
+      <div class="risk-value" id="risk-open-orders" style="color:var(--yellow)">0</div>
+    </div>
+    <h2>执行模式</h2>
+    <div class="mode-switch" id="exec-mode">
+      <button class="active" data-mode="full" onclick="setExecMode(this)">完整链路</button>
+      <button data-mode="decision" onclick="setExecMode(this)">仅决策</button>
+    </div>
+    <h2>异常提示</h2>
+    <div id="alerts-area">
+      <div class="alert-item info">系统就绪，等待运行</div>
+    </div>
+  </div>
 
-        // 初始化
-        function init() {
-            renderWatchlist();
-            bindEvents();
-            loadWorkbench();
-        }
+  <!-- ── BOTTOM: 历史与回放 ── -->
+  <div class="panel-bottom">
+    <div class="tab-bar">
+      <button class="active" onclick="switchTab(this,'tab-decisions')">最近决策</button>
+      <button onclick="switchTab(this,'tab-orders')">最近订单</button>
+      <button onclick="switchTab(this,'tab-targets')">当前目标仓位</button>
+      <button onclick="switchTab(this,'tab-errors')">异常事件</button>
+    </div>
+    <div class="tab-content">
+      <div class="tab-pane active" id="tab-decisions">
+        <table><thead><tr><th>时间</th><th>股票</th><th>动作</th><th>置信度</th><th>理由</th></tr></thead><tbody id="tb-decisions"><tr><td colspan="5" style="color:var(--dim)">暂无数据</td></tr></tbody></table>
+      </div>
+      <div class="tab-pane" id="tab-orders">
+        <table><thead><tr><th>时间</th><th>股票</th><th>方向</th><th>数量</th><th>价格</th><th>状态</th></tr></thead><tbody id="tb-orders"><tr><td colspan="6" style="color:var(--dim)">暂无数据</td></tr></tbody></table>
+      </div>
+      <div class="tab-pane" id="tab-targets">
+        <table><thead><tr><th>股票</th><th>目标数量</th><th>目标权重</th><th>理由</th></tr></thead><tbody id="tb-targets"><tr><td colspan="4" style="color:var(--dim)">暂无数据</td></tr></tbody></table>
+      </div>
+      <div class="tab-pane" id="tab-errors">
+        <table><thead><tr><th>时间</th><th>级别</th><th>消息</th></tr></thead><tbody id="tb-errors"><tr><td colspan="3" style="color:var(--dim)">暂无异常</td></tr></tbody></table>
+      </div>
+    </div>
+  </div>
 
-        // 渲染监控列表
-        function renderWatchlist() {
-            elements.watchlistContainer.innerHTML = state.config.watchlist.map(symbol => `
-                <div class="watchlist-tag">
-                    <span>${symbol}</span>
-                    <span class="remove" data-symbol="${symbol}">×</span>
-                </div>
-            `).join('');
+</div>
 
-            // 绑定删除事件
-            elements.watchlistContainer.querySelectorAll('.remove').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const symbol = e.target.dataset.symbol;
-                    state.config.watchlist = state.config.watchlist.filter(s => s !== symbol);
-                    renderWatchlist();
-                });
-            });
-        }
+<script>
+const WORKBENCH_API = '/api/v1/dashboard/workbench';
+const RUN_API = '/api/v1/dashboard/run';
+const KILL_SWITCH_STATUS_API = '/api/v1/kill-switch/status';
+const KILL_SWITCH_ACTIVATE_API = '/api/v1/kill-switch/activate';
+const KILL_SWITCH_DEACTIVATE_API = '/api/v1/kill-switch/deactivate';
 
-        // 绑定事件
-        function bindEvents() {
-            // 添加股票
-            elements.addStockBtn.addEventListener('click', addStock);
-            elements.addStockInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') addStock();
-            });
+let execMode = 'full';
+let simRunning = false;
+let killSwitchActive = false;
+let configHydrated = false;
 
-            // 提交运行
-            elements.submitRunBtn.addEventListener('click', submitRun);
+function switchTab(btn, paneId) {
+  btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById(paneId).classList.add('active');
+}
 
-            // Kill Switch
-            elements.killSwitchBtn.addEventListener('click', toggleKillSwitch);
+function setExecMode(btn) {
+  btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  execMode = btn.dataset.mode === 'decision' ? 'decision' : 'full';
+}
 
-            // 配置输入同步
-            document.getElementById('capital-base').addEventListener('change', (e) => {
-                state.config.capital_base = parseInt(e.target.value) || 1000000;
-            });
-            document.getElementById('max-position-ratio').addEventListener('change', (e) => {
-                state.config.max_position_ratio = (parseFloat(e.target.value) || 20) / 100;
-            });
-            document.getElementById('stop-loss-ratio').addEventListener('change', (e) => {
-                state.config.stop_loss_ratio = (parseFloat(e.target.value) || 5) / 100;
-            });
-            document.getElementById('max-daily-loss-ratio').addEventListener('change', (e) => {
-                state.config.max_daily_loss_ratio = (parseFloat(e.target.value) || 3) / 100;
-            });
-            document.getElementById('decision-mode').addEventListener('change', (e) => {
-                state.config.decision_mode = e.target.value;
-            });
-            document.getElementById('execution-mode').addEventListener('change', (e) => {
-                state.config.execution_mode = e.target.value;
-            });
+function normalizeText(value, fallback = '--') {
+  if (value === null || value === undefined) return fallback;
+  const text = String(value).trim();
+  return text ? text : fallback;
+}
 
-            // Tab 切换
-            document.querySelectorAll('.history-tab').forEach(tab => {
-                tab.addEventListener('click', (e) => {
-                    state.activeTab = e.target.dataset.tab;
-                    document.querySelectorAll('.history-tab').forEach(t => t.classList.remove('active'));
-                    e.target.classList.add('active');
-                    renderHistory();
-                });
-            });
-        }
+function pickFirst(obj, keys, fallback = null) {
+  for (const key of keys) {
+    if (obj && obj[key] !== null && obj[key] !== undefined && obj[key] !== '') {
+      return obj[key];
+    }
+  }
+  return fallback;
+}
 
-        // 添加股票
-        function addStock() {
-            const input = elements.addStockInput;
-            const symbol = input.value.trim().toUpperCase();
-            if (symbol && !state.config.watchlist.includes(symbol)) {
-                state.config.watchlist.push(symbol);
-                renderWatchlist();
-                input.value = '';
-            }
-        }
+function escapeHtml(text) {
+  return String(text)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
 
-        // 加载工作台数据
-        async function loadWorkbench() {
-            try {
-                const response = await fetch('/api/v1/dashboard/workbench');
-                if (!response.ok) throw new Error('Failed to load workbench');
-                state.workbench = await response.json();
-                renderWorkbench();
-            } catch (error) {
-                console.error('加载工作台失败:', error);
-                addAlert('error', '加载工作台数据失败');
-            }
-        }
+function formatDate(raw) {
+  const value = normalizeText(raw, '');
+  if (!value) return '--';
+  return value.includes('T') ? value.split('T')[0] : value.slice(0, 10);
+}
 
-        // 提交运行
-        async function submitRun() {
-            if (state.killSwitchActive) {
-                addAlert('warning', 'Kill Switch 已激活，无法运行');
-                return;
-            }
+function formatTime(raw) {
+  const value = normalizeText(raw, '');
+  if (!value) return '--';
+  if (value.includes('T')) {
+    const time = value.split('T')[1] || '';
+    return time.split('.')[0] || '--';
+  }
+  if (value.includes(' ')) {
+    return value.split(' ')[1] || value;
+  }
+  return value.length > 8 ? value.slice(0, 8) : value;
+}
 
-            elements.submitRunBtn.disabled = true;
-            elements.submitRunBtn.textContent = '运行中...';
-            elements.runStatus.className = 'run-status running';
-            elements.runStatus.textContent = 'RUNNING';
+function formatPercent(raw) {
+  if (raw === null || raw === undefined || raw === '') return '--';
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return normalizeText(raw);
+  return `${(n * 100).toFixed(1)}%`;
+}
 
-            try {
-                const response = await fetch('/api/v1/dashboard/run', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(state.config)
-                });
+function formatConfidence(raw) {
+  if (raw === null || raw === undefined || raw === '') return '--';
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return normalizeText(raw);
+  const pct = n <= 1 ? n * 100 : n;
+  return `${pct.toFixed(0)}%`;
+}
 
-                if (!response.ok) throw new Error('Run failed');
+function formatCurrency(raw) {
+  if (raw === null || raw === undefined || raw === '') return '--';
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return normalizeText(raw);
+  const sign = n > 0 ? '+' : '';
+  return `${sign}¥${n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
-                state.workbench = await response.json();
-                renderWorkbench();
-                addAlert('info', '运行完成');
-            } catch (error) {
-                console.error('运行失败:', error);
-                addAlert('error', '运行失败: ' + error.message);
-                elements.runStatus.className = 'run-status idle';
-                elements.runStatus.textContent = 'IDLE';
-            } finally {
-                elements.submitRunBtn.disabled = false;
-                elements.submitRunBtn.textContent = '运行一轮';
-            }
-        }
+function toList(value) {
+  return Array.isArray(value) ? value : [];
+}
 
-        // 切换 Kill Switch
-        async function toggleKillSwitch() {
-            const endpoint = state.killSwitchActive 
-                ? '/api/v1/kill-switch/deactivate'
-                : '/api/v1/kill-switch/activate';
+function serviceDotClass(status) {
+  const normalized = normalizeText(status, '').toLowerCase();
+  if (normalized === 'ok' || normalized === 'healthy' || normalized === 'active') return 'dot g';
+  if (normalized === 'warning' || normalized === 'warn' || normalized === 'degraded' || normalized === 'unknown') return 'dot y';
+  return 'dot r';
+}
 
-            try {
-                const response = await fetch(endpoint, { method: 'POST' });
-                if (!response.ok) throw new Error('Kill switch toggle failed');
-                
-                state.killSwitchActive = !state.killSwitchActive;
-                renderKillSwitch();
-                addAlert('info', state.killSwitchActive ? 'Kill Switch 已激活' : 'Kill Switch 已解除');
-            } catch (error) {
-                console.error('Kill Switch 操作失败:', error);
-                addAlert('error', 'Kill Switch 操作失败');
-            }
-        }
+function toAlertLevel(level) {
+  const normalized = normalizeText(level, '').toLowerCase();
+  if (normalized === 'warning' || normalized === 'warn') return 'warn';
+  if (normalized === 'error' || normalized === 'err' || normalized === 'critical' || normalized === 'fatal') return 'err';
+  return 'info';
+}
 
-        // 渲染工作台
-        function renderWorkbench() {
-            if (!state.workbench) return;
+async function parseResponseBody(res) {
+  const text = await res.text();
+  if (!text) return '';
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    return text;
+  }
+}
 
-            const wb = state.workbench;
+function extractErrorMessage(body, fallback) {
+  if (!body) return fallback;
+  if (typeof body === 'string') return body;
+  return normalizeText(body.detail || body.message || body.error, fallback);
+}
 
-            // 更新状态栏
-            elements.tradeDate.textContent = wb.trade_date || '--';
-            elements.modeBadge.textContent = wb.mode?.toUpperCase() || 'SHADOW';
-            elements.modeBadge.className = `mode-badge ${wb.mode || 'shadow'}`;
+function setKillSwitchButton(active) {
+  killSwitchActive = Boolean(active);
+  const btn = document.querySelector('.kill-btn');
+  btn.textContent = killSwitchActive ? '解除 KILL SWITCH' : 'KILL SWITCH';
+}
 
-            // 更新服务状态
-            updateServiceStatus('db-status', wb.services?.database);
-            updateServiceStatus('llm-status', wb.services?.llm);
-            updateServiceStatus('market-status', wb.services?.market);
+function renderStatus(workbench, killStatus) {
+  const modeRaw = normalizeText(workbench.mode, '--');
+  document.getElementById('mode-pill').textContent = modeRaw === 'shadow' ? '影子模式' : modeRaw;
+  document.getElementById('trade-date').textContent = formatDate(workbench.trade_date);
+  document.getElementById('last-run').textContent = formatTime(workbench.last_run_at);
 
-            // 更新风控指标
-            elements.concentrationRatio.textContent = `${(wb.risk?.concentration_ratio * 100 || 20).toFixed(0)}%`;
-            elements.activeTargetCount.textContent = wb.risk?.active_target_count || 0;
-            elements.openOrders.textContent = wb.risk?.open_orders || 0;
+  const services = workbench.services || {};
+  document.getElementById('db-dot').className = serviceDotClass(services.database);
+  document.getElementById('llm-dot').className = serviceDotClass(services.llm);
+  document.getElementById('mkt-dot').className = serviceDotClass(services.market);
 
-            // 更新告警
-            if (wb.risk?.alerts) {
-                state.alerts = wb.risk.alerts;
-                renderAlerts();
-            }
+  const active = killStatus.active ?? workbench.kill_switch?.active ?? false;
+  setKillSwitchButton(active);
+}
 
-            // 更新 Kill Switch
-            state.killSwitchActive = wb.kill_switch?.active || false;
-            renderKillSwitch();
+function renderConfig(config) {
+  if (!config || configHydrated) return;
+  if (config.capital_base !== undefined) {
+    document.getElementById('cfg-capital').value = config.capital_base;
+  }
+  if (Array.isArray(config.watchlist)) {
+    document.getElementById('cfg-watchlist').value = config.watchlist.join(',');
+  }
+  if (config.max_position_ratio !== undefined) {
+    document.getElementById('cfg-max-pos').value = Number(config.max_position_ratio) * 100;
+  }
+  if (config.stop_loss_ratio !== undefined) {
+    document.getElementById('cfg-stop-loss').value = Number(config.stop_loss_ratio) * 100;
+  }
+  if (config.max_daily_loss_ratio !== undefined) {
+    document.getElementById('cfg-max-daily').value = Number(config.max_daily_loss_ratio) * 100;
+  }
+  if (config.allow_new_positions !== undefined) {
+    document.getElementById('cfg-new-pos').classList.toggle('on', Boolean(config.allow_new_positions));
+  }
+  if (config.decision_mode) {
+    document.getElementById('cfg-mode').value = config.decision_mode;
+  }
+  const mode = config.execution_mode === 'decision' ? 'decision' : 'full';
+  const execButtons = document.querySelectorAll('#exec-mode button');
+  execButtons.forEach(button => button.classList.toggle('active', button.dataset.mode === mode));
+  execMode = mode;
+  configHydrated = true;
+}
 
-            // 更新配置
-            if (wb.config) {
-                state.config = { ...state.config, ...wb.config };
-                document.getElementById('capital-base').value = wb.config.capital_base;
-                document.getElementById('max-position-ratio').value = (wb.config.max_position_ratio * 100).toFixed(0);
-                document.getElementById('stop-loss-ratio').value = (wb.config.stop_loss_ratio * 100).toFixed(1);
-                document.getElementById('max-daily-loss-ratio').value = (wb.config.max_daily_loss_ratio * 100).toFixed(1);
-                document.getElementById('decision-mode').value = wb.config.decision_mode;
-                document.getElementById('execution-mode').value = wb.config.execution_mode;
-                state.config.watchlist = wb.config.watchlist || [];
-                renderWatchlist();
-            }
+function renderDecisions(list) {
+  const rows = toList(list);
+  const tb = document.getElementById('tb-decisions');
+  if (!rows.length) {
+    tb.innerHTML = '<tr><td colspan="5" style="color:var(--dim)">暂无数据</td></tr>';
+    return;
+  }
+  tb.innerHTML = rows.map(item => {
+    const time = formatTime(pickFirst(item, ['created_at', 'timestamp']));
+    const symbol = normalizeText(pickFirst(item, ['symbol', 'stock_code']));
+    const action = normalizeText(pickFirst(item, ['action', 'parsed_action', 'signal'])).toUpperCase();
+    const badge = action === 'BUY' ? 'badge-buy' : action === 'SELL' ? 'badge-sell' : 'badge-hold';
+    const confidence = formatConfidence(item.confidence);
+    const reasonRaw = pickFirst(item, ['reason', 'rationale', 'message'], '');
+    const reason = normalizeText(reasonRaw, '--');
+    return `<tr><td>${escapeHtml(time)}</td><td>${escapeHtml(symbol)}</td><td><span class="badge ${badge}">${escapeHtml(action)}</span></td><td>${escapeHtml(confidence)}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(reason)}">${escapeHtml(reason)}</td></tr>`;
+  }).join('');
+}
 
-            // 更新时间线
-            renderTimeline(wb.latest_run);
+function renderOrders(list) {
+  const rows = toList(list);
+  const tb = document.getElementById('tb-orders');
+  if (!rows.length) {
+    tb.innerHTML = '<tr><td colspan="6" style="color:var(--dim)">暂无数据</td></tr>';
+    return;
+  }
+  tb.innerHTML = rows.map(item => {
+    const time = formatTime(pickFirst(item, ['created_at', 'timestamp']));
+    const symbol = normalizeText(pickFirst(item, ['symbol', 'stock_code']));
+    const side = normalizeText(pickFirst(item, ['side', 'action', 'parsed_action'])).toUpperCase();
+    const badge = side === 'BUY' ? 'badge-buy' : side === 'SELL' ? 'badge-sell' : 'badge-hold';
+    const quantity = normalizeText(pickFirst(item, ['quantity', 'qty', 'target_quantity', 'target_value']));
+    const price = formatCurrency(pickFirst(item, ['price', 'limit_price'], null));
+    const status = normalizeText(item.status).toUpperCase();
+    const statusBadge = status === 'FILLED' ? 'badge-filled' : status === 'PENDING' ? 'badge-pending' : status === 'ERROR' ? 'badge-error' : 'badge-hold';
+    return `<tr><td>${escapeHtml(time)}</td><td>${escapeHtml(symbol)}</td><td><span class="badge ${badge}">${escapeHtml(side)}</span></td><td>${escapeHtml(quantity)}</td><td>${escapeHtml(price)}</td><td><span class="badge ${statusBadge}">${escapeHtml(status)}</span></td></tr>`;
+  }).join('');
+}
 
-            // 更新历史
-            if (wb.history) {
-                state.history = wb.history;
-                renderHistory();
-            }
-        }
+function renderTargets(list) {
+  const rows = toList(list);
+  const tb = document.getElementById('tb-targets');
+  if (!rows.length) {
+    tb.innerHTML = '<tr><td colspan="4" style="color:var(--dim)">暂无数据</td></tr>';
+    return;
+  }
+  tb.innerHTML = rows.map(item => {
+    const symbol = normalizeText(pickFirst(item, ['symbol', 'stock_code']));
+    const quantity = normalizeText(pickFirst(item, ['target_quantity', 'quantity', 'target_value']));
+    const weight = formatPercent(pickFirst(item, ['target_weight', 'target_position_ratio'], null));
+    const reason = normalizeText(pickFirst(item, ['reason', 'rationale'], '--'));
+    return `<tr><td>${escapeHtml(symbol)}</td><td>${escapeHtml(quantity)}</td><td>${escapeHtml(weight)}</td><td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(reason)}">${escapeHtml(reason)}</td></tr>`;
+  }).join('');
+}
 
-        // 更新服务状态指示器
-        function updateServiceStatus(elementId, status) {
-            const el = document.getElementById(elementId);
-            el.className = 'status-dot';
-            if (status === 'ok') {
-                // 保持绿色
-            } else if (status === 'unknown') {
-                el.classList.add('unknown');
-            } else {
-                el.classList.add('error');
-            }
-        }
+function renderRisk(risk, targets) {
+  const targetList = toList(targets);
+  const targetCount = risk.active_target_count ?? targetList.length;
+  document.getElementById('risk-targets').textContent = targetCount;
+  document.getElementById('risk-open-orders').textContent = risk.open_orders ?? 0;
 
-        // 渲染时间线
-        function renderTimeline(latestRun) {
-            if (!latestRun || !latestRun.steps || latestRun.steps.length === 0) {
-                elements.timelineContent.innerHTML = `
-                    <div class="timeline-empty">
-                        <div class="icon">▶</div>
-                        <div>点击"运行一轮"开始</div>
-                    </div>
-                `;
-                elements.runStatus.className = 'run-status idle';
-                elements.runStatus.textContent = 'IDLE';
-                return;
-            }
+  const concentrationRaw = risk.concentration_ratio ?? Math.max(0, ...targetList.map(t => Number(pickFirst(t, ['target_weight', 'target_position_ratio'], 0)) || 0));
+  const concentration = Number(concentrationRaw) || 0;
+  const concentrationEl = document.getElementById('risk-concentration');
+  concentrationEl.textContent = `${(concentration * 100).toFixed(1)}%`;
+  concentrationEl.className = `risk-value ${concentration > 0.3 ? 'red' : concentration > 0.2 ? 'yellow' : 'green'}`;
 
-            elements.runStatus.className = `run-status ${latestRun.status}`;
-            elements.runStatus.textContent = latestRun.status.toUpperCase();
+  const pnl = Number(pickFirst(risk, ['daily_pnl', 'pnl', 'today_pnl'], 0)) || 0;
+  const pnlEl = document.getElementById('risk-pnl');
+  pnlEl.textContent = formatCurrency(pnl);
+  pnlEl.className = `risk-value ${pnl >= 0 ? 'green' : 'red'}`;
+}
 
-            elements.timelineContent.innerHTML = `
-                <div class="timeline-steps">
-                    ${latestRun.steps.map((step, index) => `
-                        <div class="timeline-step ${step.status}" style="animation-delay: ${index * 0.1}s">
-                            <div class="step-stage">
-                                <div>${getStageName(step.stage)}</div>
-                                <div class="step-time">${formatTime(step.timestamp)}</div>
-                            </div>
-                            <div class="step-content">
-                                ${step.items ? `
-                                    <div class="step-items">
-                                        ${step.items.map(item => `
-                                            <div class="step-item ${(item.action || '').toLowerCase()}">
-                                                ${item.symbol || ''} 
-                                                ${item.action ? `<strong>${item.action}</strong>` : ''}
-                                                ${item.confidence ? ` ${item.confidence}%` : ''}
-                                                ${item.quantity ? ` ${item.quantity}股` : ''}
-                                                ${item.status ? ` [${item.status}]` : ''}
-                                            </div>
-                                        `).join('')}
-                                    </div>
-                                ` : ''}
-                                ${step.message ? `<div class="step-message">${step.message}</div>` : ''}
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            `;
-        }
+function renderErrorEvents(events) {
+  const rows = toList(events);
+  const tb = document.getElementById('tb-errors');
+  if (!rows.length) {
+    tb.innerHTML = '<tr><td colspan="3" style="color:var(--dim)">暂无异常</td></tr>';
+    return;
+  }
+  tb.innerHTML = rows.map(item => {
+    const time = formatTime(pickFirst(item, ['created_at', 'timestamp', 'time']));
+    const level = normalizeText(pickFirst(item, ['level', 'severity', 'event_type'])).toUpperCase();
+    const message = normalizeText(pickFirst(item, ['message', 'summary', 'reason', 'payload']), '--');
+    return `<tr><td>${escapeHtml(time)}</td><td>${escapeHtml(level)}</td><td>${escapeHtml(message)}</td></tr>`;
+  }).join('');
+}
 
-        // 获取阶段名称
-        function getStageName(stage) {
-            const names = {
-                'decision': '决策',
-                'target': '目标仓位',
-                'execute': '执行',
-                'reconcile': '对账',
-                'blocked': '阻断'
-            };
-            return names[stage] || stage;
-        }
+function renderAlerts(alerts) {
+  const rows = toList(alerts);
+  const area = document.getElementById('alerts-area');
+  if (!rows.length) {
+    area.innerHTML = '<div class="alert-item info">系统就绪，等待运行</div>';
+    return;
+  }
+  area.innerHTML = rows.map(item => {
+    const cls = toAlertLevel(item.level);
+    const time = formatTime(pickFirst(item, ['created_at', 'timestamp', 'time']));
+    const message = normalizeText(item.message, '--');
+    return `<div class="alert-item ${cls}">[${escapeHtml(time)}] ${escapeHtml(message)}</div>`;
+  }).join('');
+}
 
-        // 格式化时间
-        function formatTime(timestamp) {
-            if (!timestamp) return '--';
-            const date = new Date(timestamp);
-            return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        }
+function stageLabel(stage) {
+  const tag = normalizeText(stage, 'stage').toLowerCase();
+  if (tag === 'decision') return '决策';
+  if (tag === 'target') return '目标仓位';
+  if (tag === 'execute') return '执行';
+  if (tag === 'reconcile') return '对账';
+  if (tag === 'error') return '异常';
+  if (tag === 'blocked') return '阻断';
+  return tag;
+}
 
-        // 渲染告警
-        function renderAlerts() {
-            const alerts = state.alerts || [];
-            elements.alertsList.innerHTML = alerts.map(alert => `
-                <div class="alert-item">
-                    <span class="level ${alert.level}">${alert.level}</span>
-                    <span>${alert.message}</span>
-                    <span class="time">${formatTime(alert.timestamp)}</span>
-                </div>
-            `).join('');
-        }
+function stageBodyHtml(step) {
+  const items = toList(step.items);
+  if (items.length) {
+    const first = items[0] || {};
+    if (first.target_position_ratio !== undefined || first.target_weight !== undefined) {
+      const rows = items.map(item => {
+        const symbol = escapeHtml(normalizeText(pickFirst(item, ['symbol', 'stock_code'])));
+        const quantity = escapeHtml(normalizeText(pickFirst(item, ['target_quantity', 'quantity', 'target_value'])));
+        const weight = escapeHtml(formatPercent(pickFirst(item, ['target_weight', 'target_position_ratio'], null)));
+        return `<tr><td>${symbol}</td><td>${quantity}</td><td>${weight}</td></tr>`;
+      }).join('');
+      return `<table><tr><th>股票</th><th>目标数量</th><th>权重</th></tr>${rows}</table>`;
+    }
+    if (first.status !== undefined || first.limit_price !== undefined || first.quantity !== undefined) {
+      const rows = items.map(item => {
+        const symbol = escapeHtml(normalizeText(pickFirst(item, ['symbol', 'stock_code'])));
+        const action = escapeHtml(normalizeText(pickFirst(item, ['action', 'parsed_action']), '--').toUpperCase());
+        const qty = escapeHtml(normalizeText(pickFirst(item, ['quantity', 'qty']), '--'));
+        const status = escapeHtml(normalizeText(item.status, '--').toUpperCase());
+        return `<tr><td>${symbol}</td><td>${action}</td><td>${qty}</td><td>${status}</td></tr>`;
+      }).join('');
+      return `<table><tr><th>股票</th><th>方向</th><th>数量</th><th>状态</th></tr>${rows}</table>`;
+    }
+    const rows = items.map(item => {
+      const symbol = escapeHtml(normalizeText(pickFirst(item, ['symbol', 'stock_code'])));
+      const action = normalizeText(pickFirst(item, ['action', 'parsed_action', 'signal']), '--').toUpperCase();
+      const confidence = escapeHtml(formatConfidence(item.confidence));
+      const badgeClass = action === 'BUY' ? 'badge-buy' : action === 'SELL' ? 'badge-sell' : 'badge-hold';
+      return `<tr><td>${symbol}</td><td><span class="badge ${badgeClass}">${escapeHtml(action)}</span></td><td>${confidence}</td></tr>`;
+    }).join('');
+    return `<table><tr><th>股票</th><th>动作</th><th>置信度</th></tr>${rows}</table>`;
+  }
+  return escapeHtml(normalizeText(step.message || step.summary || step.detail, '--'));
+}
 
-        // 渲染 Kill Switch
-        function renderKillSwitch() {
-            elements.killSwitchBtn.className = `btn btn-danger kill-switch-btn ${state.killSwitchActive ? 'active' : ''}`;
-            elements.killSwitchBtn.textContent = state.killSwitchActive ? 'KILL SWITCH ACTIVE' : 'KILL SWITCH';
-            elements.submitRunBtn.disabled = state.killSwitchActive;
-        }
+function renderTimeline(latestRun) {
+  const timeline = document.getElementById('timeline');
+  const steps = toList(latestRun?.steps);
+  if (!steps.length) {
+    timeline.innerHTML = '<div class="timeline-empty" id="timeline-empty">配置参数后点击「运行一轮模拟交易」开始</div>';
+    return;
+  }
+  timeline.innerHTML = '';
+  steps.forEach(step => {
+    const stage = normalizeText(step.stage || step.name, 'stage').toLowerCase();
+    const statusRaw = normalizeText(step.status, 'done').toLowerCase();
+    const status = statusRaw === 'error' || statusRaw === 'failed' ? 'error' : statusRaw === 'running' || statusRaw === 'in_progress' ? 'running' : 'done';
+    const time = formatTime(pickFirst(step, ['created_at', 'timestamp', 'time']));
+    const div = document.createElement('div');
+    div.className = `tl-step ${status}`;
+    div.dataset.tag = stage;
+    div.innerHTML = `
+      <div class="step-head">
+        <span class="step-tag ${stage}">${escapeHtml(stageLabel(stage))}</span>
+        <span class="step-time">${escapeHtml(time)}</span>
+      </div>
+      <div class="step-body">${stageBodyHtml(step)}</div>
+    `;
+    timeline.appendChild(div);
+  });
+  timeline.scrollTop = timeline.scrollHeight;
+}
 
-        // 添加告警
-        function addAlert(level, message) {
-            if (!state.alerts) state.alerts = [];
-            state.alerts.unshift({
-                timestamp: new Date().toISOString(),
-                level: level,
-                message: message
-            });
-            if (state.alerts.length > 20) state.alerts.pop();
-            renderAlerts();
-        }
+function addAlert(level, message) {
+  const area = document.getElementById('alerts-area');
+  const div = document.createElement('div');
+  div.className = `alert-item ${toAlertLevel(level)}`;
+  div.textContent = `[${new Date().toLocaleTimeString('zh-CN', { hour12: false })}] ${message}`;
+  area.prepend(div);
+  while (area.children.length > 10) area.lastChild.remove();
+}
 
-        // 渲染历史
-        function renderHistory() {
-            const history = state.history || {};
-            const tab = state.activeTab;
+function renderWorkbench(data, killStatus) {
+  renderStatus(data, killStatus || {});
+  renderConfig(data.config || {});
+  renderDecisions(data.history?.decisions || []);
+  renderOrders(data.history?.orders || []);
+  renderTargets(data.history?.targets || []);
+  renderRisk(data.risk || {}, data.history?.targets || []);
+  renderErrorEvents(data.history?.events || []);
+  renderAlerts(data.risk?.alerts || []);
+  renderTimeline(data.latest_run || { steps: [] });
+}
 
-            let html = '';
+async function loadDashboard() {
+  try {
+    const [workbenchRes, killStatusRes] = await Promise.all([
+      fetch(WORKBENCH_API),
+      fetch(KILL_SWITCH_STATUS_API),
+    ]);
+    const workbenchBody = await parseResponseBody(workbenchRes);
+    const killStatusBody = await parseResponseBody(killStatusRes);
 
-            switch (tab) {
-                case 'decisions':
-                    html = renderDecisionsTable(history.decisions || []);
-                    break;
-                case 'orders':
-                    html = renderOrdersTable(history.orders || []);
-                    break;
-                case 'targets':
-                    html = renderTargetsTable(history.targets || []);
-                    break;
-                case 'events':
-                    html = renderEventsTable(history.events || []);
-                    break;
-            }
+    if (!workbenchRes.ok) {
+      throw new Error(extractErrorMessage(workbenchBody, `工作台加载失败 (${workbenchRes.status})`));
+    }
+    if (!killStatusRes.ok) {
+      throw new Error(extractErrorMessage(killStatusBody, `Kill Switch 状态加载失败 (${killStatusRes.status})`));
+    }
+    renderWorkbench(workbenchBody, killStatusBody);
+  } catch (error) {
+    addAlert('err', `数据加载失败: ${error.message}`);
+  }
+}
 
-            elements.historyContent.innerHTML = html;
-        }
+function buildRunPayload() {
+  const watchlist = document.getElementById('cfg-watchlist').value
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+  const decisionOnly = document.getElementById('cfg-decision-only').classList.contains('on');
+  const executionMode = decisionOnly ? 'decision' : execMode;
+  return {
+    capital_base: Number(document.getElementById('cfg-capital').value),
+    watchlist,
+    max_position_ratio: Number(document.getElementById('cfg-max-pos').value) / 100,
+    stop_loss_ratio: Number(document.getElementById('cfg-stop-loss').value) / 100,
+    max_daily_loss_ratio: Number(document.getElementById('cfg-max-daily').value) / 100,
+    allow_new_positions: document.getElementById('cfg-new-pos').classList.contains('on'),
+    decision_mode: document.getElementById('cfg-mode').value,
+    execution_mode: executionMode,
+  };
+}
 
-        // 渲染决策表
-        function renderDecisionsTable(decisions) {
-            if (decisions.length === 0) return '<div class="history-empty">暂无决策数据</div>';
-            return `
-                <table class="history-table">
-                    <thead>
-                        <tr>
-                            <th>时间</th>
-                            <th>股票</th>
-                            <th>动作</th>
-                            <th>置信度</th>
-                            <th>原因</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${decisions.map(d => `
-                            <tr>
-                                <td>${formatTime(d.created_at)}</td>
-                                <td>${d.symbol}</td>
-                                <td><span class="action-badge ${(d.action || '').toLowerCase()}">${d.action}</span></td>
-                                <td>${d.confidence}%</td>
-                                <td>${d.reason || '--'}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            `;
-        }
+function finishRun() {
+  simRunning = false;
+  const button = document.getElementById('run-btn');
+  button.disabled = false;
+  button.textContent = '运行一轮模拟交易';
+}
 
-        // 渲染订单表
-        function renderOrdersTable(orders) {
-            if (orders.length === 0) return '<div class="history-empty">暂无订单数据</div>';
-            return `
-                <table class="history-table">
-                    <thead>
-                        <tr>
-                            <th>时间</th>
-                            <th>股票</th>
-                            <th>动作</th>
-                            <th>数量</th>
-                            <th>限价</th>
-                            <th>状态</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${orders.map(o => `
-                            <tr>
-                                <td>${formatTime(o.created_at)}</td>
-                                <td>${o.symbol}</td>
-                                <td><span class="action-badge ${(o.action || '').toLowerCase()}">${o.action}</span></td>
-                                <td>${o.quantity}</td>
-                                <td>${o.limit_price?.toFixed(2) || '--'}</td>
-                                <td><span class="status-badge ${(o.status || '').toLowerCase()}">${o.status}</span></td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            `;
-        }
+async function triggerRun() {
+  if (simRunning) return;
+  simRunning = true;
+  const button = document.getElementById('run-btn');
+  button.disabled = true;
+  button.textContent = '运行中...';
+  renderTimeline({
+    steps: [{
+      stage: 'decision',
+      status: 'running',
+      timestamp: new Date().toISOString(),
+      message: '请求已提交，等待后端返回结果...',
+    }],
+  });
 
-        // 渲染目标仓位表
-        function renderTargetsTable(targets) {
-            if (targets.length === 0) return '<div class="history-empty">暂无目标仓位数据</div>';
-            return `
-                <table class="history-table">
-                    <thead>
-                        <tr>
-                            <th>股票</th>
-                            <th>目标价值</th>
-                            <th>目标比例</th>
-                            <th>过期时间</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${targets.map(t => `
-                            <tr>
-                                <td>${t.symbol}</td>
-                                <td>¥${t.target_value?.toLocaleString() || '--'}</td>
-                                <td>${(t.target_position_ratio * 100).toFixed(1)}%</td>
-                                <td>${formatTime(t.expires_at)}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            `;
-        }
+  try {
+    const res = await fetch(RUN_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildRunPayload()),
+    });
+    const body = await parseResponseBody(res);
+    if (!res.ok) {
+      throw new Error(extractErrorMessage(body, `运行失败 (${res.status})`));
+    }
+    renderWorkbench(body, { active: killSwitchActive });
+    addAlert('info', '本轮运行完成');
+  } catch (error) {
+    addAlert('err', `运行失败: ${error.message}`);
+    await loadDashboard();
+  } finally {
+    finishRun();
+  }
+}
 
-        // 渲染事件表
-        function renderEventsTable(events) {
-            if (events.length === 0) return '<div class="history-empty">暂无异常事件</div>';
-            return `
-                <table class="history-table">
-                    <thead>
-                        <tr>
-                            <th>时间</th>
-                            <th>级别</th>
-                            <th>消息</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${events.map(e => `
-                            <tr>
-                                <td>${formatTime(e.timestamp)}</td>
-                                <td><span class="level ${e.level}">${e.level}</span></td>
-                                <td>${e.message}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            `;
-        }
+async function killSwitch() {
+  const willActivate = !killSwitchActive;
+  const confirmText = willActivate
+    ? '确认触发 Kill Switch？将停止所有交易动作。'
+    : '确认解除 Kill Switch？';
+  if (!confirm(confirmText)) return;
 
-        // 启动
-        init();
-    </script>
+  const endpoint = willActivate ? KILL_SWITCH_ACTIVATE_API : KILL_SWITCH_DEACTIVATE_API;
+  try {
+    const res = await fetch(endpoint, { method: 'POST' });
+    const body = await parseResponseBody(res);
+    if (!res.ok) {
+      throw new Error(extractErrorMessage(body, `Kill Switch 操作失败 (${res.status})`));
+    }
+    addAlert(willActivate ? 'err' : 'info', willActivate ? 'Kill Switch 已激活' : 'Kill Switch 已解除');
+    await loadDashboard();
+  } catch (error) {
+    addAlert('err', `Kill Switch 操作失败: ${error.message}`);
+  }
+}
+
+document.getElementById('cfg-add-stock').addEventListener('keydown', event => {
+  if (event.key !== 'Enter') return;
+  const value = event.target.value.trim();
+  if (!value) return;
+  const watchlistInput = document.getElementById('cfg-watchlist');
+  const symbols = watchlistInput.value.split(',').map(s => s.trim()).filter(Boolean);
+  if (!symbols.includes(value)) {
+    symbols.push(value);
+    watchlistInput.value = symbols.join(',');
+  }
+  event.target.value = '';
+});
+
+loadDashboard();
+setInterval(() => {
+  if (!simRunning) {
+    loadDashboard();
+  }
+}, 30000);
+</script>
 </body>
 </html>

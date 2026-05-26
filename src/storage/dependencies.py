@@ -1,7 +1,7 @@
 from functools import lru_cache
 
 from src.core.config import Settings
-from src.storage.db import create_runtime_engine
+from src.storage.db import create_runtime_engine, ensure_runtime_schema
 from src.storage.runtime_store import RuntimeStore
 
 
@@ -14,4 +14,5 @@ def get_settings() -> Settings:
 def get_runtime_store() -> RuntimeStore:
     settings = get_settings()
     engine = create_runtime_engine(settings)
+    ensure_runtime_schema(engine)
     return RuntimeStore(engine)

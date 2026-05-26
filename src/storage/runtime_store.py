@@ -48,6 +48,7 @@ class RuntimeStore:
                     "action": row.action,
                     "target_value": row.target_value,
                     "reason": row.reason,
+                    "created_at": row.created_at.isoformat(),
                 }
                 for row in rows
             ]
@@ -140,17 +141,20 @@ class RuntimeStore:
                 "snapshot": json.loads(snapshot_row[2]),
             }
 
-    def list_decision_runs(self) -> list[dict]:
+    def list_decision_runs(self, limit: int | None = None) -> list[dict]:
         with self.engine.begin() as conn:
-            rows = conn.execute(
-                select(DecisionRunRow).order_by(DecisionRunRow.created_at.desc())
-            ).fetchall()
+            stmt = select(DecisionRunRow).order_by(DecisionRunRow.created_at.desc())
+            if limit is not None:
+                stmt = stmt.limit(limit)
+            rows = conn.execute(stmt).fetchall()
             return [
                 {
                     "decision_run_id": row.decision_run_id,
                     "symbol": row.symbol,
                     "parsed_action": row.parsed_action,
                     "confidence": row.confidence,
+                    "target_position_ratio": row.target_position_ratio,
+                    "reason": row.reason,
                     "created_at": row.created_at.isoformat(),
                 }
                 for row in rows
@@ -181,13 +185,16 @@ class RuntimeStore:
             )
         return target_position_id
 
-    def list_active_target_positions(self) -> list[dict]:
+    def list_active_target_positions(self, limit: int | None = None) -> list[dict]:
         with self.engine.begin() as conn:
-            rows = conn.execute(
+            stmt = (
                 select(TargetPositionRow)
                 .where(TargetPositionRow.status == "ACTIVE")
                 .order_by(TargetPositionRow.created_at.desc())
-            ).fetchall()
+            )
+            if limit is not None:
+                stmt = stmt.limit(limit)
+            rows = conn.execute(stmt).fetchall()
             return [
                 {
                     "target_position_id": row.target_position_id,
@@ -196,7 +203,9 @@ class RuntimeStore:
                     "action": row.action,
                     "target_value": row.target_value,
                     "target_position_ratio": row.target_position_ratio,
+                    "status": row.status,
                     "expires_at": row.expires_at.isoformat(),
+                    "created_at": row.created_at.isoformat(),
                 }
                 for row in rows
             ]
@@ -241,6 +250,60 @@ class RuntimeStore:
                 )
             )
 
+    def list_execution_orders(self, limit: int | None = None) -> list[dict]:
+        with self.engine.begin() as conn:
+            stmt = select(ExecutionOrderRow).order_by(ExecutionOrderRow.created_at.desc())
+            if limit is not None:
+                stmt = stmt.limit(limit)
+            rows = conn.execute(stmt).fetchall()
+            return [
+                {
+                    "execution_order_id": row.execution_order_id,
+                    "target_position_id": row.target_position_id,
+                    "symbol": row.symbol,
+                    "action": row.action,
+                    "quantity": row.quantity,
+                    "limit_price": row.limit_price,
+                    "status": row.status,
+                    "broker_order_id": row.broker_order_id,
+                    "created_at": row.created_at.isoformat(),
+                }
+                for row in rows
+            ]
+
+    def list_broker_events(self, limit: int | None = None) -> list[dict]:
+        with self.engine.begin() as conn:
+            stmt = select(BrokerEventRow).order_by(BrokerEventRow.created_at.desc())
+            if limit is not None:
+                stmt = stmt.limit(limit)
+            rows = conn.execute(stmt).fetchall()
+            return [
+                {
+                    "event_id": row.event_id,
+                    "order_id": row.order_id,
+                    "event_type": row.event_type,
+                    "payload": json.loads(row.payload_json),
+                    "created_at": row.created_at.isoformat(),
+                }
+                for row in rows
+            ]
+
+    def list_kill_switch_events(self, limit: int | None = None) -> list[dict]:
+        with self.engine.begin() as conn:
+            stmt = select(KillSwitchEventRow).order_by(KillSwitchEventRow.created_at.desc())
+            if limit is not None:
+                stmt = stmt.limit(limit)
+            rows = conn.execute(stmt).fetchall()
+            return [
+                {
+                    "kill_switch_event_id": row.kill_switch_event_id,
+                    "active": row.active,
+                    "reason": row.reason,
+                    "created_at": row.created_at.isoformat(),
+                }
+                for row in rows
+            ]
+
     def get_reconciliation_status(self) -> dict:
         with self.engine.begin() as conn:
             open_orders = conn.execute(
@@ -255,14 +318,15 @@ class RuntimeStore:
             "healthy": open_orders == 0 or broker_event_count > 0,
         }
 
-    def insert_kill_switch_event(self, active: bool, reason: str) -> None:
+    def insert_kill_switch_event(self, active: bool, reason: str | None = None) -> None:
         event_id = f"kse-{uuid.uuid4().hex[:12]}"
+        event_reason = reason or ""
         with self.engine.begin() as conn:
             conn.execute(
                 KillSwitchEventRow.__table__.insert().values(
                     kill_switch_event_id=event_id,
                     active=active,
-                    reason=reason,
+                    reason=event_reason,
                 )
             )
             # 同时更新 kill_switch_state
