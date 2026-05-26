@@ -596,6 +596,7 @@ function stageLabel(stage) {
 }
 
 function stageBodyHtml(step) {
+  const stage = normalizeText(step.stage || step.name, '').toLowerCase();
   const items = toList(step.items);
   if (items.length) {
     const first = items[0] || {};
@@ -627,7 +628,17 @@ function stageBodyHtml(step) {
     }).join('');
     return `<table><tr><th>股票</th><th>动作</th><th>置信度</th></tr>${rows}</table>`;
   }
-  return escapeHtml(normalizeText(step.message || step.summary || step.detail, '--'));
+  const message = normalizeText(step.message || step.summary || step.detail, '--');
+  if (stage === 'reconcile') {
+    const match = message.match(/([+-]¥[\d,]+(?:\.\d+)?)/);
+    if (match) {
+      const pnlLabel = match[1];
+      const before = escapeHtml(message.slice(0, match.index));
+      const after = escapeHtml(message.slice((match.index || 0) + pnlLabel.length));
+      return `${before}<span style="color:var(--green)">${escapeHtml(pnlLabel)}</span>${after}`;
+    }
+  }
+  return escapeHtml(message);
 }
 
 function renderTimeline(latestRun) {

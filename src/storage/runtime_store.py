@@ -1,6 +1,6 @@
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
 
@@ -150,6 +150,7 @@ class RuntimeStore:
             return [
                 {
                     "decision_run_id": row.decision_run_id,
+                    "prompt_hash": row.prompt_hash,
                     "symbol": row.symbol,
                     "parsed_action": row.parsed_action,
                     "confidence": row.confidence,
@@ -250,6 +251,22 @@ class RuntimeStore:
                 )
             )
 
+    def update_execution_order_status(
+        self,
+        execution_order_id: str,
+        status: str,
+        broker_order_id: str | None = None,
+    ) -> None:
+        values: dict[str, str] = {"status": status}
+        if broker_order_id is not None:
+            values["broker_order_id"] = broker_order_id
+        with self.engine.begin() as conn:
+            conn.execute(
+                ExecutionOrderRow.__table__.update()
+                .where(ExecutionOrderRow.execution_order_id == execution_order_id)
+                .values(**values)
+            )
+
     def list_execution_orders(self, limit: int | None = None) -> list[dict]:
         with self.engine.begin() as conn:
             stmt = select(ExecutionOrderRow).order_by(ExecutionOrderRow.created_at.desc())
@@ -317,6 +334,32 @@ class RuntimeStore:
             "broker_event_count": broker_event_count,
             "healthy": open_orders == 0 or broker_event_count > 0,
         }
+
+    def sum_daily_pnl(self, trade_date: str | None = None) -> float:
+        if trade_date:
+            day_start = datetime.fromisoformat(trade_date)
+        else:
+            now = datetime.utcnow()
+            day_start = datetime(year=now.year, month=now.month, day=now.day)
+        day_end = day_start + timedelta(days=1)
+
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                select(BrokerEventRow.payload_json).where(
+                    BrokerEventRow.event_type == "FILLED",
+                    BrokerEventRow.created_at >= day_start,
+                    BrokerEventRow.created_at < day_end,
+                )
+            ).fetchall()
+
+        total = 0.0
+        for row in rows:
+            payload = json.loads(row.payload_json)
+            try:
+                total += float(payload.get("pnl_delta", 0.0))
+            except (TypeError, ValueError):
+                continue
+        return round(total, 2)
 
     def insert_kill_switch_event(self, active: bool, reason: str | None = None) -> None:
         event_id = f"kse-{uuid.uuid4().hex[:12]}"

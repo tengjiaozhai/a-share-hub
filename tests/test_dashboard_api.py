@@ -111,6 +111,51 @@ def test_run_endpoint_returns_full_workbench_payload(test_app):
     assert payload["history"]["decisions"][0]["action"] in {"BUY", "SELL", "HOLD"}
 
 
+def test_run_endpoint_contains_reconcile_stage_and_daily_pnl(test_app):
+    client = TestClient(test_app)
+
+    response = client.post(
+        "/api/v1/dashboard/run",
+        json={
+            "capital_base": 1_000_000,
+            "watchlist": ["600519.SH", "000858.SZ", "601318.SH"],
+            "max_position_ratio": 0.2,
+            "execution_mode": "full",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert "daily_pnl" in payload["risk"]
+    assert isinstance(payload["risk"]["daily_pnl"], (int, float))
+
+    steps = payload["latest_run"]["steps"]
+    assert len(steps) >= 8
+    assert [step["stage"] for step in steps[-2:]] == ["reconcile", "reconcile"]
+    assert [step["status"] for step in steps[-2:]] == ["running", "done"]
+    assert "模拟盈亏" in (steps[-1].get("message") or "")
+
+
+def test_decision_mode_marks_reconcile_as_skipped(test_app):
+    client = TestClient(test_app)
+
+    response = client.post(
+        "/api/v1/dashboard/run",
+        json={
+            "capital_base": 1_000_000,
+            "watchlist": ["600519.SH"],
+            "max_position_ratio": 0.2,
+            "execution_mode": "decision",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    steps = payload["latest_run"]["steps"]
+    assert steps[-1]["stage"] == "reconcile"
+    assert steps[-1]["status"] == "done"
+    assert "仅决策模式，跳过执行" in (steps[-1].get("message") or "")
+
+
 def test_kill_switch_events_are_visible_in_workbench_history(test_app):
     client = TestClient(test_app)
 

@@ -30,6 +30,16 @@
 
 所有脚本都遵循fail-closed原则：任何步骤失败都会导致整个脚本退出，确保问题不会被忽略。
 
+## 后台服务
+
+启动后端 API 服务：
+
+```bash
+/opt/anaconda3/envs/py311/bin/python3 -m src.main serve
+```
+
+服务默认监听 `0.0.0.0:8000`。
+
 ## 模块说明
 
 - `src/core/`: 核心配置和工具

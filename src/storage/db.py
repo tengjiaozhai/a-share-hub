@@ -1,8 +1,12 @@
-from sqlalchemy import create_engine, inspect
+from threading import Lock
+
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.core.config import Settings
 from src.storage.models import Base
+
+_runtime_schema_bootstrap_lock = Lock()
 
 
 def create_runtime_engine(settings: Settings):
@@ -18,18 +22,11 @@ def create_runtime_engine(settings: Settings):
 
 
 def ensure_runtime_schema(engine) -> None:
-    required_tables = set(Base.metadata.tables.keys())
-    if not required_tables:
+    if not Base.metadata.tables:
         return
 
-    existing_tables = set(inspect(engine).get_table_names())
-    if not existing_tables:
+    with _runtime_schema_bootstrap_lock:
         Base.metadata.create_all(engine)
-        return
-
-    missing_tables = required_tables - existing_tables
-    if missing_tables:
-        Base.metadata.create_all(engine, tables=[Base.metadata.tables[name] for name in sorted(missing_tables)])
 
 
 def create_session_factory(engine):

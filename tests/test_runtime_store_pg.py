@@ -60,3 +60,28 @@ def test_runtime_store_inserts_kill_switch_event(tmp_path):
     store.insert_kill_switch_event(active=False, reason="resume")
 
     assert store.get_kill_switch() is False
+
+
+def test_runtime_store_can_mark_execution_order_filled_and_sum_daily_pnl(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path}/runtime_store.db", future=True)
+    Base.metadata.create_all(engine)
+    store = RuntimeStore(engine)
+
+    execution_order_id = store.insert_execution_order(
+        target_position_id="tp-001",
+        symbol="600519.SH",
+        action="BUY",
+        quantity=100,
+        limit_price=100.0,
+    )
+    store.update_execution_order_status(execution_order_id, status="FILLED")
+    store.insert_broker_order_event(
+        execution_order_id=execution_order_id,
+        event_id="evt-filled-001",
+        event_type="FILLED",
+        payload={"pnl_delta": 1250.0, "run_context_id": "wrk-test-001"},
+    )
+
+    latest_order = store.list_execution_orders(limit=1)[0]
+    assert latest_order["status"] == "FILLED"
+    assert store.sum_daily_pnl() == 1250.0
