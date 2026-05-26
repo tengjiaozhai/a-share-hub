@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid
 
 from fastapi import APIRouter, Depends
@@ -8,6 +8,19 @@ from src.agents.llm_client import LLMClient
 from src.core.config import Settings
 from src.data.providers.akshare_provider import AkshareProvider
 from src.storage.dependencies import get_runtime_store
+
+_CST = timezone(timedelta(hours=8))
+
+
+def _now_cst() -> datetime:
+    """返回北京时间（CST, UTC+8）"""
+    return datetime.now(_CST)
+
+
+def _today_close_cst() -> datetime:
+    """返回今天 A 股收盘时间（北京时间 15:00:00）"""
+    today = _now_cst().replace(hour=15, minute=0, second=0, microsecond=0)
+    return today
 
 _llm_client: LLMClient | None = None
 _akshare: AkshareProvider | None = None
@@ -74,7 +87,7 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
 
     ratio_per_symbol = max_position_ratio / len(watchlist)
     target_value_per_symbol = int(capital_base * ratio_per_symbol)
-    run_context_id = f"wrk-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+    run_context_id = f"wrk-{_now_cst().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
 
     from src.decision.decision_runner import parse_decision_output
     from src.agents.schemas import DecisionOutput
@@ -112,7 +125,7 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
         confidence = decision.confidence
         target_ratio = decision.target_position_ratio if parsed_action == "BUY" else 0.0
         reason = decision.reason
-        model_label = settings.llm_model if use_real_llm else "mock-llm"
+        model_label = llm.model if use_real_llm else "mock-llm"
 
         decision_run_id = store.insert_decision_run(
             symbol=symbol,
@@ -150,7 +163,7 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
             action=parsed_action,
             target_value=target_value,
             target_position_ratio=target_position_ratio,
-            expires_at=(datetime.utcnow() + timedelta(hours=1)).isoformat(),
+            expires_at=_today_close_cst().isoformat(),
         )
         target_items.append(
             {
@@ -242,7 +255,7 @@ def _build_workbench_payload(store, latest_run_override: dict | None = None) -> 
 
     return {
         "mode": "shadow",
-        "trade_date": datetime.utcnow().date().isoformat(),
+        "trade_date": _now_cst().date().isoformat(),
         "last_run_at": latest_run.get("finished_at") or latest_run.get("started_at"),
         "services": _probe_services(),
         "kill_switch": {"active": store.get_kill_switch()},
@@ -268,6 +281,10 @@ def _build_latest_run(decisions: list[dict], targets: list[dict], orders: list[d
         return {"status": "idle", "steps": []}
 
     latest_prompt_hash = decisions[0].get("prompt_hash")
+    latest_decision_mode = (
+        (((decisions[0].get("input_snapshot") or {}).get("features") or {}).get("decision_mode"))
+        or "mock"
+    )
     if latest_prompt_hash:
         run_decisions = [row for row in decisions if row.get("prompt_hash") == latest_prompt_hash]
     else:
@@ -315,7 +332,7 @@ def _build_latest_run(decisions: list[dict], targets: list[dict], orders: list[d
         run_context_id=run_context_id,
         watchlist=[row.get("symbol") for row in run_decisions if row.get("symbol")],
         capital_base=1_000_000,
-        decision_mode="mock",
+        decision_mode=latest_decision_mode,
         decision_items=decision_items,
         target_items=target_items,
         order_items=order_items,
@@ -344,6 +361,7 @@ def _serialize_decision_row(row: dict) -> dict:
         "action": _map_action(parsed_action),
         "confidence": row.get("confidence"),
         "reason": row.get("reason", ""),
+        "input_snapshot": row.get("input_snapshot", {}),
         "created_at": row.get("created_at"),
     }
 
@@ -459,7 +477,7 @@ def _build_run_timeline(
     decision_only: bool,
     daily_pnl: float,
 ) -> dict:
-    now = datetime.utcnow().isoformat()
+    now = _now_cst().isoformat()
     steps = [
         {
             "stage": "decision",
