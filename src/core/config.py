@@ -28,6 +28,15 @@ class Settings(BaseSettings):
     enable_live_trading: bool = False
     execution_mode: str = "shadow"
 
+    # LLM
+    llm_provider: str = "mock"
+    llm_api_key: str = ""
+    llm_model: str = "deepseek-chat"
+    llm_base_url: str = "https://api.deepseek.com"
+
+    # 行情数据源
+    market_data_provider: str = "mock"
+
     aws_host: str = "127.0.0.1"
     aws_ssh_user: str = "ec2-user"
     aws_ssh_key_path: Path = Field(default=Path("/path/to/key.pem"))
