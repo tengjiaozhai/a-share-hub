@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A股自动交易系统 - 工作台</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0f172a;--surface:#1e293b;--surface2:#334155;--border:#334155;
+  --fg:#e2e8f0;--muted:#94a3b8;--dim:#64748b;
+  --accent:#60a5fa;--blue:#3b82f6;--green:#22c55e;--red:#ef4444;--yellow:#eab308;
+  --radius:8px;--radius-lg:12px;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--fg);min-height:100vh;overflow-x:hidden}
+
+/* ── STATUS BAR ── */
+.status-bar{
+  background:var(--surface);border-bottom:1px solid var(--border);
+  padding:8px 20px;display:flex;align-items:center;gap:16px;font-size:13px;flex-wrap:wrap;
+}
+.status-bar .brand{font-size:15px;font-weight:700;color:var(--accent);margin-right:8px}
+.status-bar .sep{width:1px;height:16px;background:var(--border)}
+.status-bar .pill{display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:600}
+.status-bar .pill.mode{background:rgba(34,197,94,.2);color:var(--green)}
+.status-bar .pill.ok{background:rgba(34,197,94,.15);color:var(--green)}
+.status-bar .pill.warn{background:rgba(234,179,8,.15);color:var(--yellow)}
+.status-bar .pill.err{background:rgba(239,68,68,.15);color:var(--red)}
+.status-bar .dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.status-bar .dot.g{background:var(--green)}.status-bar .dot.y{background:var(--yellow)}.status-bar .dot.r{background:var(--red)}
+.status-bar .kill-btn{
+  margin-left:auto;background:var(--red);color:#fff;border:none;padding:4px 14px;
+  border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;
+}
+.status-bar .kill-btn:hover{background:#dc2626}
+
+/* ── MAIN LAYOUT ── */
+.main{display:grid;grid-template-columns:280px 1fr 280px;grid-template-rows:1fr auto;gap:0;min-height:calc(100vh - 40px)}
+
+/* ── LEFT PANEL ── */
+.panel-left{
+  background:var(--surface);border-right:1px solid var(--border);padding:16px;overflow-y:auto;
+  display:flex;flex-direction:column;gap:14px;
+}
+.panel-left h2{font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:12px;color:var(--dim);font-weight:500}
+.field input,.field select,.field textarea{
+  background:var(--bg);border:1px solid var(--border);color:var(--fg);
+  padding:8px 10px;border-radius:6px;font-size:13px;font-family:inherit;
+}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent)}
+.field textarea{resize:vertical;min-height:60px}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:6px 0}
+.toggle-row span{font-size:13px;color:var(--muted)}
+.toggle{
+  width:36px;height:20px;background:var(--border);border-radius:10px;position:relative;cursor:pointer;transition:.2s;
+}
+.toggle.on{background:var(--green)}
+.toggle::after{
+  content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;
+  background:#fff;border-radius:50%;transition:.2s;
+}
+.toggle.on::after{left:18px}
+.run-btn{
+  background:var(--blue);color:#fff;border:none;padding:12px;border-radius:8px;
+  font-size:14px;font-weight:700;cursor:pointer;margin-top:8px;transition:.15s;
+}
+.run-btn:hover{background:#2563eb}
+.run-btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* ── CENTER PANEL ── */
+.panel-center{padding:16px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.panel-center h2{font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.timeline{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);
+  padding:16px;flex:1;overflow-y:auto;min-height:300px;
+}
+.timeline-empty{
+  display:flex;align-items:center;justify-content:center;height:100%;
+  color:var(--dim);font-size:14px;
+}
+.tl-step{
+  border-left:2px solid var(--border);padding:0 0 16px 16px;position:relative;
+}
+.tl-step:last-child{border-left-color:transparent;padding-bottom:0}
+.tl-step::before{
+  content:'';position:absolute;left:-6px;top:2px;width:10px;height:10px;
+  border-radius:50%;background:var(--border);border:2px solid var(--bg);
+}
+.tl-step.done::before{background:var(--green)}
+.tl-step.running::before{background:var(--yellow);animation:pulse 1s infinite}
+.tl-step.error::before{background:var(--red)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.tl-step .step-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.tl-step .step-tag{
+  font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;text-transform:uppercase;
+}
+.tl-step .step-tag.decision{background:rgba(96,165,250,.2);color:var(--accent)}
+.tl-step .step-tag.target{background:rgba(34,197,94,.15);color:var(--green)}
+.tl-step .step-tag.execute{background:rgba(234,179,8,.15);color:var(--yellow)}
+.tl-step .step-tag.reconcile{background:rgba(139,92,246,.2);color:#a78bfa}
+.tl-step .step-time{font-size:11px;color:var(--dim)}
+.tl-step .step-body{font-size:13px;color:var(--muted);line-height:1.6}
+.tl-step .step-body table{width:100%;border-collapse:collapse;margin-top:6px}
+.tl-step .step-body th,.tl-step .step-body td{
+  padding:4px 8px;text-align:left;border-bottom:1px solid var(--border);font-size:12px;
+}
+.tl-step .step-body th{color:var(--dim);font-weight:500;font-size:11px;text-transform:uppercase}
+.tl-step pre{
+  background:var(--bg);padding:8px;border-radius:6px;font-size:12px;
+  overflow-x:auto;color:var(--fg);margin-top:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+
+/* ── RIGHT PANEL ── */
+.panel-right{
+  background:var(--surface);border-left:1px solid var(--border);padding:16px;overflow-y:auto;
+  display:flex;flex-direction:column;gap:14px;
+}
+.panel-right h2{font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.risk-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px}
+.risk-card .risk-label{font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:4px}
+.risk-card .risk-value{font-size:20px;font-weight:700}
+.risk-card .risk-value.green{color:var(--green)}.risk-card .risk-value.red{color:var(--red)}.risk-card .risk-value.yellow{color:var(--yellow)}
+.alert-item{
+  padding:8px 10px;border-radius:6px;font-size:12px;margin-bottom:6px;
+  border-left:3px solid;display:flex;align-items:flex-start;gap:6px;
+}
+.alert-item.warn{background:rgba(234,179,8,.08);border-color:var(--yellow);color:var(--yellow)}
+.alert-item.err{background:rgba(239,68,68,.08);border-color:var(--red);color:var(--red)}
+.alert-item.info{background:rgba(96,165,250,.08);border-color:var(--accent);color:var(--accent)}
+.mode-switch{display:flex;gap:4px;background:var(--bg);border-radius:6px;padding:3px}
+.mode-switch button{
+  flex:1;padding:6px 8px;border:none;border-radius:4px;font-size:12px;
+  font-weight:600;cursor:pointer;background:transparent;color:var(--muted);transition:.15s;
+}
+.mode-switch button.active{background:var(--blue);color:#fff}
+
+/* ── BOTTOM PANEL ── */
+.panel-bottom{
+  grid-column:1/-1;background:var(--surface);border-top:1px solid var(--border);
+  padding:0 20px;height:280px;min-height:200px;display:flex;flex-direction:column;
+}
+.tab-bar{display:flex;gap:0;border-bottom:1px solid var(--border)}
+.tab-bar button{
+  padding:10px 18px;border:none;background:transparent;color:var(--muted);
+  font-size:13px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;transition:.15s;
+}
+.tab-bar button.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-content{flex:1;overflow-y:auto;padding:12px 0}
+.tab-pane{display:none}.tab-pane.active{display:block}
+.tab-pane table{width:100%;border-collapse:collapse}
+.tab-pane th,.tab-pane td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);font-size:12px}
+.tab-pane th{color:var(--dim);font-weight:500;text-transform:uppercase;font-size:11px;position:sticky;top:0;background:var(--surface)}
+
+/* ── BADGES ── */
+.badge{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;display:inline-block}
+.badge-buy{background:rgba(34,197,94,.2);color:var(--green)}
+.badge-sell{background:rgba(239,68,68,.2);color:var(--red)}
+.badge-hold{background:rgba(148,163,184,.15);color:var(--muted)}
+.badge-filled{background:rgba(59,130,246,.2);color:var(--blue)}
+.badge-pending{background:rgba(234,179,8,.15);color:var(--yellow)}
+.badge-error{background:rgba(239,68,68,.15);color:var(--red)}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--dim)}
+</style>
+</head>
+<body>
+
+<!-- ════════ TOP STATUS BAR ════════ -->
+<div class="status-bar">
+  <span class="brand">A股模拟工作台</span>
+  <span class="sep"></span>
+  <span class="pill mode" id="mode-pill">影子模式</span>
+  <span class="sep"></span>
+  <span><span class="dot g" id="db-dot"></span> 数据库</span>
+  <span><span class="dot g" id="llm-dot"></span> LLM</span>
+  <span><span class="dot g" id="mkt-dot"></span> 行情</span>
+  <span class="sep"></span>
+  <span style="color:var(--dim)">交易日: <span id="trade-date">--</span></span>
+  <span style="color:var(--dim)">上次运行: <span id="last-run">--</span></span>
+  <button class="kill-btn" onclick="killSwitch()">KILL SWITCH</button>
+</div>
+
+<!-- ════════ MAIN 3-COL + BOTTOM ════════ -->
+<div class="main">
+
+  <!-- ── LEFT: 策略与模拟配置 ── -->
+  <div class="panel-left">
+    <h2>策略配置</h2>
+    <div class="field">
+      <label>模拟总资金 (元)</label>
+      <input type="number" id="cfg-capital" value="1000000" step="100000">
+    </div>
+    <div class="field">
+      <label>观察列表 (逗号分隔)</label>
+      <textarea id="cfg-watchlist" placeholder="600519.SH,000858.SZ,601318.SH">600519.SH,000858.SZ,601318.SH</textarea>
+    </div>
+    <div class="field">
+      <label>手动添加股票</label>
+      <input type="text" id="cfg-add-stock" placeholder="输入代码后回车添加">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>单票最大仓位 (%)</label>
+        <input type="number" id="cfg-max-pos" value="20" min="1" max="100">
+      </div>
+      <div class="field">
+        <label>止损阈值 (%)</label>
+        <input type="number" id="cfg-stop-loss" value="-5" step="0.5">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>单日最大亏损 (%)</label>
+        <input type="number" id="cfg-max-daily" value="-3" step="0.5">
+      </div>
+      <div class="field">
+        <label>决策模式</label>
+        <select id="cfg-mode">
+          <option value="mock">Mock (模拟)</option>
+          <option value="real">Real (实盘决策)</option>
+        </select>
+      </div>
+    </div>
+    <div class="toggle-row">
+      <span>允许新开仓</span>
+      <div class="toggle on" id="cfg-new-pos" onclick="this.classList.toggle('on')"></div>
+    </div>
+    <div class="toggle-row">
+      <span>仅生成决策 (不执行)</span>
+      <div class="toggle" id="cfg-decision-only" onclick="this.classList.toggle('on')"></div>
+    </div>
+    <button class="run-btn" id="run-btn" onclick="triggerRun()">运行一轮模拟交易</button>
+  </div>
+
+  <!-- ── CENTER: 本轮运行主视图 ── -->
+  <div class="panel-center">
+    <h2>本轮运行</h2>
+    <div class="timeline" id="timeline">
+      <div class="timeline-empty" id="timeline-empty">
+        配置参数后点击「运行一轮模拟交易」开始
+      </div>
+    </div>
+  </div>
+
+  <!-- ── RIGHT: 风控与人工接管 ── -->
+  <div class="panel-right">
+    <h2>风控状态</h2>
+    <div class="risk-card">
+      <div class="risk-label">当日累计盈亏</div>
+      <div class="risk-value green" id="risk-pnl">¥0</div>
+    </div>
+    <div class="risk-card">
+      <div class="risk-label">持仓集中度</div>
+      <div class="risk-value" id="risk-concentration" style="color:var(--fg)">--</div>
+    </div>
+    <div class="risk-card">
+      <div class="risk-label">活跃目标仓位</div>
+      <div class="risk-value" id="risk-targets" style="color:var(--accent)">0</div>
+    </div>
+    <div class="risk-card">
+      <div class="risk-label">未完成订单</div>
+      <div class="risk-value" id="risk-open-orders" style="color:var(--yellow)">0</div>
+    </div>
+    <h2>执行模式</h2>
+    <div class="mode-switch" id="exec-mode">
+      <button class="active" data-mode="full" onclick="setExecMode(this)">完整链路</button>
+      <button data-mode="decision" onclick="setExecMode(this)">仅决策</button>
+    </div>
+    <h2>异常提示</h2>
+    <div id="alerts-area">
+      <div class="alert-item info">系统就绪，等待运行</div>
+    </div>
+  </div>
+
+  <!-- ── BOTTOM: 历史与回放 ── -->
+  <div class="panel-bottom">
+    <div class="tab-bar">
+      <button class="active" onclick="switchTab(this,'tab-decisions')">最近决策</button>
+      <button onclick="switchTab(this,'tab-orders')">最近订单</button>
+      <button onclick="switchTab(this,'tab-targets')">当前目标仓位</button>
+      <button onclick="switchTab(this,'tab-errors')">异常事件</button>
+    </div>
+    <div class="tab-content">
+      <div class="tab-pane active" id="tab-decisions">
+        <table><thead><tr><th>时间</th><th>股票</th><th>动作</th><th>置信度</th><th>理由</th></tr></thead><tbody id="tb-decisions"><tr><td colspan="5" style="color:var(--dim)">暂无数据</td></tr></tbody></table>
+      </div>
+      <div class="tab-pane" id="tab-orders">
+        <table><thead><tr><th>时间</th><th>股票</th><th>方向</th><th>数量</th><th>价格</th><th>状态</th></tr></thead><tbody id="tb-orders"><tr><td colspan="6" style="color:var(--dim)">暂无数据</td></tr></tbody></table>
+      </div>
+      <div class="tab-pane" id="tab-targets">
+        <table><thead><tr><th>股票</th><th>目标数量</th><th>目标权重</th><th>理由</th></tr></thead><tbody id="tb-targets"><tr><td colspan="4" style="color:var(--dim)">暂无数据</td></tr></tbody></table>
+      </div>
+      <div class="tab-pane" id="tab-errors">
+        <table><thead><tr><th>时间</th><th>级别</th><th>消息</th></tr></thead><tbody id="tb-errors"><tr><td colspan="3" style="color:var(--dim)">暂无异常</td></tr></tbody></table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ═══════════════════════════════════════
+//  API 基础路径 (与 routes_dashboard.py 对齐)
+// ═══════════════════════════════════════
+const API = '/api/v1/dashboard';
+
+// ═══════════════════════════════════════
+//  全局状态
+// ═══════════════════════════════════════
+let execMode = 'full';  // 'full' | 'decision'
+let simRunning = false;
+let simLog = [];
+
+// ═══════════════════════════════════════
+//  TAB 切换
+// ═══════════════════════════════════════
+function switchTab(btn, paneId) {
+  btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById(paneId).classList.add('active');
+}
+
+function setExecMode(btn) {
+  btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  execMode = btn.dataset.mode;
+}
+
+// ═══════════════════════════════════════
+//  数据加载 — 并发调用 4 个真实端点
+// ═══════════════════════════════════════
+async function loadDashboard() {
+  try {
+    const [statusRes, decisionsRes, ordersRes, portfolioRes] = await Promise.all([
+      fetch(`${API}/status`).then(r => r.json()),
+      fetch(`${API}/decisions`).then(r => r.json()),
+      fetch(`${API}/orders`).then(r => r.json()),
+      fetch(`${API}/portfolio`).then(r => r.json()),
+    ]);
+    renderStatus(statusRes);
+    renderDecisions(decisionsRes.decisions || []);
+    renderOrders(ordersRes.orders || []);
+    renderTargets(portfolioRes.targets || []);
+    renderRisk(portfolioRes, statusRes);
+  } catch (e) {
+    addAlert('err', '数据加载失败: ' + e.message);
+  }
+}
+
+// ═══════════════════════════════════════
+//  渲染函数
+// ═══════════════════════════════════════
+function renderStatus(s) {
+  document.getElementById('mode-pill').textContent = s.mode === 'shadow' ? '影子模式' : s.mode;
+  document.getElementById('trade-date').textContent = s.timestamp ? s.timestamp.split('T')[0] : '--';
+  document.getElementById('last-run').textContent = s.timestamp ? s.timestamp.split('T')[1]?.split('.')[0] : '--';
+  document.getElementById('db-dot').className = 'dot ' + (s.healthy ? 'g' : 'r');
+  document.getElementById('risk-open-orders').textContent = s.open_orders ?? 0;
+}
+
+function renderDecisions(list) {
+  const tb = document.getElementById('tb-decisions');
+  if (!list.length) { tb.innerHTML = '<tr><td colspan="5" style="color:var(--dim)">暂无数据</td></tr>'; return; }
+  tb.innerHTML = list.map(d => {
+    const ts = d.timestamp ? d.timestamp.split('T')[1]?.split('.')[0] : '--';
+    const stock = d.symbol || d.stock_code || '--';
+    const action = d.action || d.signal || '--';
+    const cls = action === 'BUY' ? 'badge-buy' : action === 'SELL' ? 'badge-sell' : 'badge-hold';
+    const conf = d.confidence != null ? (d.confidence * 100).toFixed(0) + '%' : '--';
+    const reason = d.reason || d.rationale || '';
+    return `<tr><td>${ts}</td><td>${stock}</td><td><span class="badge ${cls}">${action}</span></td><td>${conf}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${reason}">${reason}</td></tr>`;
+  }).join('');
+}
+
+function renderOrders(list) {
+  const tb = document.getElementById('tb-orders');
+  if (!list.length) { tb.innerHTML = '<tr><td colspan="6" style="color:var(--dim)">暂无数据</td></tr>'; return; }
+  tb.innerHTML = list.map(o => {
+    const ts = o.created_at ? o.created_at.split('T')[1]?.split('.')[0] : '--';
+    const stock = o.symbol || o.stock_code || '--';
+    const side = o.side || o.action || '--';
+    const cls = side === 'BUY' ? 'badge-buy' : side === 'SELL' ? 'badge-sell' : 'badge-hold';
+    const qty = o.quantity ?? o.qty ?? '--';
+    const price = o.price != null ? '¥' + Number(o.price).toFixed(2) : '--';
+    const status = o.status || '--';
+    const sCls = status === 'FILLED' ? 'badge-filled' : status === 'PENDING' ? 'badge-pending' : status === 'ERROR' ? 'badge-error' : '';
+    return `<tr><td>${ts}</td><td>${stock}</td><td><span class="badge ${cls}">${side}</span></td><td>${qty}</td><td>${price}</td><td><span class="badge ${sCls}">${status}</span></td></tr>`;
+  }).join('');
+}
+
+function renderTargets(list) {
+  const tb = document.getElementById('tb-targets');
+  if (!list.length) { tb.innerHTML = '<tr><td colspan="4" style="color:var(--dim)">暂无数据</td></tr>'; return; }
+  tb.innerHTML = list.map(t => {
+    const stock = t.symbol || t.stock_code || '--';
+    const qty = t.target_quantity ?? t.quantity ?? '--';
+    const weight = t.target_weight != null ? (t.target_weight * 100).toFixed(1) + '%' : '--';
+    const reason = t.reason || t.rationale || '';
+    return `<tr><td>${stock}</td><td>${qty}</td><td>${weight}</td><td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${reason}">${reason}</td></tr>`;
+  }).join('');
+}
+
+function renderRisk(portfolio, status) {
+  document.getElementById('risk-targets').textContent = portfolio.active_targets ?? 0;
+  const targets = portfolio.targets || [];
+  if (targets.length > 0) {
+    const maxWeight = Math.max(...targets.map(t => t.target_weight || 0));
+    const concEl = document.getElementById('risk-concentration');
+    concEl.textContent = (maxWeight * 100).toFixed(1) + '%';
+    concEl.className = 'risk-value ' + (maxWeight > 0.3 ? 'red' : maxWeight > 0.2 ? 'yellow' : 'green');
+  }
+}
+
+// ═══════════════════════════════════════
+//  模拟运行 — 轮询日志流
+// ═══════════════════════════════════════
+async function triggerRun() {
+  if (simRunning) return;
+  simRunning = true;
+  const btn = document.getElementById('run-btn');
+  btn.disabled = true;
+  btn.textContent = '运行中...';
+  document.getElementById('timeline-empty').style.display = 'none';
+  simLog = [];
+
+  const config = {
+    capital: Number(document.getElementById('cfg-capital').value),
+    watchlist: document.getElementById('cfg-watchlist').value.split(',').map(s => s.trim()).filter(Boolean),
+    max_position_pct: Number(document.getElementById('cfg-max-pos').value) / 100,
+    stop_loss_pct: Number(document.getElementById('cfg-stop-loss').value) / 100,
+    max_daily_loss_pct: Number(document.getElementById('cfg-max-daily').value) / 100,
+    allow_new_positions: document.getElementById('cfg-new-pos').classList.contains('on'),
+    decision_only: document.getElementById('cfg-decision-only').classList.contains('on') || execMode === 'decision',
+    mode: document.getElementById('cfg-mode').value,
+  };
+
+  try {
+    const res = await fetch(`${API}/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      pollRunStatus(data.run_id || data.id);
+    } else {
+      // 后端端点尚未实现 — 使用 mock 流
+      runMockFlow(config);
+    }
+  } catch (e) {
+    // 网络错误或端点不存在 — 使用 mock 流
+    runMockFlow(config);
+  }
+}
+
+function pollRunStatus(runId) {
+  let step = 0;
+  const steps = ['decision', 'target', 'execute', 'reconcile'];
+  const iv = setInterval(async () => {
+    if (step >= steps.length) {
+      clearInterval(iv);
+      finishRun();
+      return;
+    }
+    try {
+      const res = await fetch(`${API}/run/${runId}/status`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.steps) {
+          data.steps.forEach(s => {
+            if (s.status === 'done' && !simLog.find(l => l.tag === s.name)) {
+              appendTimeline(s.name, s.tag || s.name, s.data || s.summary || '', 'done');
+            }
+          });
+        }
+      }
+    } catch (e) {}
+    step++;
+  }, 1500);
+}
+
+// Mock 流 — 当后端端点未实现时使用
+function runMockFlow(config) {
+  const tl = document.getElementById('timeline');
+  const watchlist = config.watchlist.join(', ');
+
+  // Step 1: 决策生成
+  appendTimeline('decision', '决策', `输入标的: ${watchlist}<br>资金: ¥${config.capital.toLocaleString()}<br>模式: ${config.mode}`, 'running');
+  setTimeout(() => {
+    markLastDone();
+    appendTimeline('decision', '决策', `<table><tr><th>股票</th><th>信号</th><th>置信度</th></tr>
+      <tr><td>600519.SH</td><td><span class="badge badge-buy">BUY</span></td><td>78%</td></tr>
+      <tr><td>000858.SZ</td><td><span class="badge badge-hold">HOLD</span></td><td>45%</td></tr>
+      <tr><td>601318.SH</td><td><span class="badge badge-sell">SELL</span></td><td>82%</td></tr>
+    </table>`, 'done');
+
+    // Step 2: 目标仓位
+    appendTimeline('target', '目标仓位', '计算中...', 'running');
+    setTimeout(() => {
+      markLastDone();
+      appendTimeline('target', '目标仓位', `<table><tr><th>股票</th><th>目标数量</th><th>权重</th></tr>
+        <tr><td>600519.SH</td><td>200</td><td>18.5%</td></tr>
+        <tr><td>601318.SH</td><td>0 (清仓)</td><td>0%</td></tr>
+      </table>`, 'done');
+
+      if (config.decision_only) {
+        appendTimeline('reconcile', '完成', '仅决策模式，跳过执行', 'done');
+        finishRun();
+        return;
+      }
+
+      // Step 3: 执行
+      appendTimeline('execute', '执行', '发送订单中...', 'running');
+      setTimeout(() => {
+        markLastDone();
+        appendTimeline('execute', '执行', `<table><tr><th>股票</th><th>方向</th><th>数量</th><th>状态</th></tr>
+          <tr><td>600519.SH</td><td><span class="badge badge-buy">BUY</span></td><td>200</td><td><span class="badge badge-filled">FILLED</span></td></tr>
+          <tr><td>601318.SH</td><td><span class="badge badge-sell">SELL</span></td><td>300</td><td><span class="badge badge-filled">FILLED</span></td></tr>
+        </table>`, 'done');
+
+        // Step 4: 对账
+        appendTimeline('reconcile', '对账', '核对执行结果...', 'running');
+        setTimeout(() => {
+          markLastDone();
+          appendTimeline('reconcile', '对账', '所有订单已确认，持仓已更新。模拟盈亏: <span style="color:var(--green)">+¥1,250</span>', 'done');
+          finishRun();
+        }, 1200);
+      }, 1800);
+    }, 1500);
+  }, 2000);
+}
+
+function appendTimeline(tag, label, html, status) {
+  const tl = document.getElementById('timeline');
+  const div = document.createElement('div');
+  div.className = 'tl-step ' + status;
+  div.dataset.tag = tag;
+  div.innerHTML = `
+    <div class="step-head">
+      <span class="step-tag ${tag}">${label}</span>
+      <span class="step-time">${new Date().toLocaleTimeString()}</span>
+    </div>
+    <div class="step-body">${html}</div>
+  `;
+  tl.appendChild(div);
+  tl.scrollTop = tl.scrollHeight;
+}
+
+function markLastDone() {
+  const steps = document.querySelectorAll('.tl-step.running');
+  steps.forEach(s => { s.classList.remove('running'); s.classList.add('done'); });
+}
+
+function finishRun() {
+  simRunning = false;
+  const btn = document.getElementById('run-btn');
+  btn.disabled = false;
+  btn.textContent = '运行一轮模拟交易';
+  loadDashboard(); // 刷新底部数据
+}
+
+// ═══════════════════════════════════════
+//  KILL SWITCH
+// ═══════════════════════════════════════
+async function killSwitch() {
+  if (!confirm('确认触发 Kill Switch？将停止所有模拟交易。')) return;
+  try {
+    const res = await fetch(`${API}/kill`, { method: 'POST' });
+    if (res.ok) {
+      addAlert('err', 'Kill Switch 已触发，所有交易已停止');
+    } else {
+      addAlert('warn', 'Kill Switch 端点未实现 (mock)');
+    }
+  } catch (e) {
+    addAlert('warn', 'Kill Switch 请求失败 (后端未就绪)');
+  }
+}
+
+// ═══════════════════════════════════════
+//  异常提示
+// ═══════════════════════════════════════
+function addAlert(level, msg) {
+  const area = document.getElementById('alerts-area');
+  const div = document.createElement('div');
+  div.className = 'alert-item ' + level;
+  div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  area.prepend(div);
+  // 保留最多 10 条
+  while (area.children.length > 10) area.lastChild.remove();
+}
+
+// ═══════════════════════════════════════
+//  手动添加股票
+// ═══════════════════════════════════════
+document.getElementById('cfg-add-stock').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const val = e.target.value.trim();
+  if (!val) return;
+  const wl = document.getElementById('cfg-watchlist');
+  const current = wl.value.split(',').map(s => s.trim()).filter(Boolean);
+  if (!current.includes(val)) {
+    current.push(val);
+    wl.value = current.join(',');
+  }
+  e.target.value = '';
+});
+
+// ═══════════════════════════════════════
+//  启动
+// ═══════════════════════════════════════
+loadDashboard();
+setInterval(loadDashboard, 30000);
+</script>
+</body>
+</html>
