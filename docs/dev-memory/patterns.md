@@ -1,5 +1,45 @@
 # 项目模式
 
+## LLM 客户端调用模式
+
+```python
+# 从 Settings 初始化，自动读取 .env
+client = LLMClient()       # provider/api_key/model/base_url 全从 settings 来
+raw = client.generate(prompt)  # mock 或真实，失败降级，永远不抛异常
+decision = parse_decision_output(raw)  # HOLD/confidence=0 作为失败兜底
+```
+
+规则：`LLMClient` 不接受手动参数，必须从 `Settings` 读取，确保 `.env` 是唯一配置入口。
+
+---
+
+## 行情数据提供者模式
+
+```python
+provider = AkshareProvider()
+if provider.is_available():          # 探针：检查 import akshare
+    snap = provider.get_realtime_quote("600519.SH")
+    hist = provider.get_history("600519.SH", start, end)
+```
+
+规则：`ProviderChain` 内按顺序尝试多个 provider，全部失败返回 `None` / 空 DataFrame，不抛异常。
+
+---
+
+## 服务部署完整依赖清单（AWS py311 环境）
+
+每次在新服务器上部署必须安装：
+
+```bash
+~/miniconda3/envs/py311/bin/pip install psycopg[binary] httpx akshare
+# 然后
+~/miniconda3/envs/py311/bin/pip install -e .
+```
+
+顺序：先手动装驱动层（psycopg3、httpx），再装项目包。
+
+---
+
 ## 远程服务器管理
 
 ### SSH连接模式

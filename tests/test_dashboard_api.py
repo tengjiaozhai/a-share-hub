@@ -3,6 +3,21 @@ from datetime import datetime, timedelta
 from fastapi.testclient import TestClient
 
 
+class FakeLLM:
+    model = "deepseek-v4-pro"
+
+    def generate(self, prompt: str, temperature: float = 0.7) -> str:
+        symbol = "600519.SH"
+        if "000858.SZ" in prompt:
+            symbol = "000858.SZ"
+        elif "601318.SH" in prompt:
+            symbol = "601318.SH"
+        return (
+            f'{{"symbol":"{symbol}","action":"BUY","confidence":80,'
+            f'"target_position_ratio":0.1,"reason":"real-mode"}}'
+        )
+
+
 def seed_dashboard_records(store):
     decision_run_id = store.insert_decision_run(
         symbol="600519.SH",
@@ -85,7 +100,11 @@ def test_workbench_payload_has_stable_contract(test_app, pg_store):
     assert {"symbol", "action", "quantity", "limit_price", "status", "created_at"}.issubset(order.keys())
 
 
-def test_run_endpoint_returns_full_workbench_payload(test_app):
+def test_run_endpoint_returns_full_workbench_payload(test_app, monkeypatch):
+    from src.api import routes_dashboard
+
+    monkeypatch.setattr(routes_dashboard, "_get_llm", lambda: FakeLLM())
+
     client = TestClient(test_app)
 
     response = client.post(
@@ -109,6 +128,30 @@ def test_run_endpoint_returns_full_workbench_payload(test_app):
         payload["history"]["orders"][0].keys()
     )
     assert payload["history"]["decisions"][0]["action"] in {"BUY", "SELL", "HOLD"}
+
+
+def test_workbench_refresh_preserves_real_decision_mode(test_app, monkeypatch):
+    from src.api import routes_dashboard
+
+    monkeypatch.setattr(routes_dashboard, "_get_llm", lambda: FakeLLM())
+
+    client = TestClient(test_app)
+    response = client.post(
+        "/api/v1/dashboard/run",
+        json={
+            "capital_base": 1_000_000,
+            "watchlist": ["600519.SH", "000858.SZ", "601318.SH"],
+            "max_position_ratio": 0.2,
+            "execution_mode": "full",
+            "decision_mode": "real",
+        },
+    )
+    assert response.status_code == 200
+
+    refresh = client.get("/api/v1/dashboard/workbench")
+    payload = refresh.json()
+    assert refresh.status_code == 200
+    assert "模式: real" in payload["latest_run"]["steps"][0]["message"]
 
 
 def test_run_endpoint_contains_reconcile_stage_and_daily_pnl(test_app):

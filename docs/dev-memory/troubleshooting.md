@@ -1,5 +1,63 @@
 # 故障排除
 
+## AWS 服务器缺少 psycopg3 导致 workbench 接口 500
+
+**解决时间**: 2026-05-26  
+**问题**: `GET /api/v1/dashboard/workbench` 返回 `Internal Server Error`，日志 `No module named 'psycopg'`
+
+### 根本原因
+
+`DATABASE_URL` 使用 `postgresql+psycopg://`（psycopg3 方言），服务器只装了 `psycopg2-binary`。
+
+### 解决方案
+
+```bash
+~/miniconda3/envs/py311/bin/pip install psycopg[binary]
+```
+
+### 后续规则
+
+- 部署新服务器时必须同时安装 `psycopg[binary]`（psycopg3）。
+- `psycopg2-binary` 对应方言是 `postgresql+psycopg2://`，两者**不通用**。
+
+---
+
+## AWS 服务器旧进程缓存导致新代码不生效
+
+**解决时间**: 2026-05-26  
+**问题**: pip 安装新依赖后重启 uvicorn 仍然报 `ModuleNotFoundError`
+
+### 根本原因
+
+`killall python3` 只杀了部分进程，旧 uvicorn 子进程仍在运行，使用旧的进程内存。
+
+### 可靠重启命令
+
+```bash
+ps aux | grep python | grep -v grep | awk '{print $2}' | xargs kill -9
+sleep 3
+nohup ~/miniconda3/envs/py311/bin/python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 > /tmp/uvicorn.log 2>&1 &
+```
+
+---
+
+## AWS 服务器缺少 httpx 导致 llm_client 导入失败
+
+**解决时间**: 2026-05-26  
+**问题**: uvicorn 启动失败，日志 `No module named 'httpx'`
+
+### 解决方案
+
+```bash
+~/miniconda3/envs/py311/bin/pip install httpx
+```
+
+### 后续规则
+
+`pyproject.toml` 的 `dependencies` 需显式列出 `httpx`，避免环境遗漏。
+
+---
+
 ## SSH连接被拒绝
 
 **解决时间**: 2026-05-23  

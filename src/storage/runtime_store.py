@@ -1,6 +1,19 @@
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+_CST = timezone(timedelta(hours=8))
+
+
+def _to_cst(dt: datetime) -> datetime:
+    """将无时区的 UTC datetime 转为 CST（UTC+8）。"""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(_CST)
+
+
+def _cst_iso(dt: datetime) -> str:
+    return _to_cst(dt).isoformat()
 
 from sqlalchemy import func, select
 
@@ -48,7 +61,7 @@ class RuntimeStore:
                     "action": row.action,
                     "target_value": row.target_value,
                     "reason": row.reason,
-                    "created_at": row.created_at.isoformat(),
+                    "created_at": _cst_iso(row.created_at),
                 }
                 for row in rows
             ]
@@ -156,10 +169,21 @@ class RuntimeStore:
                     "confidence": row.confidence,
                     "target_position_ratio": row.target_position_ratio,
                     "reason": row.reason,
-                    "created_at": row.created_at.isoformat(),
+                    "input_snapshot": self._get_decision_input_snapshot(conn, row.decision_run_id),
+                    "created_at": _cst_iso(row.created_at),
                 }
                 for row in rows
             ]
+
+    def _get_decision_input_snapshot(self, conn, decision_run_id: str) -> dict:
+        snapshot_row = conn.execute(
+            select(DecisionInputSnapshotRow.payload_json).where(
+                DecisionInputSnapshotRow.decision_run_id == decision_run_id
+            )
+        ).one_or_none()
+        if snapshot_row is None:
+            return {}
+        return json.loads(snapshot_row[0])
 
     def insert_target_position(
         self,
@@ -205,8 +229,8 @@ class RuntimeStore:
                     "target_value": row.target_value,
                     "target_position_ratio": row.target_position_ratio,
                     "status": row.status,
-                    "expires_at": row.expires_at.isoformat(),
-                    "created_at": row.created_at.isoformat(),
+                    "expires_at": _cst_iso(row.expires_at),
+                    "created_at": _cst_iso(row.created_at),
                 }
                 for row in rows
             ]
@@ -282,8 +306,8 @@ class RuntimeStore:
                     "quantity": row.quantity,
                     "limit_price": row.limit_price,
                     "status": row.status,
-                    "broker_order_id": row.broker_order_id,
-                    "created_at": row.created_at.isoformat(),
+                     "broker_order_id": row.broker_order_id,
+                     "created_at": _cst_iso(row.created_at),
                 }
                 for row in rows
             ]
@@ -299,8 +323,8 @@ class RuntimeStore:
                     "event_id": row.event_id,
                     "order_id": row.order_id,
                     "event_type": row.event_type,
-                    "payload": json.loads(row.payload_json),
-                    "created_at": row.created_at.isoformat(),
+                     "payload": json.loads(row.payload_json),
+                     "created_at": _cst_iso(row.created_at),
                 }
                 for row in rows
             ]
@@ -315,8 +339,8 @@ class RuntimeStore:
                 {
                     "kill_switch_event_id": row.kill_switch_event_id,
                     "active": row.active,
-                    "reason": row.reason,
-                    "created_at": row.created_at.isoformat(),
+                     "reason": row.reason,
+                     "created_at": _cst_iso(row.created_at),
                 }
                 for row in rows
             ]
@@ -337,11 +361,15 @@ class RuntimeStore:
 
     def sum_daily_pnl(self, trade_date: str | None = None) -> float:
         if trade_date:
-            day_start = datetime.fromisoformat(trade_date)
+            # 调用方传入的日期字符串按 CST 日边界解释
+            cst_today = datetime.fromisoformat(trade_date).replace(tzinfo=_CST)
         else:
-            now = datetime.utcnow()
-            day_start = datetime(year=now.year, month=now.month, day=now.day)
-        day_end = day_start + timedelta(days=1)
+            cst_today = datetime.now(_CST)
+        # CST 当天 00:00:00 ~ 次日 00:00:00，转回 UTC 与数据库比较
+        day_start_cst = cst_today.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end_cst = day_start_cst + timedelta(days=1)
+        day_start = day_start_cst.astimezone(timezone.utc).replace(tzinfo=None)
+        day_end = day_end_cst.astimezone(timezone.utc).replace(tzinfo=None)
 
         with self.engine.begin() as conn:
             rows = conn.execute(

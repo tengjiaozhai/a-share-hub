@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     # LLM
     llm_provider: str = "deepseek"
     llm_api_key: str = ""
-    llm_model: str = "DeepSeek-V4-Pro"
+    llm_model: str = "deepseek-v4-pro"
     llm_base_url: str = "https://api.deepseek.com"
 
     # 行情数据源

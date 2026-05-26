@@ -9,11 +9,15 @@ from src.core.config import Settings
 logger = logging.getLogger(__name__)
 
 
+def _normalize_model_name(model_name: str) -> str:
+    return model_name.strip().lower()
+
+
 class LLMClient:
     def __init__(self, settings: Optional[Settings] = None) -> None:
         s = settings or Settings()
         self.provider = s.llm_provider
-        self.model = s.llm_model
+        self.model = _normalize_model_name(s.llm_model)
         self.api_key = s.llm_api_key
         self.base_url = s.llm_base_url.rstrip("/")
 
@@ -30,6 +34,12 @@ class LLMClient:
             }, ensure_ascii=False)
 
         try:
+            system_prompt = (
+                "你是一个A股量化交易助手。请只输出合法json，不要输出多余解释。"
+                "返回字段必须包含 symbol, action, confidence, target_position_ratio, reason。"
+                "示例json: {\"symbol\":\"600519.SH\",\"action\":\"BUY\",\"confidence\":80,"
+                "\"target_position_ratio\":0.1,\"reason\":\"示例理由\"}"
+            )
             with httpx.Client(timeout=30.0) as client:
                 resp = client.post(
                     f"{self.base_url}/chat/completions",
@@ -39,8 +49,12 @@ class LLMClient:
                     },
                     json={
                         "model": self.model,
-                        "messages": [{"role": "user", "content": prompt}],
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt},
+                        ],
                         "temperature": temperature,
+                        "max_tokens": 512,
                         "response_format": {"type": "json_object"},
                     },
                 )

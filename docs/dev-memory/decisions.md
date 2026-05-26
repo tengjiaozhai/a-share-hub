@@ -1,5 +1,41 @@
 # 技术决策
 
+## LLM 接入方式
+
+**决策日期**: 2026-05-26  
+**状态**: 已确认
+
+- `LLM_PROVIDER=mock` 或 `LLM_API_KEY` 为空时走 mock，否则调用真实接口。
+- 真实调用使用 `httpx` 同步客户端，超时 30s，失败自动降级为 mock 输出（`action=HOLD, confidence=0`）。
+- prompt 要求返回 JSON object，走 `response_format={"type":"json_object"}`，由 `parse_decision_output` 解析。
+- 当前接入 DeepSeek，模型名称从 `settings.llm_model` 读取（`.env` 中配置）。
+
+---
+
+## 行情数据源接入方式
+
+**决策日期**: 2026-05-26  
+**状态**: 已确认
+
+- 默认 `MARKET_DATA_PROVIDER=mock`，可切换为 `akshare`。
+- `AkshareProvider` 在 `src/data/providers/akshare_provider.py`，实现 `DataProvider` 接口。
+- 探针方式：`is_available()` 检查 `import akshare` 是否成功，无 token 依赖。
+- 股票代码格式：`600519.SH`（上交所）/ `000001.SZ`（深交所），`_split()` 函数负责拆分。
+
+---
+
+## 服务探针规则
+
+**决策日期**: 2026-05-26  
+**状态**: 已确认
+
+`GET /api/v1/dashboard/workbench` 的 `services` 字段规则：
+- `database`: 始终 `ok`（数据库连通才能响应请求）。
+- `llm`: `api_key` 已配置 → `ok`；provider=mock → `ok`；否则 `unknown`。不在探针里消耗 token。
+- `market`: `akshare` 可导入 → `ok`；provider=mock → `ok`；否则 `error`。
+
+---
+
 ## 服务器配置要求
 
 **决策日期**: 2026-05-23  
