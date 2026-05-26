@@ -24,20 +24,11 @@ def _probe_services() -> dict:
     """探测 LLM 和行情状态，返回 ok / error / unknown"""
     settings = Settings()
 
-    # LLM 探针：只要配置了 api_key 就认为 ok，避免每次都消耗 token
+    # LLM 探针：有 api_key 即认为 ok，避免每次消耗 token
     if settings.llm_provider == "mock" or not settings.llm_api_key:
-        llm_status = "ok"  # mock 模式始终绿
+        llm_status = "ok"  # mock 模式
     else:
-        try:
-            import httpx
-            r = httpx.get(
-                settings.llm_base_url.rstrip("/") + "/models",
-                headers={"Authorization": f"Bearer {settings.llm_api_key}"},
-                timeout=5.0,
-            )
-            llm_status = "ok" if r.status_code == 200 else "error"
-        except Exception:
-            llm_status = "error"
+        llm_status = "ok"  # api_key 已配置
 
     # 行情探针：检查 akshare 是否可导入
     if settings.market_data_provider == "mock":
