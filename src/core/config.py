@@ -40,3 +40,9 @@ class Settings(BaseSettings):
     aws_host: str = "127.0.0.1"
     aws_ssh_user: str = "ec2-user"
     aws_ssh_key_path: Path = Field(default=Path("/path/to/key.pem"))
+
+    # 策略配置
+    strategy_top_n: int = 10
+    strategy_max_position_ratio: float = 0.2
+    strategy_buy_score_threshold: float = 0.55
+    strategy_sell_score_threshold: float = -0.20

@@ -6,6 +6,7 @@ import sys
 from fastapi import FastAPI
 
 from src.agents.llm_client import LLMClient
+from src.core.config import Settings
 from src.decision.decision_runner import build_decision_run_record
 from src.decision.input_builder import build_decision_input_snapshot
 from src.api.routes_broker_events import router as broker_events_router
@@ -26,7 +27,7 @@ def run_decide_command(symbols: list[str], mock_llm: bool, store=None) -> dict:
     if runtime_store.get_kill_switch():
         return {"status": "blocked", "reason": "kill switch enabled", "decision_run_ids": [], "target_position_ids": []}
 
-    client = LLMClient(provider="mock")
+    client = LLMClient(Settings(llm_provider="mock", llm_api_key="")) if mock_llm else LLMClient()
     decision_run_ids: list[str] = []
     target_position_ids: list[str] = []
 
@@ -124,6 +125,16 @@ def build_cli_parser() -> argparse.ArgumentParser:
     p_halt.add_argument("--reason", required=True, help="停机原因")
     p_halt.add_argument("--resume", action="store_true", help="恢复运行")
 
+    # backtest
+    p_backtest = subparsers.add_parser("backtest", help="运行日频回测")
+    p_backtest.add_argument("--symbols", nargs="+", required=True, help="股票代码列表")
+    p_backtest.add_argument("--start", required=True, help="开始日期 YYYY-MM-DD")
+    p_backtest.add_argument("--end", required=True, help="结束日期 YYYY-MM-DD")
+
+    # evaluate-shadow
+    p_eval = subparsers.add_parser("evaluate-shadow", help="运行长期 shadow 评估")
+    p_eval.add_argument("--window", choices=["1m", "3m", "1y"], required=True, help="评估窗口")
+
     # serve
     subparsers.add_parser("serve", help="启动API服务")
 
@@ -150,6 +161,14 @@ def dispatch_command(args: argparse.Namespace) -> None:
         summary = run_halt_command(args.reason, args.resume)
         state = "resumed" if summary["active"] is False else "halted"
         print(f"halt: {state}, reason={summary['reason']}")
+    elif args.command == "backtest":
+        print(f"backtest: symbols={args.symbols} start={args.start} end={args.end}")
+    elif args.command == "evaluate-shadow":
+        from src.evaluation.long_run import run_long_horizon_evaluation
+        store = get_runtime_store()
+        result = run_long_horizon_evaluation(store=store, window=args.window, mode="shadow")
+        import json
+        print(json.dumps(result, ensure_ascii=False, indent=2))
     elif args.command == "serve" or args.command is None:
         import uvicorn
         app = build_app()

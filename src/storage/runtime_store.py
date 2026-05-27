@@ -18,6 +18,7 @@ def _cst_iso(dt: datetime) -> str:
 from sqlalchemy import func, select
 
 from src.storage.models import (
+    AccountSnapshotRow,
     BrokerEventRow,
     DecisionInputSnapshotRow,
     DecisionRunRow,
@@ -406,3 +407,31 @@ class RuntimeStore:
                 conn.execute(KillSwitchRow.__table__.insert().values(id=1, active=active))
             else:
                 conn.execute(KillSwitchRow.__table__.update().where(KillSwitchRow.id == 1).values(active=active))
+
+    def insert_account_snapshot(self, cash: float, nav: float, positions: dict) -> str:
+        snapshot_id = f"acct-{uuid.uuid4().hex[:12]}"
+        with self.engine.begin() as conn:
+            conn.execute(
+                AccountSnapshotRow.__table__.insert().values(
+                    snapshot_id=snapshot_id,
+                    cash=cash,
+                    nav=nav,
+                    positions_json=json.dumps(positions, ensure_ascii=True),
+                )
+            )
+        return snapshot_id
+
+    def get_latest_account_snapshot(self) -> dict | None:
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                select(AccountSnapshotRow).order_by(AccountSnapshotRow.created_at.desc()).limit(1)
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "snapshot_id": row.snapshot_id,
+            "cash": row.cash,
+            "nav": row.nav,
+            "positions": json.loads(row.positions_json),
+            "created_at": row.created_at.isoformat(),
+        }

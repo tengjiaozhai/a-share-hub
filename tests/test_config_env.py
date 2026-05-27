@@ -21,3 +21,13 @@ def test_settings_uses_explicit_ssh_keys_not_ambiguous_password(monkeypatch):
     assert settings.aws_host == "10.0.0.1"
     assert settings.aws_ssh_user == "ec2-user"
     assert settings.aws_ssh_key_path == Path("/tmp/key.pem")
+
+
+def test_settings_exposes_strategy_defaults(monkeypatch):
+    monkeypatch.setenv("STRATEGY_TOP_N", "10")
+    monkeypatch.setenv("STRATEGY_MAX_POSITION_RATIO", "0.2")
+
+    settings = Settings()
+
+    assert settings.strategy_top_n == 10
+    assert settings.strategy_max_position_ratio == 0.2

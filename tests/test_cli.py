@@ -97,3 +97,13 @@ def test_run_halt_command_can_resume(runtime_store):
     assert summary["status"] == "ok"
     assert summary["active"] is False
     assert runtime_store.get_kill_switch() is False
+
+
+def test_run_decide_command_uses_mock_settings_without_constructor_kwargs(runtime_store, monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "deepseek")
+    monkeypatch.setenv("LLM_API_KEY", "fake-key")
+
+    summary = run_decide_command(symbols=["600519.SH"], mock_llm=True, store=runtime_store)
+
+    assert summary["status"] == "ok"
+    assert len(summary["decision_run_ids"]) == 1

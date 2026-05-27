@@ -20,8 +20,8 @@ def test_snapshot_cache_returns_matching_row_without_refetch():
 
     cache = SpotSnapshotCache(ttl_seconds=10, failure_threshold=3, open_seconds=30)
 
-    first = cache.get_row("000858", fetcher)
-    second = cache.get_row("000858", fetcher)
+    first = cache.get_row("000858", fetcher, code_col="代码")
+    second = cache.get_row("000858", fetcher, code_col="代码")
 
     assert first["代码"] == "000858"
     assert second["代码"] == "000858"

@@ -107,3 +107,13 @@ class KillSwitchEventRow(Base):
     active: Mapped[bool] = mapped_column(Boolean, nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AccountSnapshotRow(Base):
+    __tablename__ = "account_snapshots"
+
+    snapshot_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    cash: Mapped[float] = mapped_column(Float, nullable=False)
+    nav: Mapped[float] = mapped_column(Float, nullable=False)
+    positions_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
