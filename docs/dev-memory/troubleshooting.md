@@ -216,3 +216,63 @@ pkill -f uvicorn
 cd /home/ec2-user/a-share-hub
 nohup ~/miniconda3/envs/py311/bin/python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 > /tmp/uvicorn.log 2>&1 &
 ```
+
+---
+
+## 行情数据源被三重封锁（2026-05-27）
+
+**解决时间**: 2026-05-27  
+**问题**: `GET /api/v1/market/quote?symbol=600519.SH` 返回 503，行情接口全部不可用
+
+### 根本原因
+
+三层封锁都不同：
+
+| 源 | 问题 | 根因 |
+|----|------|------|
+| 东方财富 `push2.eastmoney.com` | HTTP 503 RemoteDisconnected | 代理规则拦截（REJECT,*.eastmoney.com） |
+| 东方财富 `push2his.eastmoney.com` | HTTP 503 同上 | 同上（整个 eastmoney 族被封） |
+| 新浪 `stock_zh_a_spot()` | JSON 解析失败 "Can not decode value starting with '<'" | 反爬虫返回 HTML（UA 检测 + IP 限制） |
+
+### 为什么被封
+
+**代理拦截东方财富原因**：
+- 防爬虫：东方财富被大量量化框架滥用
+- 防带宽：`push2.eastmoney.com` 是推送接口，易产生突发流量
+- 防出口检测：代理为保护自身出口，拦截已知高风险域名
+
+**新浪反爬原因**：
+- 免费数据流量大：所有开源量化框架都用新浪
+- 无差别反爬：检测到非浏览器 UA（akshare 库没设置 User-Agent）
+- IP 段限制：同一 IP 短时间内多次请求直接返回反爬页
+
+**腾讯为什么不被封**：
+- 轻量级指标：非全量实时行情，请求量天然少
+- 无 UA 检测：直接返回原始数据，不做 HTML 包装
+- 容量大：腾讯讯号推送基础设施成熟
+
+### 解决方案
+
+**改用腾讯接口**（已实施）
+
+```python
+# src/data/providers/akshare_provider.py
+def _fetch_tencent_quotes(symbols: list[str]) -> pd.DataFrame:
+    """批量拉腾讯行情，symbols 格式 ['600519.SH', '000858.SZ']"""
+    # https://qt.gtimg.cn/q=sh600519,sz000858
+    # 返回: v_sh600519="...", v_sz000858="..."
+    # 字段 ~ 分隔，稳定可靠
+```
+
+### 后续预防
+
+1. **监控腾讯可用性**：定期 probe `/api/v1/market/quote`，若全部 503 则告警
+2. **备选方案**：本地 CSV + 腾讯历史 K 线接口（需单独调研）
+3. **付费方案**：Wind 或 Bloomberg 行情 API（若免费方案都被封）
+
+### 学到的教训
+
+- 不能依赖单一行情源，互联网环境反爬越来越严
+- 代理软件拦截规则会定期更新，需主动检测
+- 新浪虽然开放但反爬强度高，不适合量化系统长期使用
+- 腾讯讯号推送接口轻量可靠，但字段解析需自研

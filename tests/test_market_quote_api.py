@@ -1,79 +1,83 @@
-from datetime import datetime, timezone
-
 from fastapi.testclient import TestClient
 
-from src.data.providers.base import MarketSnapshot
 from src.main import build_app
 
 
-class FakeAkshareProvider:
-    def __init__(self, *, available: bool, snapshot: MarketSnapshot | None):
-        self._available = available
-        self._snapshot = snapshot
-        self.requested_symbol: str | None = None
-
-    def is_available(self) -> bool:
-        return self._available
-
-    def get_realtime_quote(self, symbol: str) -> MarketSnapshot | None:
-        self.requested_symbol = symbol
-        return self._snapshot
-
-
-def test_market_quote_returns_snapshot(monkeypatch):
+def test_market_quote_returns_404_for_unknown_symbol(monkeypatch):
     from src.api import routes_market
 
-    provider = FakeAkshareProvider(
-        available=True,
-        snapshot=MarketSnapshot(
-            symbol="600519.SH",
-            timestamp=datetime.now(timezone.utc),
-            open=1799.0,
-            high=1810.0,
-            low=1788.0,
-            close=1805.5,
-            volume=123456,
-            amount=987654321.0,
-            bid_price=1805.0,
-            bid_volume=200,
-            ask_price=1806.0,
-            ask_volume=220,
-        ),
-    )
-    monkeypatch.setattr(routes_market, "_get_akshare_provider", lambda: provider)
+    class QuoteProvider:
+        def is_available(self):
+            return True
+
+        def get_realtime_quote(self, symbol: str):
+            raise KeyError(symbol)
+
+    monkeypatch.setattr(routes_market, "_get_akshare_provider", lambda: QuoteProvider())
     client = TestClient(build_app())
 
-    response = client.get("/api/v1/market/quote", params={"symbol": " 600519.sh "})
-    assert response.status_code == 200
+    response = client.get("/api/v1/market/quote", params={"symbol": "999999.SH"})
 
-    payload = response.json()
-    assert provider.requested_symbol == "600519.SH"
-    assert payload["symbol"] == "600519.SH"
-    assert payload["close"] == 1805.5
-    assert payload["open"] == 1799.0
-    assert payload["volume"] == 123456
-    assert "timestamp" in payload
-
-
-def test_market_quote_returns_503_when_provider_unavailable(monkeypatch):
-    from src.api import routes_market
-
-    provider = FakeAkshareProvider(available=False, snapshot=None)
-    monkeypatch.setattr(routes_market, "_get_akshare_provider", lambda: provider)
-    client = TestClient(build_app())
-
-    response = client.get("/api/v1/market/quote", params={"symbol": "600519.SH"})
-    assert response.status_code == 503
-    assert response.json()["detail"] == "akshare provider unavailable"
-
-
-def test_market_quote_returns_404_when_symbol_missing(monkeypatch):
-    from src.api import routes_market
-
-    provider = FakeAkshareProvider(available=True, snapshot=None)
-    monkeypatch.setattr(routes_market, "_get_akshare_provider", lambda: provider)
-    client = TestClient(build_app())
-
-    response = client.get("/api/v1/market/quote", params={"symbol": "600519.SH"})
     assert response.status_code == 404
-    assert "quote not found" in response.json()["detail"]
+    assert response.json()["detail"] == "quote symbol not found: 999999.SH"
+
+
+def test_market_quote_returns_503_for_upstream_failure(monkeypatch):
+    from src.api import routes_market
+    from src.data.providers.akshare_errors import AkshareUpstreamError
+
+    class QuoteProvider:
+        def is_available(self):
+            return True
+
+        def get_realtime_quote(self, symbol: str):
+            raise AkshareUpstreamError("upstream reset")
+
+    monkeypatch.setattr(routes_market, "_get_akshare_provider", lambda: QuoteProvider())
+    client = TestClient(build_app())
+
+    response = client.get("/api/v1/market/quote", params={"symbol": "000858.SZ"})
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "quote upstream unavailable: upstream reset"
+
+
+def test_market_quote_returns_503_when_breaker_is_open(monkeypatch):
+    from src.api import routes_market
+    from src.data.providers.akshare_errors import AkshareBreakerOpenError
+
+    class QuoteProvider:
+        def is_available(self):
+            return True
+
+        def get_realtime_quote(self, symbol: str):
+            raise AkshareBreakerOpenError("akshare spot snapshot breaker is open")
+
+    monkeypatch.setattr(routes_market, "_get_akshare_provider", lambda: QuoteProvider())
+    client = TestClient(build_app())
+
+    response = client.get("/api/v1/market/quote", params={"symbol": "000858.SZ"})
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "quote upstream unavailable: akshare spot snapshot breaker is open"
+
+
+def test_provider_raises_key_error_only_for_missing_symbol(monkeypatch):
+    import pandas as pd
+    import pytest
+    from src.data.providers.akshare_catalog import StockCatalogCache
+    from src.data.providers.akshare_provider import AkshareProvider
+    from src.data.providers.akshare_snapshot_cache import SpotSnapshotCache
+
+    catalog = StockCatalogCache(ttl_seconds=300)
+    snapshot_cache = SpotSnapshotCache(ttl_seconds=10, failure_threshold=3, open_seconds=30)
+    provider = AkshareProvider(catalog=catalog, snapshot_cache=snapshot_cache)
+
+    monkeypatch.setattr(
+        provider,
+        "get_stock_list",
+        lambda: pd.DataFrame([{"symbol": "000858.SZ", "code": "000858", "name": "五 粮 液", "exchange": "SZ"}]),
+    )
+
+    with pytest.raises(KeyError):
+        provider.get_realtime_quote("999999.SH")

@@ -424,3 +424,17 @@
 ---
 
 **祝您使用愉快！如有问题，请随时咨询。**
+
+## 行情接口
+
+- `GET /api/v1/market/stocks?query=五粮&exchange=SZ&limit=20`
+  - 返回字段：`symbol`、`code`、`name`、`exchange`
+- `GET /api/v1/market/quote?symbol=000858.SZ`
+  - 返回字段：`symbol`、`timestamp`、`open`、`high`、`low`、`close`、`volume`、`amount`
+
+## 错误语义
+
+- `404 quote symbol not found: 999999.SH`
+  - 说明 symbol 不在 AkShare 股票池内
+- `503 quote upstream unavailable: ...`
+  - 说明股票池存在该 symbol，但实时行情上游暂时不可用或熔断已打开

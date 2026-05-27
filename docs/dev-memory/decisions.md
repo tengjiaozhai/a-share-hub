@@ -252,3 +252,92 @@ EXECUTION_MODE=shadow      # 影子模式
 - 测试系统没有bug
 - 建立信任后再用真钱
 - 符合监管要求（程序化交易先报告、后交易）
+
+---
+
+## 行情数据源最终决策（2026-05-27 更新）
+
+**决策日期**: 2026-05-27  
+**状态**: 已确认  
+**优先级**: 高（影响系统可用性）
+
+### 技术决策
+
+**行情数据源方案：腾讯 `qt.gtimg.cn` 作为主力方案**
+
+- **库**：akshare (open-source)
+- **接口**：`stock_zh_a_spot()` 走新浪，已弃用；改用自研 `_fetch_tencent_quotes()` 直接调腾讯原生接口
+- **域名**：`https://qt.gtimg.cn/q=<symbol_list>`
+- **返回格式**：`v_sh600519="..."` 格式（`~` 分隔字段）
+- **缓存策略**：每个 code 独立 `SpotSnapshotCache` 实例，TTL 900s（15分钟）
+- **轮询周期**：前端 `dashboard.html` 改为 15 分钟轮询一次
+
+### 为什么选腾讯而非东方财富/新浪
+
+| 源 | 拦截原因 | 状态 |
+|----|---------|------|
+| 东方财富 `push2.eastmoney.com` | 代理规则拦截（反爬 + 防滥用） | ❌ 不可用 |
+| 东方财富 `push2his.eastmoney.com` | 同上，整个 `*.eastmoney.com` 被封 | ❌ 不可用 |
+| 新浪 `sina.com` | 反爬虫（UA 检测 + IP 限制） | ❌ 不可用 |
+| 腾讯 `qt.gtimg.cn` | 轻量指标、容量大、无 UA 检测 | ✅ 可用 |
+
+### 技术细节
+
+**字段映射**（腾讯返回的 `~` 分隔值）
+```
+[3]  = 最新价（close）
+[4]  = 昨收（prev_close）
+[5]  = 今开（open）
+[6]  = 成交量（volume）
+[33] = 最高（high）
+[34] = 最低（low）
+[37] = 成交额（amount）
+```
+
+**代码格式规范化**
+```
+腾讯 code: "sh600519" / "sz000858" / "bj920001"
+标准 code: "600519" / "000858" / "920001"
+symbol 格式: "600519.SH" / "000858.SZ" / "920001.BJ"
+```
+
+### 文件变更
+
+- `src/data/providers/akshare_provider.py`：新增 `_fetch_tencent_quotes()` + 每 code 独立缓存
+- `src/api/dashboard.html`：轮询间隔 `30000/10000`ms → `900000`ms（15分钟）
+- `src/data/providers/akshare_snapshot_cache.py`：`get_row()` 支持 `code_col` 参数
+
+### 回滚计划
+
+若腾讯也被封：
+1. 改用本地 CSV 股票列表 + 腾讯历史 K 线（需单独接口）
+2. 引入 Playwright 浏览器自动化（模拟真实浏览）
+3. 使用付费行情 API（Wind、Bloomberg）
+
+---
+
+## 代码架构规范化（2026-05-27 新增）
+
+**决策日期**: 2026-05-27  
+**状态**: 已确认
+
+### AkshareProvider 的三层职责分离
+
+1. **Catalog 层**（`StockCatalogCache`）：股票列表维护 + 搜索
+   - TTL 缓存，减少重复查询
+   - 仅支持 `/api/v1/market/stocks?query=...` 路由
+
+2. **Snapshot 层**（`SpotSnapshotCache`）：行情快照 + 熔断
+   - 独立实例制（每 code 一个），防止缓存互踩
+   - 失败计数 + 熔断打开，避免级联故障
+
+3. **错误分级**（`routes_market.py`）
+   - `KeyError` → 404（symbol 不合法或不存在）
+   - `AkshareUpstreamError` / `AkshareBreakerOpenError` → 503（上游不可用）
+
+### 时区规范（已沉淀到 runtime_store.py）
+
+所有 `created_at`、`expires_at` 在序列化时统一转 CST（UTC+8）
+- 数据库里存的是 UTC 无时区时间
+- 序列化层用 `_cst_iso()` 转换 + `+08:00` 标记
+- 前端收到的全是 CST ISO 格式，无需转换
