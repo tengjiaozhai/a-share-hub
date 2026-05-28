@@ -180,6 +180,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .tab-pane table{width:100%;border-collapse:collapse}
 .tab-pane th,.tab-pane td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);font-size:12px}
 .tab-pane th{color:var(--dim);font-weight:500;text-transform:uppercase;font-size:11px;position:sticky;top:0;background:var(--surface)}
+/* ── PAGINATION ── */
+.pagination{display:flex;align-items:center;justify-content:center;gap:12px;padding:8px 0;font-size:12px}
+.pagination button{
+  padding:4px 12px;border:1px solid var(--border);border-radius:4px;
+  background:var(--bg);color:var(--muted);cursor:pointer;font-size:12px;transition:.15s;
+}
+.pagination button:hover:not(:disabled){color:var(--fg);border-color:var(--accent)}
+.pagination button:disabled{opacity:.35;cursor:not-allowed}
+.pagination .page-info{color:var(--dim);min-width:60px;text-align:center}
 
 /* ── BADGES ── */
 .badge{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;display:inline-block}
@@ -325,15 +334,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <div class="tab-content">
       <div class="tab-pane active" id="tab-decisions">
         <table><thead><tr><th>时间</th><th>股票</th><th>动作</th><th>置信度</th><th>理由</th></tr></thead><tbody id="tb-decisions"><tr><td colspan="5" style="color:var(--dim)">暂无数据</td></tr></tbody></table>
+        <div id="pag-decisions"></div>
       </div>
       <div class="tab-pane" id="tab-orders">
         <table><thead><tr><th>时间</th><th>股票</th><th>方向</th><th>数量</th><th>价格</th><th>状态</th></tr></thead><tbody id="tb-orders"><tr><td colspan="6" style="color:var(--dim)">暂无数据</td></tr></tbody></table>
+        <div id="pag-orders"></div>
       </div>
       <div class="tab-pane" id="tab-targets">
         <table><thead><tr><th>股票</th><th>目标数量</th><th>目标权重</th><th>理由</th></tr></thead><tbody id="tb-targets"><tr><td colspan="4" style="color:var(--dim)">暂无数据</td></tr></tbody></table>
+        <div id="pag-targets"></div>
       </div>
       <div class="tab-pane" id="tab-errors">
         <table><thead><tr><th>时间</th><th>级别</th><th>消息</th></tr></thead><tbody id="tb-errors"><tr><td colspan="3" style="color:var(--dim)">暂无异常</td></tr></tbody></table>
+        <div id="pag-errors"></div>
       </div>
     </div>
   </div>
@@ -369,6 +382,48 @@ let execMode = 'full';
 let simRunning = false;
 let killSwitchActive = false;
 let configHydrated = false;
+
+/* ── Pagination ── */
+const PAGE_SIZE = 20;
+const pag = {
+  decisions: { page: 0, data: [] },
+  orders:    { page: 0, data: [] },
+  targets:   { page: 0, data: [] },
+  errors:    { page: 0, data: [] },
+};
+
+function pagSlice(key) {
+  const p = pag[key];
+  const start = p.page * PAGE_SIZE;
+  return p.data.slice(start, start + PAGE_SIZE);
+}
+
+function pagTotal(key) {
+  return Math.max(1, Math.ceil(pag[key].data.length / PAGE_SIZE));
+}
+
+function pagPrev(key) {
+  if (pag[key].page > 0) { pag[key].page--; renderPagTab(key); }
+}
+
+function pagNext(key) {
+  if (pag[key].page < pagTotal(key) - 1) { pag[key].page++; renderPagTab(key); }
+}
+
+function renderPagControls(key) {
+  const total = pagTotal(key);
+  const cur = pag[key].page + 1;
+  return `<div class="pagination">
+    <button onclick="pagPrev('${key}')" ${cur <= 1 ? 'disabled' : ''}>◀ 上一页</button>
+    <span class="page-info">${cur} / ${total}</span>
+    <button onclick="pagNext('${key}')" ${cur >= total ? 'disabled' : ''}>下一页 ▶</button>
+  </div>`;
+}
+
+function renderPagTab(key) {
+  const renderers = { decisions: renderDecisions, orders: renderOrders, targets: renderTargets, errors: renderErrorEvents };
+  if (renderers[key]) renderers[key](pag[key].data);
+}
 
 function switchTab(btn, paneId) {
   btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
@@ -568,12 +623,16 @@ function renderConfig(config) {
 
 function renderDecisions(list) {
   const rows = toList(list);
+  pag.decisions.data = rows;
+  if (rows.length > PAGE_SIZE) pag.decisions.page = 0;
   const tb = document.getElementById('tb-decisions');
   if (!rows.length) {
     tb.innerHTML = '<tr><td colspan="5" style="color:var(--dim)">暂无数据</td></tr>';
+    document.getElementById('pag-decisions').innerHTML = '';
     return;
   }
-  tb.innerHTML = rows.map(item => {
+  const page = pagSlice('decisions');
+  tb.innerHTML = page.map(item => {
     const time = formatTime(pickFirst(item, ['created_at', 'timestamp']));
     const symbol = normalizeText(pickFirst(item, ['symbol', 'stock_code']));
     const action = normalizeText(pickFirst(item, ['action', 'parsed_action', 'signal'])).toUpperCase();
@@ -583,16 +642,21 @@ function renderDecisions(list) {
     const reason = normalizeText(reasonRaw, '--');
     return `<tr><td>${escapeHtml(time)}</td><td>${escapeHtml(symbol)}</td><td><span class="badge ${badge}">${escapeHtml(action)}</span></td><td>${escapeHtml(confidence)}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(reason)}">${escapeHtml(reason)}</td></tr>`;
   }).join('');
+  document.getElementById('pag-decisions').innerHTML = rows.length > PAGE_SIZE ? renderPagControls('decisions') : '';
 }
 
 function renderOrders(list) {
   const rows = toList(list);
+  pag.orders.data = rows;
+  if (rows.length > PAGE_SIZE) pag.orders.page = 0;
   const tb = document.getElementById('tb-orders');
   if (!rows.length) {
     tb.innerHTML = '<tr><td colspan="6" style="color:var(--dim)">暂无数据</td></tr>';
+    document.getElementById('pag-orders').innerHTML = '';
     return;
   }
-  tb.innerHTML = rows.map(item => {
+  const page = pagSlice('orders');
+  tb.innerHTML = page.map(item => {
     const time = formatTime(pickFirst(item, ['created_at', 'timestamp']));
     const symbol = normalizeText(pickFirst(item, ['symbol', 'stock_code']));
     const side = normalizeText(pickFirst(item, ['side', 'action', 'parsed_action'])).toUpperCase();
@@ -603,22 +667,28 @@ function renderOrders(list) {
     const statusBadge = status === 'FILLED' ? 'badge-filled' : status === 'PENDING' ? 'badge-pending' : status === 'ERROR' ? 'badge-error' : 'badge-hold';
     return `<tr><td>${escapeHtml(time)}</td><td>${escapeHtml(symbol)}</td><td><span class="badge ${badge}">${escapeHtml(side)}</span></td><td>${escapeHtml(quantity)}</td><td>${escapeHtml(price)}</td><td><span class="badge ${statusBadge}">${escapeHtml(status)}</span></td></tr>`;
   }).join('');
+  document.getElementById('pag-orders').innerHTML = rows.length > PAGE_SIZE ? renderPagControls('orders') : '';
 }
 
 function renderTargets(list) {
   const rows = toList(list);
+  pag.targets.data = rows;
+  if (rows.length > PAGE_SIZE) pag.targets.page = 0;
   const tb = document.getElementById('tb-targets');
   if (!rows.length) {
     tb.innerHTML = '<tr><td colspan="4" style="color:var(--dim)">暂无数据</td></tr>';
+    document.getElementById('pag-targets').innerHTML = '';
     return;
   }
-  tb.innerHTML = rows.map(item => {
+  const page = pagSlice('targets');
+  tb.innerHTML = page.map(item => {
     const symbol = normalizeText(pickFirst(item, ['symbol', 'stock_code']));
     const quantity = normalizeText(pickFirst(item, ['target_quantity', 'quantity', 'target_value']));
     const weight = formatPercent(pickFirst(item, ['target_weight', 'target_position_ratio'], null));
     const reason = normalizeText(pickFirst(item, ['reason', 'rationale'], '--'));
     return `<tr><td>${escapeHtml(symbol)}</td><td>${escapeHtml(quantity)}</td><td>${escapeHtml(weight)}</td><td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(reason)}">${escapeHtml(reason)}</td></tr>`;
   }).join('');
+  document.getElementById('pag-targets').innerHTML = rows.length > PAGE_SIZE ? renderPagControls('targets') : '';
 }
 
 function buildQuoteSymbols() {
@@ -698,17 +768,22 @@ function renderRisk(risk, targets) {
 
 function renderErrorEvents(events) {
   const rows = toList(events);
+  pag.errors.data = rows;
+  if (rows.length > PAGE_SIZE) pag.errors.page = 0;
   const tb = document.getElementById('tb-errors');
   if (!rows.length) {
     tb.innerHTML = '<tr><td colspan="3" style="color:var(--dim)">暂无异常</td></tr>';
+    document.getElementById('pag-errors').innerHTML = '';
     return;
   }
-  tb.innerHTML = rows.map(item => {
+  const page = pagSlice('errors');
+  tb.innerHTML = page.map(item => {
     const time = formatTime(pickFirst(item, ['created_at', 'timestamp', 'time']));
     const level = normalizeText(pickFirst(item, ['level', 'severity', 'event_type'])).toUpperCase();
     const message = normalizeText(pickFirst(item, ['message', 'summary', 'reason', 'payload']), '--');
     return `<tr><td>${escapeHtml(time)}</td><td>${escapeHtml(level)}</td><td>${escapeHtml(message)}</td></tr>`;
   }).join('');
+  document.getElementById('pag-errors').innerHTML = rows.length > PAGE_SIZE ? renderPagControls('errors') : '';
 }
 
 function renderAlerts(alerts) {
