@@ -19,9 +19,14 @@ _TX_IDX = {
     "prev_close": 4,
     "open": 5,
     "volume": 6,  # 成交量（手）
-    "amount": 37, # 成交额（元）
     "high": 33,
     "low": 34,
+    "amount": 37, # 成交额（万元）
+    "change_pct": 32,   # 涨跌幅 %
+    "turnover": 38,      # 换手率 %
+    "amplitude": 43,     # 振幅 %
+    "volume_ratio": 49,  # 量比
+    "pe_ratio": 39,      # 市盈率
 }
 
 _TX_EXCHANGE_MAP = {"SH": "sh", "SZ": "sz", "BJ": "bj"}
@@ -30,11 +35,11 @@ _KLINE_FREQ_MAP = {"daily": "day", "weekly": "week", "monthly": "month"}
 
 def _fetch_tencent_quotes(symbols: list[str]) -> pd.DataFrame:
     """批量拉腾讯行情，symbols 格式 ['600519.SH', '000858.SZ']。
-    
-    返回含 code/symbol/最新价/今开/最高/最低/成交量/成交额 列的 DataFrame。
+
+    返回含 symbol/name/close/prev_close/open/high/low/volume/amount/change_pct/turnover/amplitude/volume_ratio/pe_ratio 列的 DataFrame。
     """
     codes = []
-    symbol_map = {}  # tx_code -> normalized_symbol
+    symbol_map = {}
     for sym in symbols:
         parts = sym.split(".")
         if len(parts) != 2:
@@ -60,24 +65,42 @@ def _fetch_tencent_quotes(symbols: list[str]) -> pd.DataFrame:
         tx_code_part = line.split("=")[0].replace("v_", "").strip()
         value_part = line.split("=", 1)[1].strip().strip('"').strip("'")
         fields = value_part.split("~")
-        if len(fields) < 38:
+        if len(fields) < 50:
             continue
         sym = symbol_map.get(tx_code_part)
         if not sym:
             continue
-        code = sym.split(".")[0]
         rows.append({
-            "code": code,
             "symbol": sym,
-            "最新价": fields[_TX_IDX["close"]],
-            "今开": fields[_TX_IDX["open"]],
-            "最高": fields[_TX_IDX["high"]],
-            "最低": fields[_TX_IDX["low"]],
-            "成交量": fields[_TX_IDX["volume"]],
-            "成交额": fields[_TX_IDX["amount"]],
+            "name": fields[_TX_IDX["name"]],
+            "close": fields[_TX_IDX["close"]],
+            "prev_close": fields[_TX_IDX["prev_close"]],
+            "open": fields[_TX_IDX["open"]],
+            "high": fields[_TX_IDX["high"]],
+            "low": fields[_TX_IDX["low"]],
+            "volume": fields[_TX_IDX["volume"]],
+            "amount": fields[_TX_IDX["amount"]],
+            "change_pct": fields[_TX_IDX["change_pct"]],
+            "turnover": fields[_TX_IDX["turnover"]],
+            "amplitude": fields[_TX_IDX["amplitude"]],
+            "volume_ratio": fields[_TX_IDX["volume_ratio"]],
+            "pe_ratio": fields[_TX_IDX["pe_ratio"]],
         })
 
     return pd.DataFrame(rows)
+
+
+def _fetch_tencent_quotes_batch(symbols: list[str], batch_size: int = 200) -> pd.DataFrame:
+    """分批拉取腾讯行情，支持全市场扫描。"""
+    all_frames = []
+    for i in range(0, len(symbols), batch_size):
+        batch = symbols[i:i + batch_size]
+        df = _fetch_tencent_quotes(batch)
+        if not df.empty:
+            all_frames.append(df)
+    if not all_frames:
+        return pd.DataFrame()
+    return pd.concat(all_frames, ignore_index=True)
 
 
 def _fetch_tencent_kline(tx_code: str, start_date: str, end_date: str, freq: str = "day") -> pd.DataFrame:
@@ -129,14 +152,14 @@ def _fetch_tencent_kline(tx_code: str, start_date: str, end_date: str, freq: str
 
 
 def _build_catalog_frame() -> pd.DataFrame:
-    """从腾讯行情接口拉全市场行情，构造 code/name DataFrame 供 StockCatalogCache 使用。
-    
-    腾讯没有列表接口，用 infer_exchange 支持的代码范围推断，
-    实际 catalog 仅用于搜索，quote 路径不依赖它做校验。
-    """
-    # 返回空 DataFrame，catalog 暂不提供完整列表
-    # quote 路径直接走腾讯接口，靠返回空数据识别无效 symbol
-    return pd.DataFrame(columns=["code", "name"])
+    """从三大交易所官网获取全市场 A 股列表（不走东方财富）。"""
+    try:
+        import akshare as ak
+        df = ak.stock_info_a_code_name()
+        return df[["code", "name"]]
+    except Exception as e:
+        logger.warning(f"_build_catalog_frame 失败: {e}")
+        return pd.DataFrame(columns=["code", "name"])
 
 
 class AkshareProvider(DataProvider):
@@ -180,10 +203,10 @@ class AkshareProvider(DataProvider):
             lambda: _fetch_tencent_quotes([normalized]),
         )
 
-        last_price = _to_float(row.get("最新价"), 0.0) or 0.0
-        open_price = _to_float(row.get("今开"), last_price) or last_price
-        high_price = _to_float(row.get("最高"), last_price) or last_price
-        low_price = _to_float(row.get("最低"), last_price) or last_price
+        last_price = _to_float(row.get("close"), 0.0) or 0.0
+        open_price = _to_float(row.get("open"), last_price) or last_price
+        high_price = _to_float(row.get("high"), last_price) or last_price
+        low_price = _to_float(row.get("low"), last_price) or last_price
 
         return MarketSnapshot(
             symbol=normalized,
@@ -192,8 +215,8 @@ class AkshareProvider(DataProvider):
             high=high_price,
             low=low_price,
             close=last_price,
-            volume=_to_int(row.get("成交量"), 0) or 0,
-            amount=_to_float(row.get("成交额"), 0.0) or 0.0,
+            volume=_to_int(row.get("volume"), 0) or 0,
+            amount=_to_float(row.get("amount"), 0.0) or 0.0,
         )
 
     def get_history(self, symbol: str, start_date: datetime, end_date: datetime, freq: str = "daily") -> pd.DataFrame:

@@ -664,3 +664,27 @@ def run_backtest(config: dict) -> dict:
             "total_trades": total_trades,
         },
     }
+
+
+@router.post("/api/v1/dashboard/scan")
+def scan_stock_pool(config: dict | None = None) -> dict:
+    """全市场自动选股，返回 Top-N 及选股理由。"""
+    from src.data.providers.akshare_provider import _fetch_tencent_quotes_batch
+    from src.strategy.stock_scanner import scan_market
+
+    cfg = config or {}
+    top_n = int(cfg.get("top_n", 10))
+
+    provider = AkshareProvider()
+    stock_list_df = provider.get_stock_list()
+    stock_list = stock_list_df.to_dict("records")
+
+    if not stock_list:
+        return {"status": "no_catalog", "buy": [], "sell": [], "hold": [], "total_scanned": 0}
+
+    result = scan_market(
+        stock_list=stock_list,
+        fetch_quotes_fn=lambda syms: _fetch_tencent_quotes_batch(syms),
+        top_n=top_n,
+    )
+    return {"status": "ok", **result}

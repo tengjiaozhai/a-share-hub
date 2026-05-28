@@ -223,6 +223,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .factor-bar-value{width:60px;font-size:11px;color:var(--fg);text-align:right;flex-shrink:0}
 .factor-threshold{position:absolute;top:0;height:100%;width:2px;background:var(--yellow);z-index:1}
 
+/* ── STOCK SCANNER ── */
+.scan-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-lg);padding:12px;margin-bottom:12px}
+.scan-table{width:100%;border-collapse:collapse}
+.scan-table th{padding:6px 8px;text-align:left;font-size:11px;color:var(--dim);font-weight:500;text-transform:uppercase;border-bottom:1px solid var(--border)}
+.scan-table td{padding:6px 8px;font-size:12px;border-bottom:1px solid var(--border)}
+.scan-table tr:hover{background:rgba(96,165,250,.05)}
+.scan-badge{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
+.scan-badge.buy{background:rgba(34,197,94,.2);color:var(--green)}
+.scan-badge.sell{background:rgba(239,68,68,.2);color:var(--red)}
+.scan-badge.hold{background:rgba(148,163,184,.15);color:var(--muted)}
+.scan-section-title{font-size:12px;color:var(--muted);margin:10px 0 6px;font-weight:600}
+.scan-summary{font-size:11px;color:var(--dim);margin-bottom:8px}
+
 /* ── BADGES ── */
 .badge{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;display:inline-block}
 .badge-buy{background:rgba(34,197,94,.2);color:var(--green)}
@@ -329,8 +342,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <div id="bt-result" style="margin-top:8px;font-size:12px;color:var(--muted)"></div>
   </div>
 
-  <!-- ── CENTER: 本轮运行主视图 ── -->
+  <!-- ── CENTER: 今日选股 + 本轮运行主视图 ── -->
   <div class="panel-center">
+    <h2>今日选股</h2>
+    <div class="scan-card" id="scan-result">
+      <button class="run-btn" id="scan-btn" onclick="triggerScan()" style="margin-bottom:10px;font-size:12px;padding:8px 12px">全市场扫描</button>
+      <div id="scan-content" style="font-size:12px;color:var(--dim)">点击按钮开始全市场扫描</div>
+    </div>
+
     <h2>本轮运行</h2>
     <div class="timeline" id="timeline">
       <div class="timeline-empty" id="timeline-empty">
@@ -406,12 +425,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   <table class="market-table">
     <thead>
       <tr>
-        <th>时间</th><th>股票</th><th>最新价</th><th>今开</th>
-        <th>最高</th><th>最低</th><th>涨跌幅</th><th>成交量</th>
+        <th>股票</th><th>最新价</th><th>涨跌额</th><th>涨跌幅</th>
+        <th>今开</th><th>最高</th><th>最低</th>
+        <th>成交量</th><th>换手率</th><th>振幅</th><th>量比</th>
       </tr>
     </thead>
     <tbody id="tb-market-full">
-      <tr><td colspan="8" class="market-empty">暂无行情数据</td></tr>
+      <tr><td colspan="11" class="market-empty">暂无行情数据</td></tr>
     </tbody>
   </table>
 </div>
@@ -420,6 +440,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 const WORKBENCH_API = '/api/v1/dashboard/workbench';
 const RUN_API = '/api/v1/dashboard/run';
 const MARKET_QUOTE_API = '/api/v1/market/quote';
+const MARKET_BULK_API = '/api/v1/market/bulk';
 const KILL_SWITCH_STATUS_API = '/api/v1/kill-switch/status';
 const KILL_SWITCH_ACTIVATE_API = '/api/v1/kill-switch/activate';
 const KILL_SWITCH_DEACTIVATE_API = '/api/v1/kill-switch/deactivate';
@@ -750,27 +771,28 @@ function renderMarketQuotes(quotes) {
   if (!tb) return;
   const rows = toList(quotes);
   if (!rows.length) {
-    tb.innerHTML = '<tr><td colspan="8" class="market-empty">暂无行情数据</td></tr>';
+    tb.innerHTML = '<tr><td colspan="11" class="market-empty">暂无行情数据</td></tr>';
     return;
   }
   tb.innerHTML = rows.map(item => {
     const symbol = normalizeText(item.symbol, '--');
-    const time = formatTime(item.timestamp);
+    const name = normalizeText(item.name, '');
     const close = Number(item.close);
-    const open = Number(item.open);
-    const changePct = Number.isFinite(close) && Number.isFinite(open) && open !== 0
-      ? ((close - open) / open) * 100
-      : null;
+    const changePct = Number(item.change_pct);
     const cls = (changePct ?? 0) > 0 ? 'quote-up' : (changePct ?? 0) < 0 ? 'quote-down' : '';
+    const changeAmt = Number(item.prev_close) ? (close - Number(item.prev_close)).toFixed(2) : '--';
     return `<tr>
-      <td>${escapeHtml(time)}</td>
-      <td>${escapeHtml(symbol)}</td>
-      <td class="${cls}">${escapeHtml(formatNumber(item.close))}</td>
+      <td>${escapeHtml(symbol)} ${escapeHtml(name)}</td>
+      <td class="${cls}">${escapeHtml(formatNumber(close))}</td>
+      <td class="${cls}">${escapeHtml(String(changeAmt))}</td>
+      <td class="${cls}">${escapeHtml(formatSignedPercent(changePct))}</td>
       <td>${escapeHtml(formatNumber(item.open))}</td>
       <td>${escapeHtml(formatNumber(item.high))}</td>
       <td>${escapeHtml(formatNumber(item.low))}</td>
-      <td class="${cls}">${escapeHtml(formatSignedPercent(changePct))}</td>
       <td>${escapeHtml(formatVolume(item.volume))}</td>
+      <td>${escapeHtml(formatNumber(item.turnover))}%</td>
+      <td>${escapeHtml(formatNumber(item.amplitude))}%</td>
+      <td>${escapeHtml(formatNumber(item.volume_ratio))}</td>
     </tr>`;
   }).join('');
 }
@@ -781,17 +803,21 @@ async function refreshMarketQuotes() {
     renderMarketQuotes([]);
     return;
   }
-  const responses = await Promise.all(symbols.map(async symbol => {
-    try {
-      const res = await fetch(`${MARKET_QUOTE_API}?symbol=${encodeURIComponent(symbol)}`);
-      const body = await parseResponseBody(res);
-      if (!res.ok) return null;
-      return body;
-    } catch (error) {
-      return null;
+  try {
+    const res = await fetch('/api/v1/market/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(symbols),
+    });
+    if (!res.ok) {
+      renderMarketQuotes([]);
+      return;
     }
-  }));
-  renderMarketQuotes(responses.filter(Boolean));
+    const data = await res.json();
+    renderMarketQuotes(Array.isArray(data) ? data : []);
+  } catch (error) {
+    renderMarketQuotes([]);
+  }
 }
 
 function renderRisk(risk, targets) {
@@ -999,6 +1025,72 @@ function finishRun() {
   const button = document.getElementById('run-btn');
   button.disabled = false;
   button.textContent = '运行一轮模拟交易';
+}
+
+const SCAN_API = '/api/v1/dashboard/scan';
+let scanRunning = false;
+
+async function triggerScan() {
+  if (scanRunning) return;
+  scanRunning = true;
+  const btn = document.getElementById('scan-btn');
+  btn.disabled = true;
+  btn.textContent = '扫描中...';
+  document.getElementById('scan-content').innerHTML = '<span style="color:var(--yellow)">正在扫描全市场，请稍候（约 5-10 秒）...</span>';
+
+  try {
+    const res = await fetch(SCAN_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ top_n: 10 }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.detail || '扫描失败');
+    renderScanResult(body);
+  } catch (e) {
+    document.getElementById('scan-content').innerHTML = `<span style="color:var(--red)">扫描失败: ${escapeHtml(e.message)}</span>`;
+  } finally {
+    scanRunning = false;
+    btn.disabled = false;
+    btn.textContent = '全市场扫描';
+  }
+}
+
+function renderScanResult(data) {
+  const area = document.getElementById('scan-content');
+  if (data.status === 'no_catalog') {
+    area.innerHTML = '<span style="color:var(--yellow)">股票列表不可用，请检查网络</span>';
+    return;
+  }
+
+  let html = `<div class="scan-summary">已扫描 ${data.total_scanned} 只股票</div>`;
+
+  const sections = [
+    { key: 'buy', label: '买入信号', cls: 'buy' },
+    { key: 'hold', label: '持有信号', cls: 'hold' },
+    { key: 'sell', label: '卖出信号', cls: 'sell' },
+  ];
+
+  for (const sec of sections) {
+    const items = data[sec.key] || [];
+    if (!items.length) continue;
+    html += `<div class="scan-section-title">${sec.label} (${items.length})</div>`;
+    html += '<table class="scan-table"><thead><tr>';
+    html += '<th>排名</th><th>股票</th><th>动作</th><th>评分</th><th>核心原因</th>';
+    html += '</tr></thead><tbody>';
+    items.forEach((item, idx) => {
+      html += `<tr>
+        <td>${idx + 1}</td>
+        <td>${escapeHtml(item.symbol)} ${escapeHtml(item.name || '')}</td>
+        <td><span class="scan-badge ${sec.cls}">${escapeHtml(item.action)}</span></td>
+        <td style="font-weight:600">${item.score.toFixed(4)}</td>
+        <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(item.reason)}">${escapeHtml(item.reason)}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+  }
+
+  area.innerHTML = html;
 }
 
 const BACKTEST_API = '/api/v1/dashboard/backtest';

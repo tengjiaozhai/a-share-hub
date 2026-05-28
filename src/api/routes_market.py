@@ -52,3 +52,15 @@ def get_market_quote(symbol: str = Query(..., min_length=3)) -> dict:
     except (AkshareUpstreamError, AkshareBreakerOpenError) as exc:
         raise HTTPException(status_code=503, detail=f"quote upstream unavailable: {exc}")
     return snapshot.model_dump()
+
+
+@router.post("/bulk")
+def get_bulk_quotes(symbols: list[str]) -> list[dict]:
+    """批量获取行情，支持 200+ 只股票。"""
+    from src.data.providers.akshare_provider import _fetch_tencent_quotes_batch
+    if not symbols:
+        return []
+    df = _fetch_tencent_quotes_batch(symbols[:500])
+    if df.empty:
+        return []
+    return df.to_dict("records")
