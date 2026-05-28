@@ -57,7 +57,14 @@ def _probe_services() -> dict:
 router = APIRouter()
 
 _HISTORY_LIMIT = 20
-_PAPER_DAILY_PNL = 1250.0
+
+
+def _compute_order_pnl(action: str, quantity: int, fill_price: float, current_price: float) -> float:
+    """根据成交价和当前市价计算模拟盈亏。"""
+    if action == "BUY":
+        return round((current_price - fill_price) * quantity, 2)
+    else:
+        return round((fill_price - current_price) * quantity, 2)
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
@@ -95,6 +102,7 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
     settings = Settings()
     llm = _get_llm()
     use_real_llm = (settings.llm_provider != "mock" and bool(settings.llm_api_key))
+    provider = AkshareProvider()
 
     decision_items: list[dict] = []
     target_items: list[dict] = []
@@ -175,13 +183,22 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
         )
 
         if not decision_only:
-            quantity = 200 if parsed_action == "BUY" else 300
+            # 用真实行情价格和目标仓位计算实际数量
+            try:
+                real_snap = provider.get_realtime_quote(symbol)
+                real_price = real_snap.close if real_snap else 100.0
+            except Exception:
+                real_price = 100.0
+            target_value = capital_base * settings.strategy_max_position_ratio
+            quantity = max(100, int(target_value / real_price / 100) * 100) if real_price > 0 else 100
+            if parsed_action == "SELL":
+                quantity = max(100, quantity)
             execution_order_id = store.insert_execution_order(
                 target_position_id=target_position_id,
                 symbol=symbol,
                 action=parsed_action,
                 quantity=quantity,
-                limit_price=100.0,
+                limit_price=real_price,
             )
             store.insert_broker_order_event(
                 execution_order_id=execution_order_id,
@@ -195,14 +212,26 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
                     "symbol": symbol,
                     "action": parsed_action,
                     "quantity": quantity,
+                    "limit_price": real_price,
                     "status": "READY",
                 }
             )
 
     if not decision_only and created_orders:
-        pnl_deltas = _allocate_pnl_deltas(total_pnl=_PAPER_DAILY_PNL, item_count=len(created_orders))
-        for order, pnl_delta in zip(created_orders, pnl_deltas):
+        for order in created_orders:
             store.update_execution_order_status(order["execution_order_id"], status="FILLED")
+            # 用真实价格计算盈亏
+            try:
+                real_snap = provider.get_realtime_quote(order["symbol"])
+                current_price = real_snap.close if real_snap else order["limit_price"]
+            except Exception:
+                current_price = order["limit_price"]
+            pnl_delta = _compute_order_pnl(
+                action=order["action"],
+                quantity=order["quantity"],
+                fill_price=order["limit_price"],
+                current_price=current_price,
+            )
             store.insert_broker_order_event(
                 execution_order_id=order["execution_order_id"],
                 event_id=f"evt-filled-{uuid.uuid4().hex[:10]}",
@@ -210,12 +239,14 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
                 payload={"source": "dashboard", "run_context_id": run_context_id, "pnl_delta": pnl_delta},
             )
             order["status"] = "FILLED"
+            order["pnl_delta"] = pnl_delta
             order_items.append(
                 {
                     "symbol": order["symbol"],
                     "action": order["action"],
                     "quantity": order["quantity"],
                     "status": order["status"],
+                    "pnl_delta": pnl_delta,
                 }
             )
 

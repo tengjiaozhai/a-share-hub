@@ -198,10 +198,10 @@ class AkshareProvider(DataProvider):
             raise KeyError(symbol)
 
         # 用 symbol 直接打腾讯接口，单 symbol 独立缓存
-        code = normalized.split(".")[0]
-        row = self._get_snapshot_cache(code).get_row(
-            code,
+        row = self._get_snapshot_cache(normalized).get_row(
+            normalized,
             lambda: _fetch_tencent_quotes([normalized]),
+            code_col="symbol",
         )
 
         last_price = _to_float(row.get("close"), 0.0) or 0.0
