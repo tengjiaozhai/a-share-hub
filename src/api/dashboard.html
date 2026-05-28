@@ -461,7 +461,7 @@ let killSwitchActive = false;
 let configHydrated = false;
 
 /* ── Pagination ── */
-const PAGE_SIZE = 15;
+const PAGE_SIZE = 10;
 const pag = {
   decisions: { page: 0, data: [] },
   orders:    { page: 0, data: [] },
@@ -743,7 +743,7 @@ function renderDecisions(list) {
   // 仅在数据变化时更新分页状态，避免翻页时被重置
   const dataChanged = rows !== pag.decisions.data && JSON.stringify(rows) !== JSON.stringify(pag.decisions.data);
   pag.decisions.data = rows;
-  if (dataChanged && rows.length > PAGE_SIZE) pag.decisions.page = 0;
+  if (dataChanged && rows.length >= PAGE_SIZE) pag.decisions.page = 0;
   const tb = document.getElementById('tb-decisions');
   if (!rows.length) {
     tb.innerHTML = '<tr><td colspan="5" style="color:var(--dim)">暂无数据</td></tr>';
@@ -761,14 +761,14 @@ function renderDecisions(list) {
     const reason = normalizeText(reasonRaw, '--');
     return `<tr><td>${escapeHtml(time)}</td><td>${escapeHtml(symbol)}</td><td><span class="badge ${badge}">${escapeHtml(action)}</span></td><td>${escapeHtml(confidence)}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(reason)}">${escapeHtml(reason)}</td></tr>`;
   }).join('');
-  document.getElementById('pag-decisions').innerHTML = rows.length > PAGE_SIZE ? renderPagControls('decisions') : '';
+  document.getElementById('pag-decisions').innerHTML = rows.length >= PAGE_SIZE ? renderPagControls('decisions') : '';
 }
 
 function renderOrders(list) {
   const rows = toList(list);
   const dataChanged = rows !== pag.orders.data && JSON.stringify(rows) !== JSON.stringify(pag.orders.data);
   pag.orders.data = rows;
-  if (dataChanged && rows.length > PAGE_SIZE) pag.orders.page = 0;
+  if (dataChanged && rows.length >= PAGE_SIZE) pag.orders.page = 0;
   const tb = document.getElementById('tb-orders');
   if (!rows.length) {
     tb.innerHTML = '<tr><td colspan="6" style="color:var(--dim)">暂无数据</td></tr>';
@@ -787,14 +787,14 @@ function renderOrders(list) {
     const statusBadge = status === 'FILLED' ? 'badge-filled' : status === 'PENDING' ? 'badge-pending' : status === 'ERROR' ? 'badge-error' : 'badge-hold';
     return `<tr><td>${escapeHtml(time)}</td><td>${escapeHtml(symbol)}</td><td><span class="badge ${badge}">${escapeHtml(side)}</span></td><td>${escapeHtml(quantity)}</td><td>${escapeHtml(price)}</td><td><span class="badge ${statusBadge}">${escapeHtml(status)}</span></td></tr>`;
   }).join('');
-  document.getElementById('pag-orders').innerHTML = rows.length > PAGE_SIZE ? renderPagControls('orders') : '';
+  document.getElementById('pag-orders').innerHTML = rows.length >= PAGE_SIZE ? renderPagControls('orders') : '';
 }
 
 function renderTargets(list) {
   const rows = toList(list);
   const dataChanged = rows !== pag.targets.data && JSON.stringify(rows) !== JSON.stringify(pag.targets.data);
   pag.targets.data = rows;
-  if (dataChanged && rows.length > PAGE_SIZE) pag.targets.page = 0;
+  if (dataChanged && rows.length >= PAGE_SIZE) pag.targets.page = 0;
   const tb = document.getElementById('tb-targets');
   if (!rows.length) {
     tb.innerHTML = '<tr><td colspan="4" style="color:var(--dim)">暂无数据</td></tr>';
@@ -809,7 +809,7 @@ function renderTargets(list) {
     const reason = normalizeText(pickFirst(item, ['reason', 'rationale'], '--'));
     return `<tr><td>${escapeHtml(symbol)}</td><td>${escapeHtml(quantity)}</td><td>${escapeHtml(weight)}</td><td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(reason)}">${escapeHtml(reason)}</td></tr>`;
   }).join('');
-  document.getElementById('pag-targets').innerHTML = rows.length > PAGE_SIZE ? renderPagControls('targets') : '';
+  document.getElementById('pag-targets').innerHTML = rows.length >= PAGE_SIZE ? renderPagControls('targets') : '';
 }
 
 function buildQuoteSymbols() {
@@ -896,7 +896,7 @@ function renderErrorEvents(events) {
   const rows = toList(events);
   const dataChanged = rows !== pag.errors.data && JSON.stringify(rows) !== JSON.stringify(pag.errors.data);
   pag.errors.data = rows;
-  if (dataChanged && rows.length > PAGE_SIZE) pag.errors.page = 0;
+  if (dataChanged && rows.length >= PAGE_SIZE) pag.errors.page = 0;
   const tb = document.getElementById('tb-errors');
   if (!rows.length) {
     tb.innerHTML = '<tr><td colspan="3" style="color:var(--dim)">暂无异常</td></tr>';
@@ -910,7 +910,7 @@ function renderErrorEvents(events) {
     const message = normalizeText(pickFirst(item, ['message', 'summary', 'reason', 'payload']), '--');
     return `<tr><td>${escapeHtml(time)}</td><td>${escapeHtml(level)}</td><td>${escapeHtml(message)}</td></tr>`;
   }).join('');
-  document.getElementById('pag-errors').innerHTML = rows.length > PAGE_SIZE ? renderPagControls('errors') : '';
+  document.getElementById('pag-errors').innerHTML = rows.length >= PAGE_SIZE ? renderPagControls('errors') : '';
 }
 
 function renderAlerts(alerts) {
