@@ -33,6 +33,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;
 }
 .status-bar .kill-btn:hover{background:#dc2626}
+.status-bar .nav-group{display:flex;gap:0;background:var(--bg);border-radius:6px;padding:2px}
+.status-bar .nav-group button{
+  padding:5px 14px;border:none;border-radius:4px;font-size:12px;font-weight:600;
+  cursor:pointer;background:transparent;color:var(--muted);transition:.15s;white-space:nowrap;
+}
+.status-bar .nav-group button.active{background:var(--blue);color:#fff}
+.status-bar .nav-group button:hover:not(.active){color:var(--fg)}
 
 /* ── MAIN LAYOUT ── */
 .main{display:grid;grid-template-columns:280px 1fr 280px;grid-template-rows:1fr auto;gap:0;min-height:calc(100vh - 40px)}
@@ -137,6 +144,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 }
 .mode-switch button.active{background:var(--blue);color:#fff}
 
+/* ── TOP-LEVEL VIEWS ── */
+.view{display:none}.view.active{display:block}
+#view-dashboard .main{display:grid;grid-template-columns:280px 1fr 280px;grid-template-rows:1fr auto;gap:0;min-height:calc(100vh - 40px)}
+#view-market{padding:20px;height:calc(100vh - 40px);overflow-y:auto}
+#view-market h2{font-size:16px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px}
+#view-market .market-table{width:100%;border-collapse:collapse}
+#view-market .market-table th{
+  padding:10px 14px;text-align:left;border-bottom:2px solid var(--border);
+  font-size:12px;color:var(--dim);font-weight:500;text-transform:uppercase;
+  position:sticky;top:0;background:var(--surface);z-index:1;
+}
+#view-market .market-table td{
+  padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px;
+}
+#view-market .market-table tr:hover{background:rgba(96,165,250,.05)}
+#view-market .market-empty{
+  display:flex;align-items:center;justify-content:center;height:60%;
+  color:var(--dim);font-size:14px;
+}
+
 /* ── BOTTOM PANEL ── */
 .panel-bottom{
   grid-column:1/-1;background:var(--surface);border-top:1px solid var(--border);
@@ -178,6 +205,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 <div class="status-bar">
   <span class="brand">A股模拟工作台</span>
   <span class="sep"></span>
+  <div class="nav-group">
+    <button class="active" onclick="switchView(this,'view-dashboard')">工作台</button>
+    <button onclick="switchView(this,'view-market')">实时行情</button>
+  </div>
+  <span class="sep"></span>
   <span class="pill mode" id="mode-pill">影子模式</span>
   <span class="sep"></span>
   <span><span class="dot g" id="db-dot"></span> 数据库</span>
@@ -190,6 +222,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 </div>
 
 <!-- ════════ MAIN 3-COL + BOTTOM ════════ -->
+<div class="view active" id="view-dashboard">
 <div class="main">
 
   <!-- ── LEFT: 策略与模拟配置 ── -->
@@ -287,7 +320,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
       <button class="active" onclick="switchTab(this,'tab-decisions')">最近决策</button>
       <button onclick="switchTab(this,'tab-orders')">最近订单</button>
       <button onclick="switchTab(this,'tab-targets')">当前目标仓位</button>
-      <button onclick="switchTab(this,'tab-market')">实时行情</button>
       <button onclick="switchTab(this,'tab-errors')">异常事件</button>
     </div>
     <div class="tab-content">
@@ -300,15 +332,29 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
       <div class="tab-pane" id="tab-targets">
         <table><thead><tr><th>股票</th><th>目标数量</th><th>目标权重</th><th>理由</th></tr></thead><tbody id="tb-targets"><tr><td colspan="4" style="color:var(--dim)">暂无数据</td></tr></tbody></table>
       </div>
-      <div class="tab-pane" id="tab-market">
-        <table><thead><tr><th>时间</th><th>股票</th><th>最新价</th><th>今开</th><th>最高</th><th>最低</th><th>涨跌幅</th><th>成交量</th></tr></thead><tbody id="tb-market"><tr><td colspan="8" style="color:var(--dim)">暂无数据</td></tr></tbody></table>
-      </div>
       <div class="tab-pane" id="tab-errors">
         <table><thead><tr><th>时间</th><th>级别</th><th>消息</th></tr></thead><tbody id="tb-errors"><tr><td colspan="3" style="color:var(--dim)">暂无异常</td></tr></tbody></table>
       </div>
     </div>
   </div>
 
+</div>
+</div><!-- end #view-dashboard -->
+
+<!-- ════════ MARKET VIEW ════════ -->
+<div class="view" id="view-market">
+  <h2>实时行情</h2>
+  <table class="market-table">
+    <thead>
+      <tr>
+        <th>时间</th><th>股票</th><th>最新价</th><th>今开</th>
+        <th>最高</th><th>最低</th><th>涨跌幅</th><th>成交量</th>
+      </tr>
+    </thead>
+    <tbody id="tb-market-full">
+      <tr><td colspan="8" class="market-empty">暂无行情数据</td></tr>
+    </tbody>
+  </table>
 </div>
 
 <script>
@@ -329,6 +375,16 @@ function switchTab(btn, paneId) {
   btn.classList.add('active');
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
   document.getElementById(paneId).classList.add('active');
+}
+
+function switchView(btn, viewId) {
+  btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById(viewId).classList.add('active');
+  if (viewId === 'view-market') {
+    refreshMarketQuotes();
+  }
 }
 
 function setExecMode(btn) {
@@ -574,10 +630,11 @@ function buildQuoteSymbols() {
 }
 
 function renderMarketQuotes(quotes) {
-  const tb = document.getElementById('tb-market');
+  const tb = document.getElementById('tb-market-full');
+  if (!tb) return;
   const rows = toList(quotes);
   if (!rows.length) {
-    tb.innerHTML = '<tr><td colspan="8" style="color:var(--dim)">暂无行情数据</td></tr>';
+    tb.innerHTML = '<tr><td colspan="8" class="market-empty">暂无行情数据</td></tr>';
     return;
   }
   tb.innerHTML = rows.map(item => {
