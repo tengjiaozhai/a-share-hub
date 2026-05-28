@@ -740,8 +740,10 @@ function renderConfig(config) {
 
 function renderDecisions(list) {
   const rows = toList(list);
+  // 仅在数据变化时更新分页状态，避免翻页时被重置
+  const dataChanged = rows !== pag.decisions.data && JSON.stringify(rows) !== JSON.stringify(pag.decisions.data);
   pag.decisions.data = rows;
-  if (rows.length > PAGE_SIZE) pag.decisions.page = 0;
+  if (dataChanged && rows.length > PAGE_SIZE) pag.decisions.page = 0;
   const tb = document.getElementById('tb-decisions');
   if (!rows.length) {
     tb.innerHTML = '<tr><td colspan="5" style="color:var(--dim)">暂无数据</td></tr>';
@@ -764,8 +766,9 @@ function renderDecisions(list) {
 
 function renderOrders(list) {
   const rows = toList(list);
+  const dataChanged = rows !== pag.orders.data && JSON.stringify(rows) !== JSON.stringify(pag.orders.data);
   pag.orders.data = rows;
-  if (rows.length > PAGE_SIZE) pag.orders.page = 0;
+  if (dataChanged && rows.length > PAGE_SIZE) pag.orders.page = 0;
   const tb = document.getElementById('tb-orders');
   if (!rows.length) {
     tb.innerHTML = '<tr><td colspan="6" style="color:var(--dim)">暂无数据</td></tr>';
@@ -789,8 +792,9 @@ function renderOrders(list) {
 
 function renderTargets(list) {
   const rows = toList(list);
+  const dataChanged = rows !== pag.targets.data && JSON.stringify(rows) !== JSON.stringify(pag.targets.data);
   pag.targets.data = rows;
-  if (rows.length > PAGE_SIZE) pag.targets.page = 0;
+  if (dataChanged && rows.length > PAGE_SIZE) pag.targets.page = 0;
   const tb = document.getElementById('tb-targets');
   if (!rows.length) {
     tb.innerHTML = '<tr><td colspan="4" style="color:var(--dim)">暂无数据</td></tr>';
@@ -890,8 +894,9 @@ function renderRisk(risk, targets) {
 
 function renderErrorEvents(events) {
   const rows = toList(events);
+  const dataChanged = rows !== pag.errors.data && JSON.stringify(rows) !== JSON.stringify(pag.errors.data);
   pag.errors.data = rows;
-  if (rows.length > PAGE_SIZE) pag.errors.page = 0;
+  if (dataChanged && rows.length > PAGE_SIZE) pag.errors.page = 0;
   const tb = document.getElementById('tb-errors');
   if (!rows.length) {
     tb.innerHTML = '<tr><td colspan="3" style="color:var(--dim)">暂无异常</td></tr>';
