@@ -25,6 +25,7 @@ _TX_IDX = {
 }
 
 _TX_EXCHANGE_MAP = {"SH": "sh", "SZ": "sz", "BJ": "bj"}
+_KLINE_FREQ_MAP = {"daily": "day", "weekly": "week", "monthly": "month"}
 
 
 def _fetch_tencent_quotes(symbols: list[str]) -> pd.DataFrame:
@@ -79,6 +80,54 @@ def _fetch_tencent_quotes(symbols: list[str]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _fetch_tencent_kline(tx_code: str, start_date: str, end_date: str, freq: str = "day") -> pd.DataFrame:
+    """腾讯历史 K 线。
+
+    tx_code: 腾讯格式代码，如 'sh600519'
+    start_date / end_date: 'YYYY-MM-DD'
+    freq: 'day' / 'week' / 'month'
+
+    返回 columns: [date, open, close, high, low, volume]
+    """
+    try:
+        url = (
+            f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+            f"?param={tx_code},{freq},{start_date},{end_date},1000,qfq"
+        )
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+
+        if data.get("code") != 0:
+            return pd.DataFrame()
+
+        stock_data = data.get("data", {})
+        if not stock_data:
+            return pd.DataFrame()
+
+        kline_key = f"qfq{freq}"
+        rows = []
+        for key, val in stock_data.items():
+            kline = val.get(kline_key, [])
+            if not kline:
+                continue
+            for row in kline:
+                if len(row) >= 6:
+                    rows.append({
+                        "date": row[0],
+                        "open": float(row[1]),
+                        "close": float(row[2]),
+                        "high": float(row[3]),
+                        "low": float(row[4]),
+                        "volume": int(float(row[5])),
+                    })
+
+        return pd.DataFrame(rows)
+    except Exception as e:
+        logger.warning(f"_fetch_tencent_kline({tx_code}) 失败: {e}")
+        return pd.DataFrame()
+
+
 def _build_catalog_frame() -> pd.DataFrame:
     """从腾讯行情接口拉全市场行情，构造 code/name DataFrame 供 StockCatalogCache 使用。
     
@@ -93,9 +142,8 @@ def _build_catalog_frame() -> pd.DataFrame:
 class AkshareProvider(DataProvider):
     """AkShare 行情数据提供者。
 
-    股票列表：akshare stock_a_code_to_symbol（本地映射，无需网络）
-    行情快照：腾讯 qt.gtimg.cn（可穿透当前代理）
-    历史 K 线：暂缓（东方财富和新浪均不可达）
+    行情快照：腾讯 qt.gtimg.cn
+    历史 K 线：腾讯 web.ifzq.gtimg.cn
     """
 
     def __init__(
@@ -149,9 +197,19 @@ class AkshareProvider(DataProvider):
         )
 
     def get_history(self, symbol: str, start_date: datetime, end_date: datetime, freq: str = "daily") -> pd.DataFrame:
-        """历史 K 线暂不可用（eastmoney 被封）。"""
-        logger.warning(f"get_history({symbol}) 暂不可用：eastmoney 接口被代理拦截")
-        return pd.DataFrame()
+        """获取历史 K 线数据（腾讯财经接口）。"""
+        try:
+            normalized = normalize_symbol(symbol)
+        except ValueError:
+            return pd.DataFrame()
+
+        code, exchange = normalized.split(".")
+        tx_code = f"{_TX_EXCHANGE_MAP.get(exchange, 'sh')}{code}"
+        tx_freq = _KLINE_FREQ_MAP.get(freq, "day")
+        start_str = start_date.strftime("%Y-%m-%d")
+        end_str = end_date.strftime("%Y-%m-%d")
+
+        return _fetch_tencent_kline(tx_code, start_str, end_str, tx_freq)
 
     def get_stock_list(self) -> pd.DataFrame:
         return self._catalog.load(_build_catalog_frame)

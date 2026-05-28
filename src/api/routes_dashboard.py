@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 
 from src.agents.llm_client import LLMClient
@@ -550,4 +550,83 @@ def _build_run_timeline(
         "finished_at": now,
         "status": "completed",
         "steps": steps,
+    }
+
+
+@router.post("/api/v1/dashboard/backtest")
+def run_backtest(config: dict) -> dict:
+    """快速回测：对 watchlist 股票运行日频确定性策略回测。"""
+    watchlist = config.get("watchlist")
+    if not watchlist:
+        raise HTTPException(status_code=400, detail="watchlist is empty")
+    start_str = config.get("start_date", "2025-01-01")
+    end_str = config.get("end_date", "2025-03-31")
+    capital_base = int(config.get("capital_base", 1_000_000))
+
+    from src.backtest.engine import run_daily_backtest
+    from src.backtest.metrics import calculate_metrics
+    from src.indicators.technical_indicators import compute_feature_row
+    from src.strategy.signal_engine import build_signal
+    from src.strategy.strategy_config import StrategyConfig
+
+    settings = Settings()
+    strategy_config = StrategyConfig.from_settings(settings)
+    provider = AkshareProvider()
+
+    start_date = datetime.strptime(start_str, "%Y-%m-%d")
+    end_date = datetime.strptime(end_str, "%Y-%m-%d")
+
+    results = []
+    for symbol in watchlist:
+        bars_df = provider.get_history(symbol, start_date, end_date)
+        if bars_df.empty:
+            continue
+
+        bars = bars_df.to_dict("records")
+        close_prices = [b["close"] for b in bars]
+
+        signals = []
+        for i in range(60, len(bars)):
+            window = close_prices[max(0, i - 60):i + 1]
+            features = compute_feature_row(window)
+            signal = build_signal(symbol, features, strategy_config)
+            if signal["action"] != "HOLD":
+                signals.append({
+                    "date": bars[i]["date"],
+                    "action": signal["action"],
+                    "target_position_ratio": settings.strategy_max_position_ratio if signal["action"] == "BUY" else 0.0,
+                })
+
+        bt_result = run_daily_backtest(
+            symbol=symbol,
+            bars=bars,
+            initial_cash=float(capital_base),
+            signals=signals,
+        )
+        metrics = calculate_metrics(bt_result["equity_curve"], bt_result["trades"])
+
+        results.append({
+            "symbol": symbol,
+            "metrics": metrics,
+            "trade_count": len(bt_result["trades"]),
+            "final_nav": bt_result["final_nav"],
+        })
+
+    if not results:
+        return {"status": "no_data", "results": [], "summary": {}}
+
+    avg_return = sum(r["metrics"]["total_return"] for r in results) / len(results)
+    worst_dd = min(r["metrics"]["max_drawdown"] for r in results)
+    total_trades = sum(r["trade_count"] for r in results)
+
+    return {
+        "status": "ok",
+        "start_date": start_str,
+        "end_date": end_str,
+        "results": results,
+        "summary": {
+            "total_return_avg": round(avg_return, 6),
+            "max_drawdown_worst": round(worst_dd, 6),
+            "total_trades": total_trades,
+        },
     }
