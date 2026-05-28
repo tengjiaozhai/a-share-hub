@@ -110,6 +110,7 @@ def _fetch_tencent_kline(tx_code: str, start_date: str, end_date: str, freq: str
     start_date / end_date: 'YYYY-MM-DD'
     freq: 'day' / 'week' / 'month'
 
+    优先取前复权(qfq)数据，若无则 fallback 到不复权日线。
     返回 columns: [date, open, close, high, low, volume]
     """
     try:
@@ -128,10 +129,10 @@ def _fetch_tencent_kline(tx_code: str, start_date: str, end_date: str, freq: str
         if not stock_data:
             return pd.DataFrame()
 
-        kline_key = f"qfq{freq}"
         rows = []
         for key, val in stock_data.items():
-            kline = val.get(kline_key, [])
+            # 优先取前复权，没有则 fallback 到不复权
+            kline = val.get(f"qfq{freq}", []) or val.get(freq, [])
             if not kline:
                 continue
             for row in kline:
