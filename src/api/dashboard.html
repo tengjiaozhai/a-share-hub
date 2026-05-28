@@ -200,6 +200,29 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .bt-card .bt-value{color:var(--fg);font-weight:600}
 .bt-card .bt-value.green{color:var(--green)}.bt-card .bt-value.red{color:var(--red)}
 
+/* ── FACTOR ANALYSIS ── */
+.factor-section{margin-top:10px}
+.factor-section h3{font-size:13px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px}
+.factor-card{
+  background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);
+  padding:10px;margin-bottom:8px;font-size:12px;
+}
+.factor-card .fc-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.factor-card .fc-symbol{font-weight:700;color:var(--fg);font-size:13px}
+.factor-card .fc-action{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
+.factor-card .fc-action.buy{background:rgba(34,197,94,.2);color:var(--green)}
+.factor-card .fc-action.sell{background:rgba(239,68,68,.2);color:var(--red)}
+.factor-card .fc-action.hold{background:rgba(148,163,184,.15);color:var(--muted)}
+.factor-card .fc-score{font-size:11px;color:var(--dim);margin-bottom:6px}
+.factor-bar-row{display:flex;align-items:center;gap:6px;padding:2px 0}
+.factor-bar-label{width:100px;color:var(--dim);font-size:11px;text-align:right;flex-shrink:0}
+.factor-bar-track{flex:1;height:14px;background:var(--surface);border-radius:3px;overflow:hidden;position:relative}
+.factor-bar-fill{height:100%;border-radius:3px;transition:width .3s}
+.factor-bar-fill.positive{background:var(--green)}
+.factor-bar-fill.negative{background:var(--red)}
+.factor-bar-value{width:60px;font-size:11px;color:var(--fg);text-align:right;flex-shrink:0}
+.factor-threshold{position:absolute;top:0;height:100%;width:2px;background:var(--yellow);z-index:1}
+
 /* ── BADGES ── */
 .badge{padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;display:inline-block}
 .badge-buy{background:rgba(34,197,94,.2);color:var(--green)}
@@ -1027,21 +1050,67 @@ function renderBacktestResult(data) {
   const worstDd = (s.max_drawdown_worst * 100).toFixed(2);
   const retCls = s.total_return_avg >= 0 ? 'green' : 'red';
 
+  // 汇总卡片
   let html = `<div class="bt-card">
     <div class="bt-row"><span class="bt-label">区间平均收益</span><span class="bt-value ${retCls}">${avgRet}%</span></div>
     <div class="bt-row"><span class="bt-label">最大回撤</span><span class="bt-value red">${worstDd}%</span></div>
-    <div class="bt-row"><span class="bt-label">总交易次数</span><span class="bt-value">${s.total_trades}</span></div>`;
+    <div class="bt-row"><span class="bt-label">总交易次数</span><span class="bt-value">${s.total_trades}</span></div>
+  </div>`;
+
+  // 多因子分析
+  html += '<div class="factor-section"><h3>多因子选股分析</h3>';
+
+  const factorNames = {
+    momentum_20: '20日动量',
+    momentum_60: '60日动量',
+    ma20_gap: 'MA20偏离',
+    ma60_gap: 'MA60偏离',
+    volume_ratio_20: '量比',
+    volatility_20: '波动率',
+  };
 
   for (const r of data.results) {
-    const ret = (r.metrics.total_return * 100).toFixed(2);
-    const dd = (r.metrics.max_drawdown * 100).toFixed(2);
-    html += `<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px">
-      <div class="bt-row"><span class="bt-label">${escapeHtml(r.symbol)}</span><span class="bt-value ${Number(ret)>=0?'green':'red'}">${ret}%</span></div>
-      <div class="bt-row"><span class="bt-label">  回撤</span><span class="bt-value red">${dd}%</span></div>
-      <div class="bt-row"><span class="bt-label">  交易</span><span class="bt-value">${r.trade_count}笔</span></div>
-    </div>`;
+    const fa = r.factor_analysis;
+    if (!fa) continue;
+    const actionCls = fa.action === 'BUY' ? 'buy' : fa.action === 'SELL' ? 'sell' : 'hold';
+    const scoreColor = fa.technical_score >= fa.thresholds.buy ? 'green'
+      : fa.technical_score <= fa.thresholds.sell ? 'red' : 'var(--fg)';
+
+    html += `<div class="factor-card">
+      <div class="fc-header">
+        <span class="fc-symbol">${escapeHtml(r.symbol)}</span>
+        <span class="fc-action ${actionCls}">${fa.action}</span>
+      </div>
+      <div class="fc-score">综合评分: <span style="color:${scoreColor};font-weight:700">${fa.technical_score.toFixed(4)}</span>
+        (买入≥${fa.thresholds.buy} / 卖出≤${fa.thresholds.sell})</div>`;
+
+    // 因子贡献条形图
+    const contributions = fa.contributions || {};
+    const weights = fa.weights || {};
+    const features = fa.features || {};
+    const maxAbs = Math.max(0.001, ...Object.values(contributions).map(v => Math.abs(v)));
+
+    for (const [key, label] of Object.entries(factorNames)) {
+      const contrib = contributions[key] || 0;
+      const val = features[key] !== undefined ? features[key] : 0;
+      const weight = weights[key] || 0;
+      const pct = Math.min(Math.abs(contrib) / maxAbs * 100, 100);
+      const barCls = contrib >= 0 ? 'positive' : 'negative';
+      const sign = contrib >= 0 ? '+' : '';
+
+      html += `<div class="factor-bar-row">
+        <span class="factor-bar-label">${label}</span>
+        <div class="factor-bar-track">
+          <div class="factor-bar-fill ${barCls}" style="width:${pct}%"></div>
+        </div>
+        <span class="factor-bar-value">${sign}${(contrib * 100).toFixed(2)}%</span>
+      </div>`;
+    }
+
+    html += '</div>';
   }
   html += '</div>';
+
   area.innerHTML = html;
 }
 

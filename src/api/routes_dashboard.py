@@ -576,9 +576,12 @@ def run_backtest(config: dict) -> dict:
     start_date = datetime.strptime(start_str, "%Y-%m-%d")
     end_date = datetime.strptime(end_str, "%Y-%m-%d")
 
+    # 提前 90 天取数据，确保有足够的历史窗口计算特征
+    data_start = start_date - timedelta(days=120)
+
     results = []
     for symbol in watchlist:
-        bars_df = provider.get_history(symbol, start_date, end_date)
+        bars_df = provider.get_history(symbol, data_start, end_date)
         if bars_df.empty:
             continue
 
@@ -605,11 +608,42 @@ def run_backtest(config: dict) -> dict:
         )
         metrics = calculate_metrics(bt_result["equity_curve"], bt_result["trades"])
 
+        # 多因子分析：取最后一根 K 线的特征
+        latest_features = compute_feature_row(close_prices)
+        latest_signal = build_signal(symbol, latest_features, strategy_config)
+
+        factor_details = {
+            "features": latest_features,
+            "technical_score": latest_signal["technical_score"],
+            "action": latest_signal["action"],
+            "weights": {
+                "momentum_20": 0.30,
+                "momentum_60": 0.25,
+                "ma20_gap": 0.20,
+                "ma60_gap": 0.15,
+                "volume_ratio_20": 0.10,
+                "volatility_20": -0.10,
+            },
+            "contributions": {
+                "momentum_20": round(0.30 * latest_features.get("momentum_20", 0), 6),
+                "momentum_60": round(0.25 * latest_features.get("momentum_60", 0), 6),
+                "ma20_gap": round(0.20 * latest_features.get("ma20_gap", 0), 6),
+                "ma60_gap": round(0.15 * latest_features.get("ma60_gap", 0), 6),
+                "volume_ratio_20": round(0.10 * latest_features.get("volume_ratio_20", 0), 6),
+                "volatility_20": round(-0.10 * latest_features.get("volatility_20", 0), 6),
+            },
+            "thresholds": {
+                "buy": strategy_config.buy_score_threshold,
+                "sell": strategy_config.sell_score_threshold,
+            },
+        }
+
         results.append({
             "symbol": symbol,
             "metrics": metrics,
             "trade_count": len(bt_result["trades"]),
             "final_nav": bt_result["final_nav"],
+            "factor_analysis": factor_details,
         })
 
     if not results:
