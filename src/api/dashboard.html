@@ -444,6 +444,7 @@ const MARKET_BULK_API = '/api/v1/market/bulk';
 const KILL_SWITCH_STATUS_API = '/api/v1/kill-switch/status';
 const KILL_SWITCH_ACTIVATE_API = '/api/v1/kill-switch/activate';
 const KILL_SWITCH_DEACTIVATE_API = '/api/v1/kill-switch/deactivate';
+const PREFS_API = '/api/v1/dashboard/preferences';
 
 let execMode = 'full';
 let simRunning = false;
@@ -658,13 +659,38 @@ function renderStatus(workbench, killStatus) {
   setKillSwitchButton(active);
 }
 
+let _savePrefsTimer = null;
+
+function savePreferences() {
+  clearTimeout(_savePrefsTimer);
+  _savePrefsTimer = setTimeout(() => {
+    const prefs = {
+      watchlist: document.getElementById('cfg-watchlist').value
+        .split(',').map(s => s.trim()).filter(Boolean),
+      capital_base: Number(document.getElementById('cfg-capital').value),
+      max_position_ratio: Number(document.getElementById('cfg-max-pos').value) / 100,
+      stop_loss_ratio: Number(document.getElementById('cfg-stop-loss').value) / 100,
+      max_daily_loss_ratio: Number(document.getElementById('cfg-max-daily').value) / 100,
+      execution_mode: document.getElementById('cfg-decision-only').classList.contains('on') ? 'decision' : 'full',
+    };
+    fetch(PREFS_API, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(prefs),
+    }).catch(() => {});
+  }, 500);
+}
+
 function renderConfig(config) {
   if (!config || configHydrated) return;
+
+  // 服务端偏好优先于 HTML 默认值
+  if (config.watchlist) {
+    document.getElementById('cfg-watchlist').value = Array.isArray(config.watchlist)
+      ? config.watchlist.join(',') : config.watchlist;
+  }
   if (config.capital_base !== undefined) {
     document.getElementById('cfg-capital').value = config.capital_base;
-  }
-  if (Array.isArray(config.watchlist)) {
-    document.getElementById('cfg-watchlist').value = config.watchlist.join(',');
   }
   if (config.max_position_ratio !== undefined) {
     document.getElementById('cfg-max-pos').value = Number(config.max_position_ratio) * 100;
@@ -969,7 +995,9 @@ function addAlert(level, message) {
 
 function renderWorkbench(data, killStatus) {
   renderStatus(data, killStatus || {});
-  renderConfig(data.config || {});
+  // 合并服务端偏好到 config（服务端偏好优先于 API config）
+  const config = { ...(data.config || {}), ...(data._serverPrefs || {}) };
+  renderConfig(config);
   renderDecisions(data.history?.decisions || []);
   renderOrders(data.history?.orders || []);
   renderTargets(data.history?.targets || []);
@@ -994,6 +1022,21 @@ async function loadDashboard() {
     if (!killStatusRes.ok) {
       throw new Error(extractErrorMessage(killStatusBody, `Kill Switch 状态加载失败 (${killStatusRes.status})`));
     }
+
+    // 加载服务端偏好
+    let serverPrefs = null;
+    try {
+      const prefsRes = await fetch(PREFS_API);
+      if (prefsRes.ok) {
+        serverPrefs = await parseResponseBody(prefsRes);
+      }
+    } catch (_) {}
+
+    // 合并服务端偏好到 config
+    if (serverPrefs && serverPrefs.watchlist) {
+      workbenchBody._serverPrefs = serverPrefs;
+    }
+
     renderWorkbench(workbenchBody, killStatusBody);
     await refreshMarketQuotes();
   } catch (error) {
@@ -1274,6 +1317,13 @@ document.getElementById('cfg-add-stock').addEventListener('keydown', event => {
   }
   event.target.value = '';
 });
+
+// 表单变化时自动保存偏好到服务端
+document.getElementById('cfg-watchlist').addEventListener('input', savePreferences);
+document.getElementById('cfg-capital').addEventListener('change', savePreferences);
+document.getElementById('cfg-max-pos').addEventListener('change', savePreferences);
+document.getElementById('cfg-stop-loss').addEventListener('change', savePreferences);
+document.getElementById('cfg-max-daily').addEventListener('change', savePreferences);
 
 loadDashboard();
 setInterval(() => {

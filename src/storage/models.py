@@ -117,3 +117,11 @@ class AccountSnapshotRow(Base):
     nav: Mapped[float] = mapped_column(Float, nullable=False)
     positions_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class UserPreferenceRow(Base):
+    __tablename__ = "user_preferences"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

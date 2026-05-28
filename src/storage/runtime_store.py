@@ -27,6 +27,7 @@ from src.storage.models import (
     KillSwitchEventRow,
     KillSwitchRow,
     TargetPositionRow,
+    UserPreferenceRow,
 )
 
 
@@ -435,3 +436,31 @@ class RuntimeStore:
             "positions": json.loads(row.positions_json),
             "created_at": row.created_at.isoformat(),
         }
+
+    def get_preference(self, key: str) -> dict | None:
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                select(UserPreferenceRow).where(UserPreferenceRow.key == key)
+            ).fetchone()
+        if row is None:
+            return None
+        return json.loads(row.value)
+
+    def set_preference(self, key: str, value: dict) -> None:
+        with self.engine.begin() as conn:
+            existing = conn.execute(
+                select(UserPreferenceRow).where(UserPreferenceRow.key == key)
+            ).fetchone()
+            if existing is not None:
+                conn.execute(
+                    UserPreferenceRow.__table__.update()
+                    .where(UserPreferenceRow.key == key)
+                    .values(value=json.dumps(value, ensure_ascii=True))
+                )
+            else:
+                conn.execute(
+                    UserPreferenceRow.__table__.insert().values(
+                        key=key,
+                        value=json.dumps(value, ensure_ascii=True),
+                    )
+                )

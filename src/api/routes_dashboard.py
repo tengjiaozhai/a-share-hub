@@ -688,3 +688,23 @@ def scan_stock_pool(config: dict | None = None) -> dict:
         top_n=top_n,
     )
     return {"status": "ok", **result}
+
+
+@router.get("/api/v1/dashboard/preferences")
+def get_preferences() -> dict:
+    """获取用户偏好设置（watchlist 等）。"""
+    store = get_runtime_store()
+    prefs = store.get_preference("dashboard") or {}
+    return prefs
+
+
+@router.put("/api/v1/dashboard/preferences")
+def save_preferences(config: dict) -> dict:
+    """保存用户偏好设置。"""
+    store = get_runtime_store()
+    # 只允许保存白名单字段
+    allowed_keys = {"watchlist", "capital_base", "max_position_ratio", "stop_loss_ratio",
+                    "max_daily_loss_ratio", "execution_mode"}
+    filtered = {k: v for k, v in config.items() if k in allowed_keys}
+    store.set_preference("dashboard", filtered)
+    return {"status": "ok"}
