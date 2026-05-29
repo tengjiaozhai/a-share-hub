@@ -1163,6 +1163,7 @@ function addSearchToWatchlist() {
   }
   
   const stock = searchResults[selectedSearchIndex];
+  console.log('Adding stock:', stock.symbol);
   const watchlistInput = document.getElementById('cfg-watchlist');
   const symbols = watchlistInput.value.split(',').map(s => s.trim()).filter(Boolean);
   
@@ -1174,6 +1175,7 @@ function addSearchToWatchlist() {
   
   symbols.push(stock.symbol);
   watchlistInput.value = symbols.join(',');
+  console.log('New watchlist value:', watchlistInput.value);
   
   document.getElementById('search-status').textContent = `已添加 ${stock.symbol} 到观察列表`;
   document.getElementById('search-status').style.color = 'var(--green)';
@@ -1181,6 +1183,7 @@ function addSearchToWatchlist() {
   // Auto-save to persist the change
   console.log('Calling savePreferences from addSearchToWatchlist');
   savePreferences();
+  console.log('savePreferences called successfully');
 }
 
 function exitSearchMode() {
