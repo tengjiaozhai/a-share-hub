@@ -372,6 +372,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <button class="save-btn" id="save-btn" onclick="savePreferences()">保存配置</button>
     <div id="save-status" style="font-size:11px;color:var(--dim);text-align:center;margin-top:2px"></div>
     <button class="run-btn" id="run-btn" onclick="triggerRun()">运行一轮模拟交易</button>
+    <div style="font-size:10px;color:var(--dim);margin-top:4px">
+      快捷键: Ctrl+Enter 运行 | Ctrl+S 保存
+    </div>
     <h2 style="margin-top:12px;border-top:1px solid var(--border);padding-top:14px">快速回测</h2>
     <div class="field-row">
       <div class="field">
@@ -1463,8 +1466,8 @@ async function triggerScan() {
     document.getElementById('scan-content').innerHTML = `<span style="color:var(--red)">扫描失败: ${escapeHtml(e.message)}</span>`;
   } finally {
     scanRunning = false;
-    btn.disabled = false;
-    btn.textContent = '全市场扫描';
+    const btn = document.getElementById('scan-btn');
+    setButtonLoading(btn, false, '全市场扫描');
   }
 }
 
@@ -1572,8 +1575,7 @@ async function triggerBacktest() {
 
   btRunning = true;
   const btn = document.getElementById('bt-btn');
-  btn.disabled = true;
-  btn.textContent = '回测中...';
+  setButtonLoading(btn, true, '回测中...');
   document.getElementById('bt-result').innerHTML = '<span style="color:var(--yellow)">正在计算，请稍候...</span>';
 
   try {
@@ -1594,8 +1596,8 @@ async function triggerBacktest() {
     document.getElementById('bt-result').innerHTML = `<span style="color:var(--red)">回测失败: ${escapeHtml(e.message)}</span>`;
   } finally {
     btRunning = false;
-    btn.disabled = false;
-    btn.textContent = '运行回测';
+    const btn = document.getElementById('bt-btn');
+    setButtonLoading(btn, false, '运行回测');
   }
 }
 
