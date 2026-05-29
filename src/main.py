@@ -170,7 +170,9 @@ def dispatch_command(args: argparse.Namespace) -> None:
         import json
         print(json.dumps(result, ensure_ascii=False, indent=2))
     elif args.command == "serve" or args.command is None:
+        import logging
         import uvicorn
+        logging.basicConfig(level=logging.INFO)
         app = build_app()
         uvicorn.run(app, host="0.0.0.0", port=8000)
     else:
