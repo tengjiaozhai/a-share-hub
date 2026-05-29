@@ -1176,6 +1176,9 @@ function addSearchToWatchlist() {
   
   document.getElementById('search-status').textContent = `已添加 ${stock.symbol} 到观察列表`;
   document.getElementById('search-status').style.color = 'var(--green)';
+  
+  // Auto-save to persist the change
+  savePreferences();
 }
 
 function exitSearchMode() {
