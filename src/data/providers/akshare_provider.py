@@ -29,7 +29,7 @@ _TX_IDX = {
     "pe_ratio": 39,      # 市盈率
 }
 
-_TX_EXCHANGE_MAP = {"SH": "sh", "SZ": "sz", "BJ": "bj"}
+_TX_EXCHANGE_MAP = {"SH": "sh", "SZ": "sz", "BJ": "bj", "US": "us"}
 _KLINE_FREQ_MAP = {"daily": "day", "weekly": "week", "monthly": "month"}
 
 
