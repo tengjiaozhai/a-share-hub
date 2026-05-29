@@ -1383,12 +1383,12 @@ setInterval(() => {
   if (!simRunning) {
     loadDashboard();
   }
-}, 900000);
+}, 300000);  // 工作台+风控：5分钟
 setInterval(() => {
   if (!simRunning) {
     refreshMarketQuotes();
   }
-}, 900000);
+}, 30000);  // 行情：30秒
 </script>
 </body>
 </html>
