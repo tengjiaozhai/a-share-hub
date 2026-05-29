@@ -1140,9 +1140,9 @@ function renderScanResult(data) {
   let html = `<div class="scan-summary">已扫描 ${data.total_scanned} 只股票</div>`;
 
   const sections = [
-    { key: 'buy', label: '买入信号', cls: 'buy' },
-    { key: 'hold', label: '持有信号', cls: 'hold' },
-    { key: 'sell', label: '卖出信号', cls: 'sell' },
+    { key: 'buy', label: '买入信号', cls: 'buy', hasConfirm: true },
+    { key: 'hold', label: '持有信号', cls: 'hold', hasConfirm: false },
+    { key: 'sell', label: '卖出信号', cls: 'sell', hasConfirm: false },
   ];
 
   for (const sec of sections) {
@@ -1150,15 +1150,27 @@ function renderScanResult(data) {
     if (!items.length) continue;
     html += `<div class="scan-section-title">${sec.label} (${items.length})</div>`;
     html += '<table class="scan-table"><thead><tr>';
-    html += '<th>排名</th><th>股票</th><th>动作</th><th>评分</th><th>核心原因</th>';
+    html += '<th>排名</th><th>股票</th><th>动作</th><th>评分</th>';
+    if (sec.hasConfirm) html += '<th>趋势确认</th>';
+    html += '<th>核心原因</th>';
     html += '</tr></thead><tbody>';
     items.forEach((item, idx) => {
+      const confirmBadge = sec.hasConfirm
+        ? `<td><span class="scan-badge ${item.confirmed ? 'buy' : 'hold'}">${item.confirmed ? '已确认' : '未确认'}</span></td>`
+        : '';
+      const scoreDisplay = sec.hasConfirm && item.final_score !== undefined
+        ? `${item.score.toFixed(2)} → ${item.final_score.toFixed(4)}`
+        : item.score.toFixed(4);
+      const reason = sec.hasConfirm && item.confirm_reason
+        ? `${item.reason} | ${item.confirm_reason}`
+        : item.reason;
       html += `<tr>
         <td>${idx + 1}</td>
         <td>${escapeHtml(item.symbol)} ${escapeHtml(item.name || '')}</td>
         <td><span class="scan-badge ${sec.cls}">${escapeHtml(item.action)}</span></td>
-        <td style="font-weight:600">${item.score.toFixed(4)}</td>
-        <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(item.reason)}">${escapeHtml(item.reason)}</td>
+        <td style="font-weight:600">${scoreDisplay}</td>
+        ${confirmBadge}
+        <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(reason)}">${escapeHtml(reason)}</td>
       </tr>`;
     });
     html += '</tbody></table>';

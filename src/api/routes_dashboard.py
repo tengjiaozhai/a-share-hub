@@ -702,13 +702,17 @@ def run_backtest(config: dict) -> dict:
 
 @router.post("/api/v1/dashboard/scan")
 def scan_stock_pool(config: dict | None = None) -> dict:
-    """全市场自动选股，返回 Top-N 及选股理由。"""
+    """全市场自动选股，扫描器预筛 + 历史K线确认。"""
+    from datetime import datetime
     from src.data.providers.akshare_provider import _fetch_tencent_quotes_batch
-    from src.strategy.stock_scanner import scan_market
+    from src.strategy.stock_scanner import scan_market, confirm_buy_candidates
+    from src.strategy.strategy_config import StrategyConfig
 
     cfg = config or {}
     top_n = int(cfg.get("top_n", 10))
 
+    settings = Settings()
+    strategy_config = StrategyConfig.from_settings(settings)
     provider = AkshareProvider()
     stock_list_df = provider.get_stock_list()
     stock_list = stock_list_df.to_dict("records")
@@ -716,11 +720,22 @@ def scan_stock_pool(config: dict | None = None) -> dict:
     if not stock_list:
         return {"status": "no_catalog", "buy": [], "sell": [], "hold": [], "total_scanned": 0}
 
+    # 第一轮：扫描器筛选（取 3x 候选给确认层）
     result = scan_market(
         stock_list=stock_list,
         fetch_quotes_fn=lambda syms: _fetch_tencent_quotes_batch(syms),
-        top_n=top_n,
+        top_n=top_n * 3,
     )
+
+    # 第二轮：用历史 K 线确认 BUY 候选
+    def kline_fetcher(symbol, start, end):
+        return provider.get_history(symbol, datetime.fromisoformat(start), datetime.fromisoformat(end))
+
+    confirmed_buy = confirm_buy_candidates(
+        result["buy"], kline_fetcher, strategy_config, top_n=top_n
+    )
+    result["buy"] = confirmed_buy
+
     return {"status": "ok", **result}
 
 

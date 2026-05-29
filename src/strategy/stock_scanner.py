@@ -97,6 +97,58 @@ def scan_market(
     }
 
 
+def confirm_buy_candidates(
+    candidates: list[dict],
+    kline_fetcher,
+    config,
+    top_n: int = 10,
+) -> list[dict]:
+    """对扫描器的 BUY 候选用历史 K 线做二次确认。
+
+    candidates: 扫描器输出的 BUY 列表
+    kline_fetcher: callable(symbol, start_date, end_date) -> DataFrame
+    config: StrategyConfig
+    top_n: 最终返回数量
+
+    返回: 确认后的列表，每项增加 confirmed/final_score/final_action 字段
+    """
+    from src.indicators.technical_indicators import compute_feature_row
+    from src.strategy.signal_engine import build_signal
+
+    confirmed = []
+    for cand in candidates:
+        symbol = cand["symbol"]
+        try:
+            df = kline_fetcher(symbol, "2024-01-01", "2025-12-31")
+            if df.empty or len(df) < 60:
+                cand["confirmed"] = False
+                cand["final_score"] = 0.0
+                cand["final_action"] = "HOLD"
+                cand["confirm_reason"] = "历史数据不足"
+                confirmed.append(cand)
+                continue
+            close_prices = df["close"].tolist()
+            features = compute_feature_row(close_prices)
+            signal = build_signal(symbol, features, config)
+            cand["confirmed"] = signal["action"] == "BUY"
+            cand["final_score"] = signal["technical_score"]
+            cand["final_action"] = signal["action"]
+            if not cand["confirmed"]:
+                cand["confirm_reason"] = f"趋势评分{signal['technical_score']:.4f}，信号{signal['action']}"
+            else:
+                cand["confirm_reason"] = f"趋势评分{signal['technical_score']:.4f}，确认BUY"
+        except Exception as e:
+            cand["confirmed"] = False
+            cand["final_score"] = 0.0
+            cand["final_action"] = "HOLD"
+            cand["confirm_reason"] = f"确认失败: {e}"
+        confirmed.append(cand)
+
+    # 排序：已确认的在前，按扫描器评分降序
+    confirmed.sort(key=lambda x: (x["confirmed"], x["score"]), reverse=True)
+    return confirmed[:top_n]
+
+
 def _safe_float(value) -> float:
     if value is None:
         return 0.0
