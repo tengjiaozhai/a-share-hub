@@ -1155,6 +1155,7 @@ function selectSearchResult(index) {
 }
 
 function addSearchToWatchlist() {
+  console.log('addSearchToWatchlist called');
   if (selectedSearchIndex < 0 || selectedSearchIndex >= searchResults.length) {
     document.getElementById('search-status').textContent = '请先点击选择一只股票';
     document.getElementById('search-status').style.color = 'var(--yellow)';
@@ -1178,6 +1179,7 @@ function addSearchToWatchlist() {
   document.getElementById('search-status').style.color = 'var(--green)';
   
   // Auto-save to persist the change
+  console.log('Calling savePreferences from addSearchToWatchlist');
   savePreferences();
 }
 
