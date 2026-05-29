@@ -49,7 +49,7 @@ def test_runtime_store_lists_active_target_positions(tmp_path):
         action="BUY",
         target_value=200000,
         target_position_ratio=0.2,
-        expires_at="2026-05-24T10:15:00",
+            expires_at="2026-12-31T10:15:00",
     )
 
     rows = store.list_active_target_positions()

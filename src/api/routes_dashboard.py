@@ -109,6 +109,9 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
     order_items: list[dict] = []
     created_orders: list[dict] = []
 
+    # 清理过期的目标仓位
+    store.deactivate_expired_targets()
+
     for index, symbol in enumerate(watchlist):
         # 尝试调用真实 LLM，失败则降级到 mock 决策模式
         if use_real_llm:

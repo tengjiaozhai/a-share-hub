@@ -214,9 +214,11 @@ class RuntimeStore:
 
     def list_active_target_positions(self, limit: int | None = None) -> list[dict]:
         with self.engine.begin() as conn:
+            now = datetime.utcnow()
             stmt = (
                 select(TargetPositionRow)
                 .where(TargetPositionRow.status == "ACTIVE")
+                .where(TargetPositionRow.expires_at > now)
                 .order_by(TargetPositionRow.created_at.desc())
             )
             if limit is not None:
@@ -236,6 +238,18 @@ class RuntimeStore:
                 }
                 for row in rows
             ]
+
+    def deactivate_expired_targets(self) -> int:
+        """将已过期的 ACTIVE 目标标记为 EXPIRED，返回更新数量。"""
+        now = datetime.utcnow()
+        with self.engine.begin() as conn:
+            result = conn.execute(
+                TargetPositionRow.__table__.update()
+                .where(TargetPositionRow.status == "ACTIVE")
+                .where(TargetPositionRow.expires_at <= now)
+                .values(status="EXPIRED")
+            )
+            return result.rowcount
 
     def insert_execution_order(
         self,
