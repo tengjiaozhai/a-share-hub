@@ -735,6 +735,9 @@ def scan_stock_pool(config: dict | None = None) -> dict:
         result["buy"], kline_fetcher, strategy_config, top_n=top_n
     )
     result["buy"] = confirmed_buy
+    # HOLD/SELL 截断到 top_n（scan_market 取 3x 是给 BUY 确认用的）
+    result["hold"] = result["hold"][:top_n]
+    result["sell"] = result["sell"][:top_n]
 
     return {"status": "ok", **result}
 
