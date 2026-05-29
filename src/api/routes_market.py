@@ -235,10 +235,15 @@ def get_market_quote(symbol: str = Query(..., min_length=3)) -> dict:
 @router.post("/bulk")
 def get_bulk_quotes(symbols: list[str]) -> list[dict]:
     """批量获取行情，支持 200+ 只股票。"""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"get_bulk_quotes called with symbols: {symbols}")
+    
     from src.data.providers.akshare_provider import _fetch_tencent_quotes_batch
     if not symbols:
         return []
     df = _fetch_tencent_quotes_batch(symbols[:500])
+    logger.info(f"get_bulk_quotes result: {len(df)} rows, symbols: {df['symbol'].tolist() if not df.empty else []}")
     if df.empty:
         return []
     return df.to_dict("records")
