@@ -39,6 +39,44 @@ def list_market_stocks(
     return records.head(limit).to_dict("records")
 
 
+@router.get("/stocks/us")
+def list_us_stocks(
+    query: str = Query("", max_length=50),
+    limit: int = Query(20, ge=1, le=200),
+) -> list[dict]:
+    """获取美股知名股票列表，支持搜索过滤。"""
+    try:
+        import akshare as ak
+        df = ak.stock_us_famous_spot_em()
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"获取美股列表失败: {e}")
+
+    # 标准化列名
+    df = df.rename(columns={
+        "名称": "name",
+        "代码": "symbol",
+        "最新价": "close",
+        "涨跌额": "change",
+        "涨跌幅": "change_pct",
+        "开盘价": "open",
+        "最高价": "high",
+        "最低价": "low",
+        "昨收价": "prev_close",
+        "总市值": "market_cap",
+        "市盈率": "pe_ratio",
+    })
+
+    # 搜索过滤
+    q = query.strip()
+    if q:
+        df = df[
+            df["symbol"].str.contains(q, case=False, na=False)
+            | df["name"].str.contains(q, case=False, na=False)
+        ]
+
+    return df.head(limit).to_dict("records")
+
+
 @router.get("/quote")
 def get_market_quote(symbol: str = Query(..., min_length=3)) -> dict:
     normalized_symbol = symbol.strip().upper()
