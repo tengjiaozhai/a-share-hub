@@ -962,6 +962,41 @@ async function searchStock() {
   }
 }
 
+function renderUsSearchQuotes(quotes) {
+  const tb = document.getElementById('tb-market-full');
+  if (!quotes || quotes.length === 0) {
+    tb.innerHTML = '<tr><td colspan="12" class="market-empty">暂无行情数据</td></tr>';
+    return;
+  }
+  
+  const now = new Date().toLocaleTimeString('zh-CN', {hour12:false});
+  tb.innerHTML = quotes.map((item, index) => {
+    const symbol = normalizeText(item.symbol, '--');
+    const name = normalizeText(item.name, '');
+    const close = Number(item.close);
+    const changePct = Number(item.change_pct);
+    const cls = (changePct ?? 0) > 0 ? 'quote-up' : (changePct ?? 0) < 0 ? 'quote-down' : '';
+    const rowCls = (changePct ?? 0) > 0 ? 'row-up' : (changePct ?? 0) < 0 ? 'row-down' : '';
+    const changeAmt = normalizeText(item.change, '--');
+    const selectedStyle = index === selectedSearchIndex ? 'background:rgba(96,165,250,.15)' : '';
+    
+    return `<tr class="${rowCls}" onclick="selectSearchResult(${index})" style="cursor:pointer;${selectedStyle}">
+      <td style="color:var(--dim);font-size:11px">${escapeHtml(now)}</td>
+      <td>${escapeHtml(symbol)} ${escapeHtml(name)}</td>
+      <td class="${cls}">${escapeHtml(formatNumber(close))}</td>
+      <td class="${cls}">${escapeHtml(String(changeAmt))}</td>
+      <td class="${cls}">${escapeHtml(formatSignedPercent(changePct))}</td>
+      <td>${escapeHtml(formatNumber(item.open))}</td>
+      <td>${escapeHtml(formatNumber(item.high))}</td>
+      <td>${escapeHtml(formatNumber(item.low))}</td>
+      <td>--</td>
+      <td>--</td>
+      <td>--</td>
+      <td>--</td>
+    </tr>`;
+  }).join('');
+}
+
 async function loadSearchQuotes() {
   if (searchResults.length === 0) return;
   
@@ -1063,6 +1098,16 @@ function exitSearchMode() {
 document.getElementById('stock-search-input').addEventListener('keydown', event => {
   if (event.key === 'Enter') {
     searchStock();
+  }
+});
+
+// 市场切换时更新 placeholder
+document.getElementById('market-select').addEventListener('change', event => {
+  const input = document.getElementById('stock-search-input');
+  if (event.target.value === 'us') {
+    input.placeholder = '输入美股代码或名称（如：AAPL 或 苹果）';
+  } else {
+    input.placeholder = '输入股票代码或名称（如：600519 或 贵州茅台）';
   }
 });
 
