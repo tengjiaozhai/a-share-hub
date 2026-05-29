@@ -7,6 +7,29 @@ router = APIRouter(prefix="/api/v1/market")
 
 _akshare_provider: AkshareProvider | None = None
 
+_LOCAL_STOCKS = {
+    "600519": {"symbol": "600519.SH", "name": "贵州茅台", "exchange": "SH"},
+    "000858": {"symbol": "000858.SZ", "name": "五粮液", "exchange": "SZ"},
+    "601318": {"symbol": "601318.SH", "name": "中国平安", "exchange": "SH"},
+    "300317": {"symbol": "300317.SZ", "name": "珈伟新能", "exchange": "SZ"},
+    "000001": {"symbol": "000001.SZ", "name": "平安银行", "exchange": "SZ"},
+    "600036": {"symbol": "600036.SH", "name": "招商银行", "exchange": "SH"},
+    "000333": {"symbol": "000333.SZ", "name": "美的集团", "exchange": "SZ"},
+    "002594": {"symbol": "002594.SZ", "name": "比亚迪", "exchange": "SZ"},
+    "601899": {"symbol": "601899.SH", "name": "紫金矿业", "exchange": "SH"},
+    "600900": {"symbol": "600900.SH", "name": "长江电力", "exchange": "SH"},
+    "600276": {"symbol": "600276.SH", "name": "恒瑞医药", "exchange": "SH"},
+    "000568": {"symbol": "000568.SZ", "name": "泸州老窖", "exchange": "SZ"},
+    "002304": {"symbol": "002304.SZ", "name": "洋河股份", "exchange": "SZ"},
+    "601398": {"symbol": "601398.SH", "name": "工商银行", "exchange": "SH"},
+    "601288": {"symbol": "601288.SH", "name": "农业银行", "exchange": "SH"},
+    "600030": {"symbol": "600030.SH", "name": "中信证券", "exchange": "SH"},
+    "601166": {"symbol": "601166.SH", "name": "兴业银行", "exchange": "SH"},
+    "000002": {"symbol": "000002.SZ", "name": "万科A", "exchange": "SZ"},
+    "600000": {"symbol": "600000.SH", "name": "浦发银行", "exchange": "SH"},
+    "601012": {"symbol": "601012.SH", "name": "隆基绿能", "exchange": "SH"},
+}
+
 
 def _get_akshare_provider() -> AkshareProvider:
     global _akshare_provider
@@ -22,21 +45,40 @@ def list_market_stocks(
     limit: int = Query(20, ge=1, le=200),
 ) -> list[dict]:
     provider = _get_akshare_provider()
-    if not provider.is_available():
-        raise HTTPException(status_code=503, detail="akshare provider unavailable")
-    frame = provider.get_stock_list()
-    records = frame.copy()
-    exchange_upper = exchange.strip().upper()
-    if exchange_upper and exchange_upper != "ALL":
-        records = records[records["exchange"] == exchange_upper]
-    q = query.strip()
-    if q:
-        records = records[
-            records["symbol"].str.contains(q, case=False, na=False)
-            | records["code"].str.contains(q, case=False, na=False)
-            | records["name"].str.contains(q, case=False, na=False)
-        ]
-    return records.head(limit).to_dict("records")
+    
+    # Try akshare first
+    if provider.is_available():
+        try:
+            frame = provider.get_stock_list()
+            records = frame.copy()
+            exchange_upper = exchange.strip().upper()
+            if exchange_upper and exchange_upper != "ALL":
+                records = records[records["exchange"] == exchange_upper]
+            q = query.strip()
+            if q:
+                records = records[
+                    records["symbol"].str.contains(q, case=False, na=False)
+                    | records["code"].str.contains(q, case=False, na=False)
+                    | records["name"].str.contains(q, case=False, na=False)
+                ]
+            result = records.head(limit).to_dict("records")
+            if result:
+                return result
+        except Exception:
+            pass
+    
+    # Fallback to local data
+    q = query.strip().lower()
+    if not q:
+        return list(_LOCAL_STOCKS.values())[:limit]
+    
+    results = []
+    for code, info in _LOCAL_STOCKS.items():
+        if q in code or q in info["name"].lower():
+            results.append(info)
+        if len(results) >= limit:
+            break
+    return results
 
 
 # 美股知名股票列表（使用 Stooq 符号）
