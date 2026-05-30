@@ -1869,6 +1869,203 @@ setInterval(() => {
     refreshMarketQuotes();
   }
 }, 30000);  // 行情：30秒（搜索模式下不自动刷新）
+
+// 加密货币数据加载
+let cryptoRefreshInterval = null;
+const CRYPTO_REFRESH_RATE = 10000; // 10秒刷新一次
+
+// 初始化加密货币Tab页
+function initCryptoTab() {
+    loadCryptoSystemStatus();
+    loadCryptoBalance();
+    loadCryptoIndicators('BTCUSDT');
+    loadCryptoSignals();
+    loadCryptoPositions();
+    loadCryptoOrders();
+}
+
+// 开始加密货币自动刷新
+function startCryptoAutoRefresh() {
+    if (cryptoRefreshInterval) {
+        clearInterval(cryptoRefreshInterval);
+    }
+    cryptoRefreshInterval = setInterval(function() {
+        loadCryptoSystemStatus();
+        loadCryptoBalance();
+        loadCryptoPositions();
+        loadCryptoOrders();
+    }, CRYPTO_REFRESH_RATE);
+}
+
+// 停止加密货币自动刷新
+function stopCryptoAutoRefresh() {
+    if (cryptoRefreshInterval) {
+        clearInterval(cryptoRefreshInterval);
+        cryptoRefreshInterval = null;
+    }
+}
+
+// 加载加密货币系统状态
+async function loadCryptoSystemStatus() {
+    try {
+        const response = await fetch('/api/v1/crypto/status');
+        const data = await response.json();
+        
+        if (data.success) {
+            document.getElementById('crypto-api-status').textContent = '已连接';
+            document.getElementById('crypto-api-status').className = 'badge bg-success';
+            document.getElementById('crypto-uptime').textContent = data.data.uptime;
+            document.getElementById('crypto-last-update').textContent = new Date(data.timestamp).toLocaleString();
+        }
+    } catch (error) {
+        console.error('加载加密货币系统状态失败:', error);
+        document.getElementById('crypto-api-status').textContent = '连接失败';
+        document.getElementById('crypto-api-status').className = 'badge bg-danger';
+    }
+}
+
+// 加载加密货币账户余额
+async function loadCryptoBalance() {
+    try {
+        const response = await fetch('/api/v1/crypto/balance');
+        const data = await response.json();
+        
+        if (data.success) {
+            document.getElementById('crypto-usdt-balance').textContent = data.data.usdt_balance.toFixed(2) + ' USDT';
+            document.getElementById('crypto-total-assets').textContent = data.data.total_assets.toFixed(2) + ' USDT';
+        }
+    } catch (error) {
+        console.error('加载加密货币账户余额失败:', error);
+    }
+}
+
+// 加载加密货币技术指标
+async function loadCryptoIndicators(symbol) {
+    try {
+        const response = await fetch(`/api/v1/crypto/indicators/${symbol}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            document.getElementById('crypto-ma5').textContent = data.data.ma5.toFixed(2);
+            document.getElementById('crypto-ma10').textContent = data.data.ma10.toFixed(2);
+            document.getElementById('crypto-ma20').textContent = data.data.ma20.toFixed(2);
+            document.getElementById('crypto-rsi').textContent = data.data.rsi.toFixed(2);
+            document.getElementById('crypto-macd').textContent = data.data.macd.macd.toFixed(2);
+        }
+    } catch (error) {
+        console.error('加载加密货币技术指标失败:', error);
+    }
+}
+
+// 加载加密货币交易信号
+async function loadCryptoSignals() {
+    try {
+        const response = await fetch('/api/v1/crypto/signals');
+        const data = await response.json();
+        
+        if (data.success) {
+            const signalsDiv = document.getElementById('crypto-signals');
+            if (data.data.length === 0) {
+                signalsDiv.innerHTML = '<p class="text-muted">暂无交易信号</p>';
+            } else {
+                let html = '<div class="list-group">';
+                data.data.forEach(signal => {
+                    html += `<div class="list-group-item">
+                        <strong>${signal.symbol}</strong> - ${signal.action}
+                        <br><small class="text-muted">${signal.reason}</small>
+                    </div>`;
+                });
+                html += '</div>';
+                signalsDiv.innerHTML = html;
+            }
+        }
+    } catch (error) {
+        console.error('加载加密货币交易信号失败:', error);
+    }
+}
+
+// 加载加密货币持仓
+async function loadCryptoPositions() {
+    try {
+        const response = await fetch('/api/v1/crypto/positions');
+        const data = await response.json();
+        
+        if (data.success) {
+            const positionsDiv = document.getElementById('crypto-positions');
+            if (data.data.length === 0) {
+                positionsDiv.innerHTML = '<p class="text-muted">暂无持仓</p>';
+            } else {
+                let html = '<div class="table-responsive"><table class="table table-sm">';
+                html += '<thead><tr><th>币种</th><th>数量</th><th>成本</th><th>盈亏</th></tr></thead>';
+                html += '<tbody>';
+                data.data.forEach(pos => {
+                    const pnlClass = pos.unrealized_pnl >= 0 ? 'text-success' : 'text-danger';
+                    html += `<tr>
+                        <td>${pos.symbol}</td>
+                        <td>${pos.quantity}</td>
+                        <td>${pos.avg_cost}</td>
+                        <td class="${pnlClass}">${pos.unrealized_pnl}</td>
+                    </tr>`;
+                });
+                html += '</tbody></table></div>';
+                positionsDiv.innerHTML = html;
+            }
+        }
+    } catch (error) {
+        console.error('加载加密货币持仓失败:', error);
+    }
+}
+
+// 加载加密货币订单
+async function loadCryptoOrders() {
+    try {
+        const response = await fetch('/api/v1/crypto/orders');
+        const data = await response.json();
+        
+        if (data.success) {
+            const ordersDiv = document.getElementById('crypto-orders');
+            if (data.data.length === 0) {
+                ordersDiv.innerHTML = '<p class="text-muted">暂无订单</p>';
+            } else {
+                let html = '<div class="table-responsive"><table class="table table-sm">';
+                html += '<thead><tr><th>币种</th><th>方向</th><th>数量</th><th>价格</th><th>状态</th></tr></thead>';
+                html += '<tbody>';
+                data.data.forEach(order => {
+                    const sideClass = order.side === 'BUY' ? 'text-success' : 'text-danger';
+                    html += `<tr>
+                        <td>${order.symbol}</td>
+                        <td class="${sideClass}">${order.side}</td>
+                        <td>${order.quantity}</td>
+                        <td>${order.price}</td>
+                        <td>${order.status}</td>
+                    </tr>`;
+                });
+                html += '</tbody></table></div>';
+                ordersDiv.innerHTML = html;
+            }
+        }
+    } catch (error) {
+        console.error('加载加密货币订单失败:', error);
+    }
+}
+
+// Tab页切换事件处理
+document.addEventListener('DOMContentLoaded', function() {
+    // 监听Tab页切换事件
+    const cryptoTab = document.getElementById('crypto-tab');
+    if (cryptoTab) {
+        cryptoTab.addEventListener('shown.bs.tab', function() {
+            // 当切换到加密货币Tab页时，初始化数据并开始自动刷新
+            initCryptoTab();
+            startCryptoAutoRefresh();
+        });
+        
+        cryptoTab.addEventListener('hidden.bs.tab', function() {
+            // 当离开加密货币Tab页时，停止自动刷新
+            stopCryptoAutoRefresh();
+        });
+    }
+});
 </script>
 </body>
 </html>
