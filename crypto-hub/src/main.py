@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from .api.routes_dashboard import router as dashboard_router
 
@@ -20,6 +21,9 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan
 )
+
+# 挂载静态文件
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # 注册路由
 app.include_router(dashboard_router)
