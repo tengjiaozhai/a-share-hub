@@ -82,3 +82,33 @@ class ProviderChain(DataProvider):
         """移除指定类型的数据提供者"""
         self._providers = [p for p in self._providers if not isinstance(p, provider_type)]
         logger.info(f"移除数据提供者: {provider_type.__name__}")
+
+
+from src.core.config import Settings
+from src.data.providers.akshare_provider import AkshareProvider
+from src.data.providers.tushare_provider import TushareProvider
+
+def build_provider_chain_from_settings() -> ProviderChain:
+    settings = Settings()
+    mode = settings.market_data_provider
+    if mode == "tushare":
+        return ProviderChain([TushareProvider(token=settings.tushare_token)])
+    elif mode == "akshare":
+        return ProviderChain([AkshareProvider()])
+    return build_auto_provider_chain()
+
+def build_auto_provider_chain() -> ProviderChain:
+    settings = Settings()
+    akshare = AkshareProvider()
+    tushare = TushareProvider(token=settings.tushare_token)
+    try:
+        if akshare.is_available():
+            import akshare as ak
+            df = ak.stock_zh_a_spot_em()
+            if not df.empty:
+                logger.info("auto: AkShare 可用")
+                return ProviderChain([akshare, tushare])
+    except Exception as e:
+        logger.warning(f"auto: AkShare 探测失败 ({e})，降级 Tushare")
+    logger.info("auto: 使用 Tushare")
+    return ProviderChain([tushare, akshare])

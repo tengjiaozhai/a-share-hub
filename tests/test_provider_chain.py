@@ -140,3 +140,19 @@ class TestProviderChain:
         chain.remove_provider(UnavailableProvider)
         assert len(chain._providers) == 1
         assert isinstance(chain._providers[0], MockProvider)
+
+
+from src.data.providers.provider_chain import build_auto_provider_chain, build_provider_chain_from_settings
+
+def test_auto_chain_uses_akshare_when_available(monkeypatch):
+    monkeypatch.setenv("MARKET_DATA_PROVIDER", "auto")
+    monkeypatch.setenv("TUSHARE_TOKEN", "test_token")
+    chain = build_auto_provider_chain()
+    assert chain is not None
+
+def test_manual_tushare_mode(monkeypatch):
+    monkeypatch.setenv("MARKET_DATA_PROVIDER", "tushare")
+    monkeypatch.setenv("TUSHARE_TOKEN", "test_token")
+    chain = build_provider_chain_from_settings()
+    from src.data.providers.tushare_provider import TushareProvider
+    assert isinstance(chain._providers[0], TushareProvider)
