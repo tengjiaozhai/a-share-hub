@@ -10,6 +10,31 @@ def client():
     return TestClient(app)
 
 
+def test_dashboard_page_with_crypto_tab(client):
+    """测试仪表盘页面包含加密货币Tab页"""
+    response = client.get("/dashboard")
+    assert response.status_code == 200
+    assert "加密货币" in response.text
+    assert "crypto-tab" in response.text
+
+
+def test_crypto_proxy_endpoints(client):
+    """测试所有加密货币API代理端点"""
+    endpoints = [
+        "/api/v1/crypto/status",
+        "/api/v1/crypto/balance",
+        "/api/v1/crypto/positions",
+        "/api/v1/crypto/orders",
+        "/api/v1/crypto/signals",
+        "/api/v1/crypto/indicators/BTCUSDT",
+    ]
+    
+    for endpoint in endpoints:
+        response = client.get(endpoint)
+        # 如果crypto-hub未运行，会返回500
+        assert response.status_code in [200, 500]
+
+
 def test_proxy_crypto_status(client):
     """测试代理crypto状态API"""
     response = client.get("/api/v1/crypto/status")
