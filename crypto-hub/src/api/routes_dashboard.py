@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException
 from datetime import datetime
-import httpx
+
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
+
 
 @router.get("/status")
 async def get_status():
@@ -16,6 +17,7 @@ async def get_status():
         },
         "timestamp": datetime.now().isoformat()
     }
+
 
 @router.get("/balance")
 async def get_balance():
@@ -32,7 +34,8 @@ async def get_balance():
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
 
 @router.get("/positions")
 async def get_positions():
@@ -46,7 +49,8 @@ async def get_positions():
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
 
 @router.get("/orders")
 async def get_orders():
@@ -60,7 +64,8 @@ async def get_orders():
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
 
 @router.get("/signals")
 async def get_signals():
@@ -74,7 +79,8 @@ async def get_signals():
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
 
 @router.get("/indicators/{symbol}")
 async def get_indicators(symbol: str):
@@ -99,4 +105,4 @@ async def get_indicators(symbol: str):
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

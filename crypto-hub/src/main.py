@@ -1,6 +1,9 @@
-from fastapi import FastAPI
 from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
 from .api.routes_dashboard import router as dashboard_router
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -9,6 +12,7 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown
     print("Shutting down crypto-hub...")
+
 
 app = FastAPI(
     title="Crypto Hub",
@@ -19,6 +23,7 @@ app = FastAPI(
 
 # 注册路由
 app.include_router(dashboard_router)
+
 
 @app.get("/health")
 async def health():
