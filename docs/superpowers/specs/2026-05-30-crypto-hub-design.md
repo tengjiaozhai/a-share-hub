@@ -43,17 +43,16 @@ a-share-hub/
 │   │   └── api/           # API层
 │   ├── config/            # 配置
 │   └── tests/             # 测试
-├── shared/                # 共享组件
-│   ├── core/              # 核心工具
-│   ├── risk/              # 风控框架
-│   └── decision/          # 决策引擎
+├── shared/                # 共享组件（从A股系统提取）
+│   ├── core/              # 核心工具函数
+│   └── risk/              # 基础风控逻辑
 └── docs/
 ```
 
 ### 2.2 模块关系
 
 - **独立模块**：crypto-hub作为独立模块，拥有完整的数据、执行、策略、风控和API层
-- **共享组件**：复用A股系统的核心工具、风控框架和决策引擎
+- **共享组件**：复用A股系统的核心工具函数和基础风控逻辑（如`evaluate_risk_gate`函数）
 - **松耦合**：通过共享接口通信，避免直接依赖
 
 ### 2.3 技术栈
@@ -459,19 +458,26 @@ class CryptoSignalFusion:
 ### 6.1 扩展现有风控框架
 
 ```python
-class CryptoPreTradeRisk(PreTradeRisk):
+class CryptoPreTradeRisk:
     """加密货币交易前风控"""
     
     def __init__(self, config: dict):
-        super().__init__(config)
+        self.config = config
         self.crypto_config = config.get("crypto", {})
+        self.base_risk = PreTradeRisk()  # 复用A股风控基础功能
     
     async def check_order(self, order_request: OrderRequest) -> RiskCheckResult:
         """检查订单风险"""
         # 1. 基础检查（复用A股风控）
-        base_check = await super().check_order(order_request)
-        if not base_check.passed:
-            return base_check
+        base_check = await self.base_risk.evaluate_risk_gate(
+            symbol=order_request.symbol,
+            action=order_request.side,
+            kill_switch=self.config.get("kill_switch", False),
+            available_cash=await self.get_available_cash(),
+            requested_value=order_request.quantity * order_request.price
+        )
+        if not base_check["approved"]:
+            return RiskCheckResult(passed=False, reason=base_check["reason"])
         
         # 2. 加密货币特有检查
         crypto_check = await self.crypto_specific_checks(order_request)
