@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
+from .api.routes_dashboard import router as dashboard_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -15,6 +16,9 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan
 )
+
+# 注册路由
+app.include_router(dashboard_router)
 
 @app.get("/health")
 async def health():
