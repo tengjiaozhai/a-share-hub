@@ -10,12 +10,12 @@ def client():
     return TestClient(app)
 
 
-def test_dashboard_page_with_crypto_tab(client):
-    """测试仪表盘页面包含加密货币Tab页"""
+def test_dashboard_page_with_crypto_option(client):
+    """测试仪表盘页面实时行情包含加密货币选项"""
     response = client.get("/dashboard")
     assert response.status_code == 200
     assert "加密货币" in response.text
-    assert "crypto-tab" in response.text
+    assert 'value="crypto"' in response.text
 
 
 def test_crypto_proxy_endpoints(client):

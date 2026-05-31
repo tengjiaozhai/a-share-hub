@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     # 行情数据源
     market_data_provider: str = "auto"
     tushare_token: str = ""
+    tushare_pro_token: str = ""
 
     aws_host: str = "127.0.0.1"
     aws_ssh_user: str = "ec2-user"

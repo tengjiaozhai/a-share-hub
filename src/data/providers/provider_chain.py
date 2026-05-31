@@ -88,27 +88,42 @@ from src.core.config import Settings
 from src.data.providers.akshare_provider import AkshareProvider
 from src.data.providers.tushare_provider import TushareProvider
 
+def _get_tushare_token() -> str:
+    """优先读取 tushare_pro_token，其次读取 tushare_token"""
+    settings = Settings()
+    return settings.tushare_pro_token or settings.tushare_token
+
+
 def build_provider_chain_from_settings() -> ProviderChain:
+    """根据配置构建数据提供者链"""
     settings = Settings()
     mode = settings.market_data_provider
+
     if mode == "tushare":
-        return ProviderChain([TushareProvider(token=settings.tushare_token)])
+        return ProviderChain([TushareProvider(token=_get_tushare_token())])
     elif mode == "akshare":
         return ProviderChain([AkshareProvider()])
-    return build_auto_provider_chain()
+    else:
+        # auto 模式
+        return build_auto_provider_chain()
+
 
 def build_auto_provider_chain() -> ProviderChain:
-    settings = Settings()
+    """自动探测：AkShare 优先，失败降级 Tushare"""
+    token = _get_tushare_token()
     akshare = AkshareProvider()
-    tushare = TushareProvider(token=settings.tushare_token)
+    tushare = TushareProvider(token=token)
+
+    # 探测 AkShare 全市场接口
     try:
         if akshare.is_available():
             import akshare as ak
             df = ak.stock_zh_a_spot_em()
             if not df.empty:
-                logger.info("auto: AkShare 可用")
+                logger.info("auto 模式: AkShare 可用，使用 AkShare")
                 return ProviderChain([akshare, tushare])
     except Exception as e:
-        logger.warning(f"auto: AkShare 探测失败 ({e})，降级 Tushare")
-    logger.info("auto: 使用 Tushare")
+        logger.warning(f"auto 模式: AkShare 探测失败 ({e})，降级到 Tushare")
+
+    logger.info("auto 模式: 使用 Tushare")
     return ProviderChain([tushare, akshare])

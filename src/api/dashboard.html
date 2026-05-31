@@ -445,7 +445,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
       <button onclick="switchTab(this,'tab-orders')">最近订单</button>
       <button onclick="switchTab(this,'tab-targets')">当前目标仓位</button>
       <button onclick="switchTab(this,'tab-errors')">异常事件</button>
-      <button onclick="switchTab(this,'tab-crypto')"><i class="bi bi-currency-bitcoin"></i> 加密货币</button>
     </div>
     <div class="tab-content">
       <div class="tab-pane active" id="tab-decisions">
@@ -464,64 +463,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
         <table><thead><tr><th>时间</th><th>级别</th><th>消息</th></tr></thead><tbody id="tb-errors"><tr><td colspan="3" style="color:var(--dim)">暂无异常</td></tr></tbody></table>
         <div id="pag-errors"></div>
       </div>
-      <div class="tab-pane" id="tab-crypto">
-        <div style="padding: 10px 0;">
-          <h4 style="color: var(--muted); margin-bottom: 8px;"><i class="bi bi-currency-bitcoin"></i> 加密货币监控面板</h4>
-          <p style="color: var(--dim); font-size: 12px; margin-bottom: 16px;">实时监控加密货币技术指标、交易信号、持仓和订单</p>
-        </div>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
-          <div class="risk-card">
-            <div class="risk-label">系统状态</div>
-            <div style="font-size: 12px; color: var(--muted); margin-top: 6px;">
-              <p><strong>API连接:</strong> <span id="crypto-api-status" class="badge badge-hold">未连接</span></p>
-              <p><strong>运行状态:</strong> <span id="crypto-uptime">-</span></p>
-              <p><strong>最后更新:</strong> <span id="crypto-last-update">-</span></p>
-            </div>
-          </div>
-          <div class="risk-card">
-            <div class="risk-label">账户信息</div>
-            <div style="font-size: 12px; color: var(--muted); margin-top: 6px;">
-              <p><strong>USDT余额:</strong> <span id="crypto-usdt-balance">-</span></p>
-              <p><strong>总资产:</strong> <span id="crypto-total-assets">-</span></p>
-            </div>
-          </div>
-        </div>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
-          <div class="risk-card">
-            <div class="risk-label">技术指标</div>
-            <div style="font-size: 12px; color: var(--muted); margin-top: 6px;">
-              <p><strong>MA5:</strong> <span id="crypto-ma5">-</span></p>
-              <p><strong>MA10:</strong> <span id="crypto-ma10">-</span></p>
-              <p><strong>MA20:</strong> <span id="crypto-ma20">-</span></p>
-              <p><strong>RSI:</strong> <span id="crypto-rsi">-</span></p>
-              <p><strong>MACD:</strong> <span id="crypto-macd">-</span></p>
-            </div>
-          </div>
-          <div class="risk-card">
-            <div class="risk-label">交易信号</div>
-            <div id="crypto-signals" style="font-size: 12px; color: var(--muted); margin-top: 6px;">
-              <p>暂无交易信号</p>
-            </div>
-          </div>
-        </div>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-          <div class="risk-card">
-            <div class="risk-label">当前持仓</div>
-            <div id="crypto-positions" style="font-size: 12px; color: var(--muted); margin-top: 6px;">
-              <p>暂无持仓</p>
-            </div>
-          </div>
-          <div class="risk-card">
-            <div class="risk-label">最近订单</div>
-            <div id="crypto-orders" style="font-size: 12px; color: var(--muted); margin-top: 6px;">
-              <p>暂无订单</p>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -535,6 +476,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <select id="market-select" style="background:var(--bg);border:1px solid var(--border);color:var(--fg);padding:8px 12px;border-radius:6px;font-size:13px;font-family:inherit;">
       <option value="a">A 股</option>
       <option value="us">美股</option>
+      <option value="crypto">加密货币</option>
     </select>
     <input type="text" id="stock-search-input" placeholder="输入股票代码或名称（如：600519 或 贵州茅台）">
     <button class="run-btn" onclick="searchStock()" style="padding:8px 16px;font-size:12px">搜索</button>
@@ -542,7 +484,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <button class="run-btn" onclick="exitSearchMode()" style="padding:8px 16px;font-size:12px;background:var(--surface2)">返回观察列表</button>
     <span id="search-status" style="font-size:11px;color:var(--dim)"></span>
   </div>
-  <table class="market-table">
+  <table class="market-table" id="market-table-a">
     <thead>
       <tr>
         <th>更新时间</th><th>股票</th><th>最新价</th><th>涨跌额</th><th>涨跌幅</th>
@@ -554,6 +496,67 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
       <tr><td colspan="12" class="market-empty">暂无行情数据</td></tr>
     </tbody>
   </table>
+
+  <!-- 加密货币监控面板 -->
+  <div id="crypto-panel" style="display:none;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+      <!-- 系统状态 -->
+      <div class="risk-card">
+        <div class="risk-label"><i class="bi bi-activity"></i> 系统状态</div>
+        <div class="risk-value" id="crypto-api-status" style="font-size:12px;">未连接</div>
+        <div style="font-size:11px;color:var(--dim);margin-top:4px;">
+          运行状态: <span id="crypto-uptime">-</span>
+        </div>
+        <div style="font-size:11px;color:var(--dim);">
+          最后更新: <span id="crypto-last-update">-</span>
+        </div>
+      </div>
+      <!-- 账户信息 -->
+      <div class="risk-card">
+        <div class="risk-label"><i class="bi bi-wallet2"></i> 账户信息</div>
+        <div class="risk-value" id="crypto-usdt-balance">-</div>
+        <div style="font-size:11px;color:var(--dim);margin-top:4px;">
+          总资产: <span id="crypto-total-assets">-</span>
+        </div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+      <!-- 技术指标 -->
+      <div class="risk-card">
+        <div class="risk-label"><i class="bi bi-graph-up"></i> 技术指标 (BTCUSDT)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
+          <div><span style="color:var(--dim);font-size:11px;">MA5:</span> <span id="crypto-ma5" style="font-size:12px;">-</span></div>
+          <div><span style="color:var(--dim);font-size:11px;">MA10:</span> <span id="crypto-ma10" style="font-size:12px;">-</span></div>
+          <div><span style="color:var(--dim);font-size:11px;">MA20:</span> <span id="crypto-ma20" style="font-size:12px;">-</span></div>
+          <div><span style="color:var(--dim);font-size:11px;">RSI:</span> <span id="crypto-rsi" style="font-size:12px;">-</span></div>
+          <div><span style="color:var(--dim);font-size:11px;">MACD:</span> <span id="crypto-macd" style="font-size:12px;">-</span></div>
+        </div>
+      </div>
+      <!-- 交易信号 -->
+      <div class="risk-card">
+        <div class="risk-label"><i class="bi bi-bell"></i> 交易信号</div>
+        <div id="crypto-signals" style="margin-top:8px;font-size:12px;">
+          <span style="color:var(--dim)">暂无交易信号</span>
+        </div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <!-- 持仓 -->
+      <div class="risk-card">
+        <div class="risk-label"><i class="bi bi-collection"></i> 当前持仓</div>
+        <div id="crypto-positions" style="margin-top:8px;font-size:12px;">
+          <span style="color:var(--dim)">暂无持仓</span>
+        </div>
+      </div>
+      <!-- 订单 -->
+      <div class="risk-card">
+        <div class="risk-label"><i class="bi bi-list-check"></i> 最近订单</div>
+        <div id="crypto-orders" style="margin-top:8px;font-size:12px;">
+          <span style="color:var(--dim)">暂无订单</span>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -1255,13 +1258,28 @@ document.getElementById('stock-search-input').addEventListener('keydown', event 
   }
 });
 
-// 市场切换时更新 placeholder
+// 市场切换时更新 placeholder 和显示对应面板
 document.getElementById('market-select').addEventListener('change', event => {
   const input = document.getElementById('stock-search-input');
+  const marketTable = document.getElementById('market-table-a');
+  const cryptoPanel = document.getElementById('crypto-panel');
+  
   if (event.target.value === 'us') {
     input.placeholder = '输入美股代码或名称（如：AAPL 或 苹果）';
+    marketTable.style.display = '';
+    cryptoPanel.style.display = 'none';
+  } else if (event.target.value === 'crypto') {
+    input.placeholder = '输入加密货币代码（如：BTCUSDT）';
+    marketTable.style.display = 'none';
+    cryptoPanel.style.display = '';
+    // 初始化加密货币数据
+    initCryptoTab();
+    startCryptoAutoRefresh();
   } else {
     input.placeholder = '输入股票代码或名称（如：600519 或 贵州茅台）';
+    marketTable.style.display = '';
+    cryptoPanel.style.display = 'none';
+    stopCryptoAutoRefresh();
   }
 });
 
@@ -2049,21 +2067,6 @@ async function loadCryptoOrders() {
     }
 }
 
-// Tab页切换事件处理
-document.addEventListener('DOMContentLoaded', function() {
-    // 监听Tab页切换事件
-    const cryptoTab = document.getElementById('crypto-tab');
-    if (cryptoTab) {
-        cryptoTab.addEventListener('shown.bs.tab', function() {
-            // 当切换到加密货币Tab页时，初始化数据并开始自动刷新
-            initCryptoTab();
-            startCryptoAutoRefresh();
-        });
-        
-        cryptoTab.addEventListener('hidden.bs.tab', function() {
-            // 当离开加密货币Tab页时，停止自动刷新
-            stopCryptoAutoRefresh();
-        });
     }
 });
 </script>
