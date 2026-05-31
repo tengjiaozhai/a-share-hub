@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     market_data_provider: str = "auto"
     tushare_token: str = ""
     tushare_pro_token: str = ""
+    
+    # 海外服务器代理（通过阿里云跳板访问国内数据源）
+    socks_proxy: str = ""
 
     aws_host: str = "127.0.0.1"
     aws_ssh_user: str = "ec2-user"
