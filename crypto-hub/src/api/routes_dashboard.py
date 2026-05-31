@@ -1,16 +1,8 @@
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.templating import Jinja2Templates
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
-templates = Jinja2Templates(directory="templates")
-
-
-@router.get("/dashboard")
-async def dashboard_page(request: Request):
-    """仪表盘页面"""
-    return templates.TemplateResponse("dashboard.html", {"request": request})
 
 
 @router.get("/status")
