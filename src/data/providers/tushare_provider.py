@@ -63,8 +63,8 @@ class TushareProvider(DataProvider):
         if pro is None:
             return pd.DataFrame()
         try:
-            df = pro.stock_list(exchange="", list_status="L")
-            return df.rename(columns={"ts_code": "symbol"})[["symbol", "name"]] if not df.empty else pd.DataFrame()
+            df = pro.stock_basic(exchange="", list_status="L", fields="ts_code,name")
+            return df.rename(columns={"ts_code": "symbol"}) if not df.empty else pd.DataFrame()
         except Exception as e:
             logger.warning(f"Tushare get_stock_list 失败: {e}")
             return pd.DataFrame()
