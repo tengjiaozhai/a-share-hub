@@ -412,7 +412,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     <h2>风控状态</h2>
     <div class="risk-card">
       <div class="risk-label">当日累计盈亏</div>
-      <div class="risk-value green" id="risk-pnl">¥0</div>
+      <div class="risk-value green" id="risk-pnl">CNY 0</div>
     </div>
     <div class="risk-card">
       <div class="risk-label">持仓集中度</div>
@@ -574,7 +574,7 @@ let simRunning = false;
 let killSwitchActive = false;
 let configHydrated = false;
 
-/* ── Pagination ── */
+/* -- Pagination -- */
 const PAGE_SIZE = 10;
 const pag = {
   decisions: { page: 0, data: [] },
@@ -605,9 +605,9 @@ function renderPagControls(key) {
   const total = pagTotal(key);
   const cur = pag[key].page + 1;
   return `<div class="pagination">
-    <button onclick="pagPrev('${key}')" ${cur <= 1 ? 'disabled' : ''}>◀ 上一页</button>
+    <button onclick="pagPrev('${key}')" ${cur <= 1 ? 'disabled' : ''}>上一页</button>
     <span class="page-info">${cur} / ${total}</span>
-    <button onclick="pagNext('${key}')" ${cur >= total ? 'disabled' : ''}>下一页 ▶</button>
+    <button onclick="pagNext('${key}')" ${cur >= total ? 'disabled' : ''}>下一页</button>
   </div>`;
 }
 
@@ -721,7 +721,7 @@ function formatCurrency(raw) {
   const n = Number(raw);
   if (!Number.isFinite(n)) return normalizeText(raw);
   const sign = n > 0 ? '+' : '';
-  return `${sign}¥${n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `${sign}CNY ${n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function formatNumber(raw, digits = 2) {
@@ -1395,7 +1395,7 @@ function stageBodyHtml(step) {
   }
   const message = normalizeText(step.message || step.summary || step.detail, '--');
   if (stage === 'reconcile') {
-    const match = message.match(/([+-]¥[\d,]+(?:\.\d+)?)/);
+    const match = message.match(/([+-]CNY [\d,]+(?:\.\d+)?)/);
     if (match) {
       const pnlLabel = match[1];
       const before = escapeHtml(message.slice(0, match.index));
