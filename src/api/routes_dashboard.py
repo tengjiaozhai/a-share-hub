@@ -9,6 +9,7 @@ from src.agents.llm_client import LLMClient
 from src.core.config import Settings
 from src.data.providers.akshare_provider import AkshareProvider
 from src.storage.dependencies import get_runtime_store
+from src.storage.runtime_store import RuntimeStore
 
 _CST = timezone(timedelta(hours=8))
 
@@ -60,6 +61,15 @@ router = APIRouter()
 _HISTORY_LIMIT = 20
 
 
+def _build_alpha_panel_payload(store: RuntimeStore) -> dict:
+    tickets = store.list_alpha_tickets()
+    latest_ticket_id = tickets[0]["ticket_id"] if tickets else None
+    return {
+        "tickets": tickets,
+        "fills": store.list_alpha_manual_fills(ticket_id=latest_ticket_id) if latest_ticket_id else [],
+    }
+
+
 def _compute_order_pnl(action: str, quantity: int, fill_price: float, current_price: float) -> float:
     """根据成交价和当前市价计算模拟盈亏。"""
     if action == "BUY":
@@ -76,14 +86,18 @@ def get_dashboard():
 
 
 @router.get("/api/v1/dashboard/workbench")
-def get_workbench(store=Depends(get_runtime_store)) -> dict:
-    return _build_workbench_payload(store)
+def get_workbench(store: RuntimeStore = Depends(get_runtime_store)) -> dict:
+    payload = _build_workbench_payload(store)
+    payload["alpha"] = _build_alpha_panel_payload(store)
+    return payload
 
 
 @router.post("/api/v1/dashboard/run")
 def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)) -> dict:
     if store.get_kill_switch():
-        return _build_workbench_payload(store)
+        payload = _build_workbench_payload(store)
+        payload["alpha"] = _build_alpha_panel_payload(store)
+        return payload
 
     payload = config or {}
     watchlist = [str(symbol).strip() for symbol in (payload.get("watchlist") or ["600519.SH"]) if str(symbol).strip()]
@@ -268,7 +282,9 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
         daily_pnl=daily_pnl,
     )
 
-    return _build_workbench_payload(store, latest_run_override=latest_run)
+    payload = _build_workbench_payload(store, latest_run_override=latest_run)
+    payload["alpha"] = _build_alpha_panel_payload(store)
+    return payload
 
 
 def _build_workbench_payload(store, latest_run_override: dict | None = None) -> dict:

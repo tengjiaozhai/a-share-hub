@@ -223,3 +223,23 @@ def test_kill_switch_events_are_visible_in_workbench_history(test_app):
         event["type"] == "kill_switch_event" and event["active"] is False and event["reason"] == "dashboard manual resume"
         for event in payload["history"]["events"]
     )
+
+
+def test_workbench_payload_includes_alpha_panel(test_app, pg_store):
+    ticket_id = pg_store.insert_alpha_ticket(
+        asset_symbol="AAPLx",
+        underlying_symbol="AAPL",
+        action="BUY",
+        thesis="discount to reference",
+        suggested_quantity=2.0,
+        suggested_limit_price=210.5,
+        expires_at="2026-06-01T16:00:00+08:00",
+    )
+    client = TestClient(test_app)
+
+    response = client.get("/api/v1/dashboard/workbench")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "alpha" in payload
+    assert payload["alpha"]["tickets"][0]["ticket_id"] == ticket_id
