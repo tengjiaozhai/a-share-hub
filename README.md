@@ -66,3 +66,10 @@ Redis 是可选的，必须保持禁用直到负载门控运行手册另有说�
    若数据库中只有 `alembic_version` 或没有业务表，应用在首次初始化 `RuntimeStore` 时会自动补齐运行时表。
 4. 运行 `/opt/anaconda3/envs/py311/bin/python3 -m pytest -q`。
 5. 运行 `bash scripts/run_shadow_cycle.sh`。
+
+## Alpha 代币化证券操作台
+
+- 公开资产数据通过 `/api/v1/alpha/assets` 提供
+- 建议单通过 `/api/v1/alpha/tickets` 创建与查看
+- 人工执行结果通过 `/api/v1/alpha/tickets/{ticket_id}/fills` 回填
+- 当前版本不支持自动下单
