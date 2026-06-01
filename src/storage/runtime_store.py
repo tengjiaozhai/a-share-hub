@@ -19,6 +19,7 @@ from sqlalchemy import func, select
 
 from src.storage.models import (
     AccountSnapshotRow,
+    AlphaApiOrderAttemptRow,
     AlphaManualFillRow,
     AlphaPortfolioSnapshotRow,
     AlphaPositionRow,
@@ -718,6 +719,58 @@ class RuntimeStore:
                     "symbol": row.symbol,
                     "underlying_symbol": row.underlying_symbol,
                     "priority": row.priority,
+                    "created_at": _cst_iso(row.created_at),
+                }
+                for row in rows
+            ]
+
+    def insert_alpha_api_order_attempt(
+        self,
+        ticket_id: str,
+        asset_symbol: str,
+        action: str,
+        quantity: float,
+        limit_price: float,
+        mode: str,
+        status: str,
+        remote_order_id: str | None,
+        response_payload: dict,
+    ) -> str:
+        attempt_id = f"alpha-api-order-{uuid.uuid4().hex[:12]}"
+        with self.engine.begin() as conn:
+            conn.execute(
+                AlphaApiOrderAttemptRow.__table__.insert().values(
+                    attempt_id=attempt_id,
+                    ticket_id=ticket_id,
+                    asset_symbol=asset_symbol,
+                    action=action,
+                    quantity=quantity,
+                    limit_price=limit_price,
+                    mode=mode,
+                    status=status,
+                    remote_order_id=remote_order_id,
+                    response_payload_json=json.dumps(response_payload, ensure_ascii=True, sort_keys=True),
+                )
+            )
+        return attempt_id
+
+    def list_alpha_api_order_attempts(self) -> list[dict]:
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                select(AlphaApiOrderAttemptRow).order_by(AlphaApiOrderAttemptRow.created_at.desc())
+            ).fetchall()
+            return [
+                {
+                    "attempt_id": row.attempt_id,
+                    "ticket_id": row.ticket_id,
+                    "asset_symbol": row.asset_symbol,
+                    "action": row.action,
+                    "quantity": row.quantity,
+                    "limit_price": row.limit_price,
+                    "mode": row.mode,
+                    "status": row.status,
+                    "remote_order_id": row.remote_order_id,
+                    "response_payload": json.loads(row.response_payload_json),
                     "created_at": _cst_iso(row.created_at),
                 }
                 for row in rows

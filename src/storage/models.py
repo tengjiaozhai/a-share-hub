@@ -195,3 +195,19 @@ class AlphaWatchlistItemRow(Base):
     underlying_symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     priority: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AlphaApiOrderAttemptRow(Base):
+    __tablename__ = "alpha_api_order_attempts"
+
+    attempt_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    ticket_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    asset_symbol: Mapped[str] = mapped_column(String(32), nullable=False)
+    action: Mapped[str] = mapped_column(String(16), nullable=False)
+    quantity: Mapped[float] = mapped_column(Float, nullable=False)
+    limit_price: Mapped[float] = mapped_column(Float, nullable=False)
+    mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    remote_order_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    response_payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)

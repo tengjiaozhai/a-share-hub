@@ -86,3 +86,27 @@ def test_runtime_store_manages_alpha_watchlist_items(tmp_path):
 
     store.remove_alpha_watchlist_item(symbol="SPYx")
     assert [item["symbol"] for item in store.list_alpha_watchlist_items()] == ["AAPLx"]
+
+
+def test_runtime_store_persists_alpha_api_order_attempt(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path}/runtime.db", future=True)
+    Base.metadata.create_all(engine)
+    store = RuntimeStore(engine)
+
+    attempt_id = store.insert_alpha_api_order_attempt(
+        ticket_id="alpha-ticket-001",
+        asset_symbol="AAPLx",
+        action="BUY",
+        quantity=1.0,
+        limit_price=210.0,
+        mode="api",
+        status="SUBMITTED",
+        remote_order_id="remote-001",
+        response_payload={"status": "SUBMITTED"},
+    )
+
+    attempts = store.list_alpha_api_order_attempts()
+
+    assert attempts[0]["attempt_id"] == attempt_id
+    assert attempts[0]["remote_order_id"] == "remote-001"
+    assert attempts[0]["status"] == "SUBMITTED"
