@@ -124,4 +124,34 @@ class UserPreferenceRow(Base):
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+
+class AlphaTicketRow(Base):
+    __tablename__ = "alpha_tickets"
+
+    ticket_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    asset_symbol: Mapped[str] = mapped_column(String(32), nullable=False)
+    underlying_symbol: Mapped[str] = mapped_column(String(32), nullable=False)
+    action: Mapped[str] = mapped_column(String(16), nullable=False)
+    thesis: Mapped[str] = mapped_column(Text, nullable=False)
+    suggested_quantity: Mapped[float] = mapped_column(Float, nullable=False)
+    suggested_limit_price: Mapped[float] = mapped_column(Float, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="PROPOSED")
+    approved_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AlphaManualFillRow(Base):
+    __tablename__ = "alpha_manual_fills"
+
+    fill_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    ticket_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    operator_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    executed_quantity: Mapped[float] = mapped_column(Float, nullable=False)
+    executed_price: Mapped[float] = mapped_column(Float, nullable=False)
+    notes: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)

@@ -19,6 +19,8 @@ from sqlalchemy import func, select
 
 from src.storage.models import (
     AccountSnapshotRow,
+    AlphaManualFillRow,
+    AlphaTicketRow,
     BrokerEventRow,
     DecisionInputSnapshotRow,
     DecisionRunRow,
@@ -478,3 +480,100 @@ class RuntimeStore:
                         value=json.dumps(value, ensure_ascii=True),
                     )
                 )
+
+    def insert_alpha_ticket(
+        self,
+        asset_symbol: str,
+        underlying_symbol: str,
+        action: str,
+        thesis: str,
+        suggested_quantity: float,
+        suggested_limit_price: float,
+        expires_at: str,
+    ) -> str:
+        ticket_id = f"alpha-ticket-{uuid.uuid4().hex[:12]}"
+        with self.engine.begin() as conn:
+            conn.execute(
+                AlphaTicketRow.__table__.insert().values(
+                    ticket_id=ticket_id,
+                    asset_symbol=asset_symbol,
+                    underlying_symbol=underlying_symbol,
+                    action=action,
+                    thesis=thesis,
+                    suggested_quantity=suggested_quantity,
+                    suggested_limit_price=suggested_limit_price,
+                    expires_at=datetime.fromisoformat(expires_at),
+                    status="PROPOSED",
+                )
+            )
+        return ticket_id
+
+    def approve_alpha_ticket(self, ticket_id: str, operator_id: str) -> None:
+        with self.engine.begin() as conn:
+            conn.execute(
+                AlphaTicketRow.__table__.update()
+                .where(AlphaTicketRow.ticket_id == ticket_id)
+                .values(status="APPROVED", approved_by=operator_id)
+            )
+
+    def insert_alpha_manual_fill(
+        self,
+        ticket_id: str,
+        operator_id: str,
+        executed_quantity: float,
+        executed_price: float,
+        notes: str,
+    ) -> str:
+        fill_id = f"alpha-fill-{uuid.uuid4().hex[:12]}"
+        with self.engine.begin() as conn:
+            conn.execute(
+                AlphaManualFillRow.__table__.insert().values(
+                    fill_id=fill_id,
+                    ticket_id=ticket_id,
+                    operator_id=operator_id,
+                    executed_quantity=executed_quantity,
+                    executed_price=executed_price,
+                    notes=notes,
+                )
+            )
+        return fill_id
+
+    def list_alpha_tickets(self) -> list[dict]:
+        with self.engine.begin() as conn:
+            rows = conn.execute(select(AlphaTicketRow).order_by(AlphaTicketRow.created_at.desc())).fetchall()
+            return [
+                {
+                    "ticket_id": row.ticket_id,
+                    "asset_symbol": row.asset_symbol,
+                    "underlying_symbol": row.underlying_symbol,
+                    "action": row.action,
+                    "thesis": row.thesis,
+                    "suggested_quantity": row.suggested_quantity,
+                    "suggested_limit_price": row.suggested_limit_price,
+                    "status": row.status,
+                    "approved_by": row.approved_by,
+                    "expires_at": _cst_iso(row.expires_at),
+                    "created_at": _cst_iso(row.created_at),
+                }
+                for row in rows
+            ]
+
+    def list_alpha_manual_fills(self, ticket_id: str) -> list[dict]:
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                select(AlphaManualFillRow)
+                .where(AlphaManualFillRow.ticket_id == ticket_id)
+                .order_by(AlphaManualFillRow.created_at.desc())
+            ).fetchall()
+            return [
+                {
+                    "fill_id": row.fill_id,
+                    "ticket_id": row.ticket_id,
+                    "operator_id": row.operator_id,
+                    "executed_quantity": row.executed_quantity,
+                    "executed_price": row.executed_price,
+                    "notes": row.notes,
+                    "created_at": _cst_iso(row.created_at),
+                }
+                for row in rows
+            ]
