@@ -1,25 +1,25 @@
 import argparse
+import sys
 from datetime import datetime, timedelta
 from hashlib import sha256
-import sys
 
 from fastapi import FastAPI
 
 from src.agents.llm_client import LLMClient
-from src.core.config import Settings
-from src.decision.decision_runner import build_decision_run_record
-from src.decision.input_builder import build_decision_input_snapshot
 from src.api.routes_alpha import router as alpha_router
 from src.api.routes_broker_events import router as broker_events_router
 from src.api.routes_crypto import router as crypto_router
+from src.api.routes_dashboard import router as dashboard_router
 from src.api.routes_decision_runs import router as decision_runs_router
 from src.api.routes_execution_plans import router as execution_plans_router
 from src.api.routes_health import router as health_router
 from src.api.routes_kill_switch import router as kill_switch_router
+from src.api.routes_market import router as market_router
 from src.api.routes_portfolio_targets import router as portfolio_targets_router
 from src.api.routes_reconciliation import router as reconciliation_router
-from src.api.routes_market import router as market_router
-from src.api.routes_dashboard import router as dashboard_router
+from src.core.config import Settings
+from src.decision.decision_runner import build_decision_run_record
+from src.decision.input_builder import build_decision_input_snapshot
 from src.portfolio.target_planner import build_target_position
 from src.storage.dependencies import get_runtime_store
 
@@ -175,6 +175,7 @@ def dispatch_command(args: argparse.Namespace) -> None:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     elif args.command == "serve" or args.command is None:
         import logging
+
         import uvicorn
         logging.basicConfig(level=logging.INFO)
         app = build_app()
