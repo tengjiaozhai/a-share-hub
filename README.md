@@ -73,3 +73,10 @@ Redis 是可选的，必须保持禁用直到负载门控运行手册另有说�
 - 建议单通过 `/api/v1/alpha/tickets` 创建与查看
 - 人工执行结果通过 `/api/v1/alpha/tickets/{ticket_id}/fills` 回填
 - 当前版本不支持自动下单
+
+## Alpha 账本与对账
+
+- 组合快照通过 `/api/v1/alpha/portfolio` 查看
+- 对账通过 `/api/v1/alpha/reconciliation/run` 触发
+- Dashboard 异常区展示对账差异
+- 详细操作流程见 `docs/runbooks/alpha-ledger-and-reconciliation.md`
