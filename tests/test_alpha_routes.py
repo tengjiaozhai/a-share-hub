@@ -1,5 +1,4 @@
 from fastapi.testclient import TestClient
-
 from src.main import build_app
 
 
@@ -9,7 +8,6 @@ def test_alpha_assets_endpoint_returns_normalized_rows(monkeypatch):
     class FakeService:
         async def list_asset_snapshots(self):
             from src.alpha.models import AlphaAssetSnapshot
-
             return [
                 AlphaAssetSnapshot(
                     symbol="AAPLx",
@@ -23,8 +21,12 @@ def test_alpha_assets_endpoint_returns_normalized_rows(monkeypatch):
                 )
             ]
 
-    monkeypatch.setattr(routes_alpha, "_get_alpha_market_service", lambda: FakeService())
-    client = TestClient(build_app())
+    async def override_get_alpha_service():
+        return FakeService()
+
+    app = build_app()
+    app.dependency_overrides[routes_alpha.get_alpha_service] = override_get_alpha_service
+    client = TestClient(app)
 
     response = client.get("/api/v1/alpha/assets")
 
