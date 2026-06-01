@@ -1902,14 +1902,15 @@ async function loadAlphaAssets() {
     if (res.ok) {
       const data = await res.json();
       const root = document.getElementById('alpha-assets');
-      if (data.length === 0) {
+      if (!data.items || data.items.length === 0) {
         root.innerHTML = '<span style="color:var(--dim)">暂无资产</span>';
       } else {
-        root.innerHTML = data.map(asset => `
+        root.innerHTML = data.items.map(asset => `
           <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
-            <span>${asset.symbol}</span>
-            <span>${asset.quantity}</span>
-            <span>${asset.current_price}</span>
+            <span>${escapeHtml(asset.symbol)}</span>
+            <span>${escapeHtml(asset.underlying_symbol)}</span>
+            <span>${escapeHtml(asset.market_status)}</span>
+            <span>${escapeHtml(asset.asset_status)}</span>
           </div>
         `).join('');
       }
