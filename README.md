@@ -73,6 +73,7 @@ Redis 是可选的，必须保持禁用直到负载门控运行手册另有说�
 - 建议单通过 `/api/v1/alpha/tickets` 创建与查看
 - 人工执行结果通过 `/api/v1/alpha/tickets/{ticket_id}/fills` 回填
 - 当前版本不支持自动下单
+- 研究扫描与候选转建议单流程见 `docs/runbooks/alpha-research-and-ops-ui.md`
 
 ## Alpha 账本与对账
 
@@ -80,3 +81,14 @@ Redis 是可选的，必须保持禁用直到负载门控运行手册另有说�
 - 对账通过 `/api/v1/alpha/reconciliation/run` 触发
 - Dashboard 异常区展示对账差异
 - 详细操作流程见 `docs/runbooks/alpha-ledger-and-reconciliation.md`
+
+## Alpha 执行能力门控
+
+Phase 4 引入了安全门控机制，控制 API 下单能力的启用：
+
+- 能力状态通过 `/api/v1/alpha/capabilities` 查询
+- 订单预览通过 `/api/v1/alpha/orders/preview` 验证
+- 订单提交通过 `/api/v1/alpha/orders/submit` 执行（需启用 API 模式）
+- 默认模式为 `manual`，需要人工确认
+- 启用 API 模式前必须通过 preview 验证
+- 详细操作流程见 `docs/runbooks/alpha-execution-capability-gate.md`
