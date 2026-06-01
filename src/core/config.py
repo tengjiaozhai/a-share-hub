@@ -53,6 +53,12 @@ class Settings(BaseSettings):
     aws_ssh_user: str = "ec2-user"
     aws_ssh_key_path: Path = Field(default=Path("/path/to/key.pem"))
 
+    # Alpha 执行配置
+    alpha_execution_mode: str = "manual"
+    alpha_api_base_url: str = ""
+    alpha_api_key: str = ""
+    alpha_api_secret: str = ""
+
     # 策略配置
     strategy_top_n: int = 10
     strategy_max_position_ratio: float = 0.2
