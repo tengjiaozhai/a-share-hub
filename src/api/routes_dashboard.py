@@ -1,11 +1,12 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 
 from src.agents.llm_client import LLMClient
+from src.alpha.execution_service import AlphaExecutionService
 from src.core.config import Settings
 from src.data.providers.akshare_provider import AkshareProvider
 from src.storage.dependencies import get_runtime_store
@@ -26,6 +27,14 @@ def _today_close_cst() -> datetime:
 
 _llm_client: LLMClient | None = None
 _akshare: AkshareProvider | None = None
+_alpha_execution_service: AlphaExecutionService | None = None
+
+
+def _get_alpha_execution_service() -> AlphaExecutionService:
+    global _alpha_execution_service
+    if _alpha_execution_service is None:
+        _alpha_execution_service = AlphaExecutionService(mode="manual", gateway=None)
+    return _alpha_execution_service
 
 
 def _get_llm() -> LLMClient:
@@ -67,6 +76,8 @@ def _build_alpha_panel_payload(store: RuntimeStore) -> dict:
     latest_snapshot = store.get_latest_alpha_portfolio_snapshot()
     recon_runs = store.list_alpha_reconciliation_runs()
     latest_recon = recon_runs[0] if recon_runs else None
+    capability = _get_alpha_execution_service().get_capability()
+    capability_payload = capability if isinstance(capability, dict) else capability.__dict__
     return {
         "tickets": tickets,
         "fills": store.list_alpha_manual_fills(ticket_id=latest_ticket_id) if latest_ticket_id else [],
@@ -82,6 +93,7 @@ def _build_alpha_panel_payload(store: RuntimeStore) -> dict:
             "watchlist": store.list_alpha_watchlist_items(),
             "latest_candidates": [],
         },
+        "execution_capability": capability_payload,
     }
 
 
@@ -127,8 +139,8 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
     target_value_per_symbol = int(capital_base * ratio_per_symbol)
     run_context_id = f"wrk-{_now_cst().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
 
-    from src.decision.decision_runner import parse_decision_output
     from src.agents.schemas import DecisionOutput
+    from src.decision.decision_runner import parse_decision_output
 
     settings = Settings()
     llm = _get_llm()
@@ -737,8 +749,9 @@ def run_backtest(config: dict) -> dict:
 def scan_stock_pool(config: dict | None = None) -> dict:
     """全市场自动选股，扫描器预筛 + 历史K线确认。"""
     from datetime import datetime
+
     from src.data.providers.akshare_provider import _fetch_tencent_quotes_batch
-    from src.strategy.stock_scanner import scan_market, confirm_buy_candidates
+    from src.strategy.stock_scanner import confirm_buy_candidates, scan_market
     from src.strategy.strategy_config import StrategyConfig
 
     cfg = config or {}

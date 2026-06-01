@@ -27,3 +27,10 @@ def test_dashboard_contains_alpha_research_controls():
     assert "观察列表与候选" in content
     assert "runAlphaScan" in content
     assert "proposeTopAlphaTicket" in content
+
+
+def test_dashboard_contains_alpha_execution_capability_panel():
+    content = Path("src/api/dashboard.html").read_text(encoding="utf-8")
+    assert "alpha-execution-capability" in content
+    assert "Direct Execution Capability" in content
+    assert "const ALPHA_CAPABILITIES_API = '/api/v1/alpha/capabilities';" in content

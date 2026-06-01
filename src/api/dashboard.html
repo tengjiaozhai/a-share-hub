@@ -512,6 +512,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 <!-- ════════ ALPHA VIEW ════════ -->
 <div class="view" id="view-alpha">
   <h2>Alpha 代币化证券</h2>
+  <div class="risk-card" id="alpha-execution-capability">
+    <div class="risk-label">Direct Execution Capability</div>
+    <div id="alpha-execution-mode"></div>
+    <div id="alpha-execution-reason"></div>
+  </div>
   <div class="risk-card">
     <div class="risk-label">Alpha 组合</div>
     <div id="alpha-portfolio-summary"></div>
@@ -1866,6 +1871,12 @@ setInterval(() => {
 // Alpha 代币化证券
 const ALPHA_ASSETS_API = '/api/v1/alpha/assets';
 const ALPHA_TICKETS_API = '/api/v1/alpha/tickets';
+const ALPHA_CAPABILITIES_API = '/api/v1/alpha/capabilities';
+
+function renderAlphaExecutionCapability(capability) {
+  document.getElementById('alpha-execution-mode').textContent = capability.mode;
+  document.getElementById('alpha-execution-reason').textContent = capability.reason;
+}
 
 function renderAlphaPortfolio(portfolio) {
   const summary = portfolio?.snapshot;
@@ -1963,6 +1974,9 @@ async function loadAlphaTickets() {
       renderAlphaPortfolio(data.alpha?.portfolio || {});
       renderAlphaExceptions(data.alpha?.exceptions || {});
       renderAlphaWatchlist(data.alpha?.research?.watchlist || []);
+      if (data.alpha?.execution_capability) {
+        renderAlphaExecutionCapability(data.alpha.execution_capability);
+      }
     }
   } catch (error) {
     console.error('加载Alpha建议单失败:', error);
