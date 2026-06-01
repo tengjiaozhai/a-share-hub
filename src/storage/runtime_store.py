@@ -24,6 +24,7 @@ from src.storage.models import (
     AlphaPositionRow,
     AlphaReconciliationRunRow,
     AlphaTicketRow,
+    AlphaWatchlistItemRow,
     BrokerEventRow,
     DecisionInputSnapshotRow,
     DecisionRunRow,
@@ -686,6 +687,37 @@ class RuntimeStore:
                     "source": row.source,
                     "status": row.status,
                     "discrepancies": json.loads(row.discrepancies_json),
+                    "created_at": _cst_iso(row.created_at),
+                }
+                for row in rows
+            ]
+
+    def add_alpha_watchlist_item(self, symbol: str, underlying_symbol: str, priority: int) -> None:
+        with self.engine.begin() as conn:
+            conn.execute(
+                AlphaWatchlistItemRow.__table__.insert().values(
+                    symbol=symbol,
+                    underlying_symbol=underlying_symbol,
+                    priority=priority,
+                )
+            )
+
+    def remove_alpha_watchlist_item(self, symbol: str) -> None:
+        with self.engine.begin() as conn:
+            conn.execute(
+                AlphaWatchlistItemRow.__table__.delete().where(AlphaWatchlistItemRow.symbol == symbol)
+            )
+
+    def list_alpha_watchlist_items(self) -> list[dict]:
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                select(AlphaWatchlistItemRow).order_by(AlphaWatchlistItemRow.priority, AlphaWatchlistItemRow.symbol)
+            ).fetchall()
+            return [
+                {
+                    "symbol": row.symbol,
+                    "underlying_symbol": row.underlying_symbol,
+                    "priority": row.priority,
                     "created_at": _cst_iso(row.created_at),
                 }
                 for row in rows

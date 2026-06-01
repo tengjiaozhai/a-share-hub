@@ -186,3 +186,12 @@ class AlphaReconciliationRunRow(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     discrepancies_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AlphaWatchlistItemRow(Base):
+    __tablename__ = "alpha_watchlist_items"
+
+    symbol: Mapped[str] = mapped_column(String(32), primary_key=True)
+    underlying_symbol: Mapped[str] = mapped_column(String(32), nullable=False)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)

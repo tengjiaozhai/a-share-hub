@@ -70,3 +70,19 @@ def test_runtime_store_persists_alpha_portfolio_and_reconciliation_records(tmp_p
     assert snapshot["nav"] == 10_314.8
     assert runs[0]["run_id"] == run_id
     assert runs[0]["status"] == "MISMATCH"
+
+
+def test_runtime_store_manages_alpha_watchlist_items(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path}/runtime.db", future=True)
+    Base.metadata.create_all(engine)
+    store = RuntimeStore(engine)
+
+    store.add_alpha_watchlist_item(symbol="AAPLx", underlying_symbol="AAPL", priority=1)
+    store.add_alpha_watchlist_item(symbol="SPYx", underlying_symbol="SPY", priority=2)
+
+    items = store.list_alpha_watchlist_items()
+
+    assert [item["symbol"] for item in items] == ["AAPLx", "SPYx"]
+
+    store.remove_alpha_watchlist_item(symbol="SPYx")
+    assert [item["symbol"] for item in store.list_alpha_watchlist_items()] == ["AAPLx"]
