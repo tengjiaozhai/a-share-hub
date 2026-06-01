@@ -1,10 +1,12 @@
+from typing import Any
+
 import pytest
 
 from src.alpha.service import AlphaMarketService
 
 
 class FakeAlphaClient:
-    async def get_tokenized_securities(self) -> dict:
+    async def get_tokenized_securities(self) -> dict[str, Any]:
         return {
             "data": {
                 "tokenizedStocks": [
@@ -23,7 +25,7 @@ class FakeAlphaClient:
 
 
 @pytest.mark.asyncio
-async def test_market_service_normalizes_asset_snapshot():
+async def test_market_service_normalizes_asset_snapshot() -> None:
     service = AlphaMarketService(FakeAlphaClient())
 
     snapshots = await service.list_asset_snapshots()

@@ -1,8 +1,15 @@
+from typing import Any, Protocol
+
 from src.alpha.models import AlphaAssetSnapshot
 
 
+class AlphaClientProtocol(Protocol):
+    async def get_tokenized_securities(self) -> dict[str, Any]:
+        ...
+
+
 class AlphaMarketService:
-    def __init__(self, client) -> None:
+    def __init__(self, client: AlphaClientProtocol) -> None:
         self._client = client
 
     async def list_asset_snapshots(self) -> list[AlphaAssetSnapshot]:
