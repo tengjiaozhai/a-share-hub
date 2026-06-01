@@ -28,7 +28,7 @@ const AlphaAPI = {
 
 const MarketAPI = {
   getQuote:    (symbol) => apiFetch(`/market/quote/${symbol}`),
-  getBulk:     (symbols) => apiFetch('/market/bulk', { method: 'POST', body: JSON.stringify({ symbols }) }),
+  getBulk:     (symbols) => apiFetch('/market/bulk', { method: 'POST', body: JSON.stringify(symbols) }),
   search:      (query) => apiFetch(`/market/search?q=${encodeURIComponent(query)}`),
 };
 
