@@ -51,9 +51,13 @@ def test_alpha_ticket_api_supports_create_approve_and_fill(test_app):
             "expires_at": "2026-06-01T16:00:00+08:00",
         },
     )
+    assert create_res.status_code == 200
     ticket_id = create_res.json()["ticket_id"]
 
     approve_res = client.post(f"/api/v1/alpha/tickets/{ticket_id}/approve", json={"operator_id": "trader-01"})
+    assert approve_res.status_code == 200
+    assert approve_res.json()["status"] == "APPROVED"
+
     fill_res = client.post(
         f"/api/v1/alpha/tickets/{ticket_id}/fills",
         json={
@@ -63,10 +67,31 @@ def test_alpha_ticket_api_supports_create_approve_and_fill(test_app):
             "notes": "filled manually",
         },
     )
-    workbench_res = client.get("/api/v1/dashboard/workbench")
-
-    assert create_res.status_code == 200
-    assert approve_res.json()["status"] == "APPROVED"
+    assert fill_res.status_code == 200
     assert fill_res.json()["recorded"] is True
+
+    workbench_res = client.get("/api/v1/dashboard/workbench")
+    assert workbench_res.status_code == 200
     assert "alpha" in workbench_res.json()
     assert workbench_res.json()["alpha"]["tickets"][0]["asset_symbol"] == "AAPLx"
+
+
+def test_alpha_ticket_api_returns_404_for_nonexistent_ticket(test_app):
+    client = TestClient(test_app)
+
+    approve_res = client.post(
+        "/api/v1/alpha/tickets/nonexistent-ticket/approve",
+        json={"operator_id": "trader-01"},
+    )
+    assert approve_res.status_code == 404
+
+    fill_res = client.post(
+        "/api/v1/alpha/tickets/nonexistent-ticket/fills",
+        json={
+            "operator_id": "trader-01",
+            "executed_quantity": 2.0,
+            "executed_price": 210.2,
+            "notes": "filled manually",
+        },
+    )
+    assert fill_res.status_code == 404
