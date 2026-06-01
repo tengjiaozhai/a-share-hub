@@ -20,3 +20,10 @@ def test_dashboard_contains_alpha_portfolio_and_exceptions_ui():
     assert "renderAlphaExceptions" in content
     assert "Alpha 组合" in content
     assert "Alpha 异常" in content
+
+
+def test_dashboard_contains_alpha_research_controls():
+    content = Path("src/api/dashboard.html").read_text(encoding="utf-8")
+    assert "观察列表与候选" in content
+    assert "runAlphaScan" in content
+    assert "proposeTopAlphaTicket" in content

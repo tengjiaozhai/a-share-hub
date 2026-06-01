@@ -78,6 +78,10 @@ def _build_alpha_panel_payload(store: RuntimeStore) -> dict:
             "latest_status": latest_recon["status"] if latest_recon else "UNKNOWN",
             "latest_discrepancies": latest_recon["discrepancies"] if latest_recon else {},
         },
+        "research": {
+            "watchlist": store.list_alpha_watchlist_items(),
+            "latest_candidates": [],
+        },
     }
 
 

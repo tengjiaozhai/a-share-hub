@@ -175,3 +175,23 @@ async def scan_alpha_watchlist(
 ) -> dict:
     symbols = [item["symbol"] for item in store.list_alpha_watchlist_items()]
     return {"items": await research_service.rank_watchlist(symbols)}
+
+
+def _get_alpha_research_service() -> AlphaResearchService:
+    """获取研究服务实例，供 propose-top-ticket 端点使用（可被测试 monkeypatch）"""
+    client = httpx.AsyncClient(base_url="https://api.binance.com")
+    history_client = BinanceHistoryClient(client)
+    signal_engine = AlphaSignalEngine(buy_threshold=0.02, sell_threshold=-0.02)
+    return AlphaResearchService(history_client, signal_engine)
+
+
+@router.post("/research/propose-top-ticket")
+async def propose_top_alpha_ticket(payload: dict, store: RuntimeStore = Depends(get_runtime_store)) -> dict:
+    service = _get_alpha_research_service()
+    symbols = [item["symbol"] for item in store.list_alpha_watchlist_items()]
+    ranked = await service.rank_watchlist(symbols)
+    top = ranked[0]
+    ticket_payload = service.build_ticket_from_signal(top, thesis_prefix=payload["thesis_prefix"])
+    ticket_payload["expires_at"] = payload.get("expires_at", "2026-06-01T16:00:00+08:00")
+    ticket_id = store.insert_alpha_ticket(**ticket_payload)
+    return {"ticket_id": ticket_id, **ticket_payload}

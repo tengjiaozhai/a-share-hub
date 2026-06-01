@@ -537,6 +537,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
     </form>
     <div id="alpha-tickets"></div>
   </div>
+  <div class="risk-card">
+    <div class="risk-label">观察列表与候选</div>
+    <button onclick="runAlphaScan()">运行扫描</button>
+    <button onclick="proposeTopAlphaTicket()">生成建议单</button>
+    <div id="alpha-watchlist"></div>
+    <div id="alpha-candidates"></div>
+  </div>
 </div>
 
 <script>
@@ -1955,9 +1962,57 @@ async function loadAlphaTickets() {
       renderAlphaTickets(data.alpha?.tickets || []);
       renderAlphaPortfolio(data.alpha?.portfolio || {});
       renderAlphaExceptions(data.alpha?.exceptions || {});
+      renderAlphaWatchlist(data.alpha?.research?.watchlist || []);
     }
   } catch (error) {
     console.error('加载Alpha建议单失败:', error);
+  }
+}
+
+function renderAlphaWatchlist(items) {
+  const root = document.getElementById('alpha-watchlist');
+  if (!items.length) {
+    root.innerHTML = '<span style="color:var(--dim)">暂无观察标的</span>';
+    return;
+  }
+  root.innerHTML = items.map(item => `
+    <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px">
+      <span>${escapeHtml(item.symbol)}</span>
+      <span>${escapeHtml(item.underlying_symbol)}</span>
+      <span>优先级: ${item.priority}</span>
+    </div>
+  `).join('');
+}
+
+async function runAlphaScan() {
+  const root = document.getElementById('alpha-candidates');
+  root.innerHTML = '<span style="color:var(--yellow)">扫描中...</span>';
+  try {
+    const res = await fetch('/api/v1/alpha/research/scan', { method: 'POST' });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.detail || '扫描失败');
+    root.innerHTML = body.items
+      .map(item => `<div style="padding:4px 0;font-size:12px"><strong>${escapeHtml(item.symbol)}</strong> ${escapeHtml(item.action)} 评分: ${item.score.toFixed(4)} ${escapeHtml(item.reason)}</div>`)
+      .join('');
+  } catch (error) {
+    root.innerHTML = `<span style="color:var(--red)">扫描失败: ${escapeHtml(error.message)}</span>`;
+  }
+}
+
+async function proposeTopAlphaTicket() {
+  try {
+    const res = await fetch('/api/v1/alpha/research/propose-top-ticket', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ thesis_prefix: 'dashboard auto' }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.detail || '生成建议单失败');
+    const workbench = await fetch(WORKBENCH_API).then((res) => res.json());
+    renderAlphaTickets(workbench.alpha?.tickets || []);
+  } catch (error) {
+    console.error('生成建议单失败:', error);
+    alert('生成建议单失败: ' + error.message);
   }
 }
 </script>

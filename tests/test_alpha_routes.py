@@ -184,3 +184,31 @@ def test_alpha_research_scan_endpoint_returns_ranked_candidates():
     assert items[0]["action"] == "BUY"
     assert items[1]["symbol"] == "SPYx"
     assert items[1]["action"] == "SELL"
+
+
+def test_alpha_research_candidate_can_be_promoted_to_ticket(test_app, pg_store, monkeypatch):
+    from src.api import routes_alpha
+
+    class FakeResearchService:
+        async def rank_watchlist(self, symbols):
+            return [{"symbol": "AAPLx", "action": "BUY", "score": 0.8, "reason": "trend strong"}]
+
+        def build_ticket_from_signal(self, signal, thesis_prefix):
+            return {
+                "asset_symbol": "AAPLx",
+                "underlying_symbol": "AAPL",
+                "action": "BUY",
+                "thesis": f"{thesis_prefix}: trend strong",
+                "suggested_quantity": 1.0,
+                "suggested_limit_price": 0.0,
+            }
+
+    monkeypatch.setattr(routes_alpha, "_get_alpha_research_service", lambda: FakeResearchService())
+    pg_store.add_alpha_watchlist_item(symbol="AAPLx", underlying_symbol="AAPL", priority=1)
+    client = TestClient(test_app)
+
+    response = client.post("/api/v1/alpha/research/propose-top-ticket", json={"thesis_prefix": "auto"})
+
+    assert response.status_code == 200
+    assert response.json()["asset_symbol"] == "AAPLx"
+    assert response.json()["ticket_id"].startswith("alpha-ticket-")
