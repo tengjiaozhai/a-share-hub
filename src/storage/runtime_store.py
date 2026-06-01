@@ -581,6 +581,24 @@ class RuntimeStore:
                 for row in rows
             ]
 
+    def list_all_alpha_manual_fills(self) -> list[dict]:
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                select(AlphaManualFillRow).order_by(AlphaManualFillRow.created_at)
+            ).fetchall()
+            return [
+                {
+                    "fill_id": row.fill_id,
+                    "ticket_id": row.ticket_id,
+                    "operator_id": row.operator_id,
+                    "executed_quantity": row.executed_quantity,
+                    "executed_price": row.executed_price,
+                    "notes": row.notes,
+                    "created_at": _cst_iso(row.created_at),
+                }
+                for row in rows
+            ]
+
     def replace_alpha_positions(self, positions: list[dict]) -> None:
         with self.engine.begin() as conn:
             conn.execute(AlphaPositionRow.__table__.delete())
