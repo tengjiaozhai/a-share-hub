@@ -408,3 +408,211 @@ function renderMarketQuotes(quotes) {
     </tr>`;
   }).join('');
 }
+// 同步配置到表单（外部可调用）
+function populateConfigForm(config) {
+  if (!config) return;
+  var capitalEl = document.getElementById('cfg-capital');
+  if (capitalEl) capitalEl.value = config.capital || 100;
+
+  var watchlistEl = document.getElementById('cfg-watchlist');
+  if (watchlistEl) watchlistEl.value = (config.watchlist || []).join(',');
+
+  var maxPosEl = document.getElementById('cfg-max-pos');
+  if (maxPosEl) maxPosEl.value = config.maxPosition || 20;
+
+  var stopLossEl = document.getElementById('cfg-stop-loss');
+  if (stopLossEl) stopLossEl.value = config.stopLoss || -5;
+
+  var maxDailyEl = document.getElementById('cfg-max-daily');
+  if (maxDailyEl) maxDailyEl.value = config.maxDailyLoss || -3;
+
+  var newPosEl = document.getElementById('cfg-new-pos');
+  if (newPosEl) {
+    if (config.allowNewPosition) {
+      newPosEl.classList.add('on');
+    } else {
+      newPosEl.classList.remove('on');
+    }
+  }
+}
+
+// Tab 切换
+function switchTab(btn, tabId) {
+  document.querySelectorAll('.tab-bar button').forEach(function(b) { b.classList.remove('active'); });
+  document.querySelectorAll('.tab-pane').forEach(function(p) { p.classList.remove('active'); });
+  btn.classList.add('active');
+  var tabPane = document.getElementById(tabId);
+  if (tabPane) tabPane.classList.add('active');
+}
+
+// 执行模式切换
+function setExecMode(btn) {
+  document.querySelectorAll('#exec-mode button').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  var mode = btn.dataset.mode;
+  updateModeStatus(mode);
+}
+
+// 更新模式状态显示
+function updateModeStatus(execMode) {
+  var modeStatus = document.getElementById('mode-status');
+  if (!modeStatus) return;
+
+  var configMode = document.getElementById('cfg-mode');
+  var mode = configMode ? configMode.value : 'mock';
+  var allowNewEl = document.getElementById('cfg-new-pos');
+  var allowNew = allowNewEl ? allowNewEl.classList.contains('on') : true;
+
+  modeStatus.innerHTML = '决策: <strong>' + (mode === 'mock' ? 'Mock (模拟)' : 'Real (实盘)') + '</strong> | ' +
+    '执行: <strong>' + (execMode === 'full' || !execMode ? '完整链路' : '仅决策') + '</strong> | ' +
+    '新开仓: <strong>' + (allowNew ? '是' : '否') + '</strong><br>' +
+    '▶️ 决策 → 目标仓位 → 执行 → 对账';
+}
+
+// 保存配置
+async function savePreferences() {
+  syncConfigFromForm();
+  var config = getConfig();
+
+  try {
+    await saveConfig(config);
+    var saveStatus = document.getElementById('save-status');
+    if (saveStatus) {
+      saveStatus.textContent = '配置已保存';
+      saveStatus.style.color = 'var(--green)';
+      setTimeout(function() { saveStatus.textContent = ''; }, 3000);
+    }
+  } catch (error) {
+    addAlert('err', '保存配置失败: ' + error.message);
+  }
+}
+
+// 运行模拟
+async function triggerRun() {
+  var runBtn = document.getElementById('run-btn');
+  if (runBtn) {
+    runBtn.disabled = true;
+    runBtn.textContent = '运行中...';
+  }
+
+  try {
+    await runSimulation();
+    addAlert('info', '模拟运行已启动');
+    setTimeout(loadDashboard, 2000);
+  } catch (error) {
+    addAlert('err', '运行失败: ' + error.message);
+  } finally {
+    if (runBtn) {
+      runBtn.disabled = false;
+      runBtn.textContent = '运行一轮模拟交易';
+    }
+  }
+}
+
+// 运行回测
+async function triggerBacktest() {
+  var startEl = document.getElementById('cfg-bt-start');
+  var endEl = document.getElementById('cfg-bt-end');
+  var startDate = startEl ? startEl.value : '';
+  var endDate = endEl ? endEl.value : '';
+
+  if (!startDate || !endDate) {
+    addAlert('warn', '请选择回测日期范围');
+    return;
+  }
+
+  var btBtn = document.getElementById('bt-btn');
+  if (btBtn) {
+    btBtn.disabled = true;
+    btBtn.textContent = '回测中...';
+  }
+
+  try {
+    var result = await runBacktest(startDate, endDate);
+    var btResult = document.getElementById('bt-result');
+    if (btResult) {
+      btResult.textContent = '回测完成: ' + (result.message || '成功');
+    }
+  } catch (error) {
+    addAlert('err', '回测失败: ' + error.message);
+  } finally {
+    if (btBtn) {
+      btBtn.disabled = false;
+      btBtn.textContent = '运行回测';
+    }
+  }
+}
+
+// 运行扫描
+async function triggerScan() {
+  var scanBtn = document.getElementById('scan-btn');
+  var scanContent = document.getElementById('scan-content');
+
+  if (scanBtn) {
+    scanBtn.disabled = true;
+    scanBtn.textContent = '扫描中...';
+  }
+
+  if (scanContent) {
+    scanContent.textContent = '正在扫描全市场...';
+  }
+
+  try {
+    var result = await runScan();
+    if (scanContent) {
+      scanContent.textContent = '扫描完成: ' + ((result && result.stocks && result.stocks.length) || 0) + ' 只股票';
+    }
+  } catch (error) {
+    if (scanContent) {
+      scanContent.textContent = '扫描失败: ' + error.message;
+    }
+  } finally {
+    if (scanBtn) {
+      scanBtn.disabled = false;
+      scanBtn.textContent = '全市场扫描';
+    }
+  }
+}
+
+// 快捷键处理
+document.addEventListener('keydown', function(e) {
+  if (e.ctrlKey && e.key === 'Enter') {
+    e.preventDefault();
+    triggerRun();
+  }
+  if (e.ctrlKey && e.key === 's') {
+    e.preventDefault();
+    savePreferences();
+  }
+});
+
+// 添加股票到观察列表
+document.addEventListener('DOMContentLoaded', function() {
+  var addStockInput = document.getElementById('cfg-add-stock');
+  if (addStockInput) {
+    addStockInput.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        var stockCode = this.value.trim();
+        if (stockCode) {
+          var watchlistEl = document.getElementById('cfg-watchlist');
+          if (watchlistEl) {
+            var current = watchlistEl.value;
+            watchlistEl.value = current ? current + ',' + stockCode : stockCode;
+            this.value = '';
+          }
+        }
+      }
+    });
+  }
+
+  // 初始化模式状态
+  updateModeStatus();
+});
+
+// 工具函数：截断文本
+function truncateText(text, maxLen) {
+  if (!text) return '--';
+  if (text.length <= maxLen) return text;
+  return text.substring(0, maxLen) + '...';
+}
