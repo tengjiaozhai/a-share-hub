@@ -1,7 +1,32 @@
 // src/api/static/js/views/dashboard.js
 
+const WORKBENCH_API = '/api/v1/dashboard/workbench';
+const KILL_SWITCH_STATUS_API = '/api/v1/kill-switch/status';
+const PREFS_API = '/api/v1/dashboard/preferences';
+
+let execMode = 'full';
+let killSwitchActive = false;
+
 function initDashboard() {
-  // Bind events for dashboard view
+  var addStockInput = document.getElementById('cfg-add-stock');
+  if (addStockInput) {
+    addStockInput.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        var stockCode = addStockInput.value.trim();
+        if (stockCode) {
+          var watchlistEl = document.getElementById('cfg-watchlist');
+          if (watchlistEl) {
+            var current = watchlistEl.value;
+            watchlistEl.value = current ? current + ',' + stockCode : stockCode;
+            addStockInput.value = '';
+          }
+        }
+      }
+    });
+  }
+
+  updateModeStatus();
 }
 
 function renderDashboard() {
@@ -82,75 +107,98 @@ function setKillSwitchButton(active) {
 }
 
 function renderConfig(config) {
-  if (!config || configHydrated) return;
-  configHydrated = true;
+  if (!config || State.configHydrated) return;
+  State.configHydrated = true;
   const modeEl = document.getElementById('cfg-mode');
   if (modeEl) modeEl.value = config.mode || 'mock';
   updateModeStatus();
 }
 
 function renderDecisions(list) {
-  pag.decisions.data = list;
-  const root = document.getElementById('decisions-pane');
+  State.pagination.decisions.data = list;
+  const root = document.getElementById('tb-decisions');
   if (!root) return;
   const items = pagSlice('decisions');
-  root.innerHTML = items.length ? `
-    <table>
-      <thead><tr><th>时间</th><th>标的</th><th>决策</th><th>置信度</th></tr></thead>
-      <tbody>${items.map(d => `
-        <tr>
-          <td>${formatTime(d.created_at)}</td>
-          <td>${escapeHtml(d.symbol)}</td>
-          <td>${escapeHtml(d.action)}</td>
-          <td>${formatConfidence(d.confidence)}</td>
-        </tr>
-      `).join('')}</tbody>
-    </table>
-    ${renderPagControls('decisions')}
-  ` : '<span style="color:var(--dim)">暂无决策记录</span>';
+  if (!items.length) {
+    root.innerHTML = '<tr><td colspan="5" style="color:var(--dim)">暂无决策记录</td></tr>';
+    return;
+  }
+  root.innerHTML = items.map(d => `
+    <tr>
+      <td>${formatTime(d.created_at)}</td>
+      <td>${escapeHtml(d.symbol)}</td>
+      <td>${escapeHtml(d.action)}</td>
+      <td>${formatConfidence(d.confidence)}</td>
+      <td>${escapeHtml(normalizeText(pickFirst(d, ['reason', 'summary', 'rationale']), '--'))}</td>
+    </tr>
+  `).join('');
+  const tab = root.closest('.tab-pane');
+  if (tab) {
+    let ctrl = tab.querySelector('.pagination');
+    if (!ctrl) {
+      ctrl = document.createElement('div');
+      tab.appendChild(ctrl);
+    }
+    ctrl.outerHTML = renderPagControls('decisions');
+  }
 }
 
 function renderOrders(list) {
-  pag.orders.data = list;
-  const root = document.getElementById('orders-pane');
+  State.pagination.orders.data = list;
+  const root = document.getElementById('tb-orders');
   if (!root) return;
   const items = pagSlice('orders');
-  root.innerHTML = items.length ? `
-    <table>
-      <thead><tr><th>时间</th><th>标的</th><th>方向</th><th>数量</th><th>状态</th></tr></thead>
-      <tbody>${items.map(o => `
-        <tr>
-          <td>${formatTime(o.created_at)}</td>
-          <td>${escapeHtml(o.symbol)}</td>
-          <td>${escapeHtml(o.side)}</td>
-          <td>${formatNumber(o.quantity)}</td>
-          <td>${escapeHtml(o.status)}</td>
-        </tr>
-      `).join('')}</tbody>
-    </table>
-    ${renderPagControls('orders')}
-  ` : '<span style="color:var(--dim)">暂无订单记录</span>';
+  if (!items.length) {
+    root.innerHTML = '<tr><td colspan="6" style="color:var(--dim)">暂无订单记录</td></tr>';
+    return;
+  }
+  root.innerHTML = items.map(o => `
+    <tr>
+      <td>${formatTime(o.created_at)}</td>
+      <td>${escapeHtml(o.symbol)}</td>
+      <td>${escapeHtml(o.side)}</td>
+      <td>${formatNumber(o.quantity)}</td>
+      <td>${formatNumber(pickFirst(o, ['price', 'limit_price'], '--'))}</td>
+      <td>${escapeHtml(o.status)}</td>
+    </tr>
+  `).join('');
+  const tab = root.closest('.tab-pane');
+  if (tab) {
+    let ctrl = tab.querySelector('.pagination');
+    if (!ctrl) {
+      ctrl = document.createElement('div');
+      tab.appendChild(ctrl);
+    }
+    ctrl.outerHTML = renderPagControls('orders');
+  }
 }
 
 function renderTargets(list) {
-  pag.targets.data = list;
-  const root = document.getElementById('targets-pane');
+  State.pagination.targets.data = list;
+  const root = document.getElementById('tb-targets');
   if (!root) return;
   const items = pagSlice('targets');
-  root.innerHTML = items.length ? `
-    <table>
-      <thead><tr><th>标的</th><th>目标持仓</th><th>当前持仓</th><th>漂移</th></tr></thead>
-      <tbody>${items.map(t => `
-        <tr>
-          <td>${escapeHtml(t.symbol)}</td>
-          <td>${formatNumber(t.target_quantity)}</td>
-          <td>${formatNumber(t.current_quantity)}</td>
-          <td>${formatSignedPercent(t.drift)}</td>
-        </tr>
-      `).join('')}</tbody>
-    </table>
-    ${renderPagControls('targets')}
-  ` : '<span style="color:var(--dim)">暂无目标仓位</span>';
+  if (!items.length) {
+    root.innerHTML = '<tr><td colspan="4" style="color:var(--dim)">暂无目标仓位</td></tr>';
+    return;
+  }
+  root.innerHTML = items.map(t => `
+    <tr>
+      <td>${escapeHtml(t.symbol)}</td>
+      <td>${formatNumber(t.target_quantity)}</td>
+      <td>${formatNumber(t.current_quantity)}</td>
+      <td>${formatSignedPercent(t.drift)}</td>
+    </tr>
+  `).join('');
+  const tab = root.closest('.tab-pane');
+  if (tab) {
+    let ctrl = tab.querySelector('.pagination');
+    if (!ctrl) {
+      ctrl = document.createElement('div');
+      tab.appendChild(ctrl);
+    }
+    ctrl.outerHTML = renderPagControls('targets');
+  }
 }
 
 function renderRisk(risk, targets) {
@@ -172,23 +220,30 @@ function renderRisk(risk, targets) {
 }
 
 function renderErrorEvents(events) {
-  pag.errors.data = events;
-  const root = document.getElementById('errors-pane');
+  State.pagination.errors.data = events;
+  const root = document.getElementById('tb-errors');
   if (!root) return;
   const items = pagSlice('errors');
-  root.innerHTML = items.length ? `
-    <table>
-      <thead><tr><th>时间</th><th>级别</th><th>消息</th></tr></thead>
-      <tbody>${items.map(e => `
-        <tr>
-          <td>${formatTime(e.created_at)}</td>
-          <td><span class="badge badge-${toAlertLevel(e.level)}">${escapeHtml(e.level)}</span></td>
-          <td>${escapeHtml(e.message)}</td>
-        </tr>
-      `).join('')}</tbody>
-    </table>
-    ${renderPagControls('errors')}
-  ` : '<span style="color:var(--dim)">暂无错误事件</span>';
+  if (!items.length) {
+    root.innerHTML = '<tr><td colspan="3" style="color:var(--dim)">暂无错误事件</td></tr>';
+    return;
+  }
+  root.innerHTML = items.map(e => `
+    <tr>
+      <td>${formatTime(e.created_at)}</td>
+      <td><span class="badge badge-${toAlertLevel(e.level)}">${escapeHtml(e.level)}</span></td>
+      <td>${escapeHtml(e.message)}</td>
+    </tr>
+  `).join('');
+  const tab = root.closest('.tab-pane');
+  if (tab) {
+    let ctrl = tab.querySelector('.pagination');
+    if (!ctrl) {
+      ctrl = document.createElement('div');
+      tab.appendChild(ctrl);
+    }
+    ctrl.outerHTML = renderPagControls('errors');
+  }
 }
 
 function renderAlerts(alerts) {
@@ -307,23 +362,6 @@ function addAlert(level, message) {
   div.textContent = `[${new Date().toLocaleTimeString('zh-CN', { hour12: false })}] ${message}`;
   area.prepend(div);
   while (area.children.length > 10) area.lastChild.remove();
-}
-
-function updateModeStatus() {
-  const modeEl = document.getElementById('cfg-mode');
-  const newPosEl = document.getElementById('cfg-new-pos');
-  const statusEl = document.getElementById('mode-status');
-  
-  if (!modeEl || !newPosEl || !statusEl) return;
-  
-  const decisionMode = modeEl.value === 'real' ? 'Real (实盘决策)' : 'Mock (模拟)';
-  const allowNewPos = newPosEl.classList.contains('on') ? '是' : '否';
-  const execModeText = execMode === 'full' ? '完整链路' : '仅决策';
-  
-  statusEl.innerHTML = `
-    <div>决策: <strong>${decisionMode}</strong> | 执行: <strong>${execModeText}</strong> | 新开仓: <strong>${allowNewPos}</strong></div>
-    <div style="margin-top:4px">${execMode === 'decision' ? '⏸️ 只生成建议，不执行订单' : '▶️ 决策 → 目标仓位 → 执行 → 对账'}</div>
-  `;
 }
 
 async function parseResponseBody(res) {
@@ -449,12 +487,13 @@ function switchTab(btn, tabId) {
 function setExecMode(btn) {
   document.querySelectorAll('#exec-mode button').forEach(function(b) { b.classList.remove('active'); });
   btn.classList.add('active');
-  var mode = btn.dataset.mode;
-  updateModeStatus(mode);
+  execMode = btn.dataset.mode || 'full';
+  State.execMode = execMode;
+  updateModeStatus();
 }
 
 // 更新模式状态显示
-function updateModeStatus(execMode) {
+function updateModeStatus() {
   var modeStatus = document.getElementById('mode-status');
   if (!modeStatus) return;
 
@@ -462,11 +501,17 @@ function updateModeStatus(execMode) {
   var mode = configMode ? configMode.value : 'mock';
   var allowNewEl = document.getElementById('cfg-new-pos');
   var allowNew = allowNewEl ? allowNewEl.classList.contains('on') : true;
+  var decisionLabel = mode === 'real' ? 'Real (实盘决策)' : 'Mock (模拟)';
+  var execLabel = execMode === 'full' ? '完整链路' : '仅决策';
+  var hint = execMode === 'decision'
+    ? '⏸️ 只生成建议，不执行订单'
+    : '▶️ 决策 → 目标仓位 → 执行 → 对账';
 
-  modeStatus.innerHTML = '决策: <strong>' + (mode === 'mock' ? 'Mock (模拟)' : 'Real (实盘)') + '</strong> | ' +
-    '执行: <strong>' + (execMode === 'full' || !execMode ? '完整链路' : '仅决策') + '</strong> | ' +
+  modeStatus.innerHTML =
+    '决策: <strong>' + decisionLabel + '</strong> | ' +
+    '执行: <strong>' + execLabel + '</strong> | ' +
     '新开仓: <strong>' + (allowNew ? '是' : '否') + '</strong><br>' +
-    '▶️ 决策 → 目标仓位 → 执行 → 对账';
+    hint;
 }
 
 // 保存配置
@@ -584,30 +629,6 @@ document.addEventListener('keydown', function(e) {
     e.preventDefault();
     savePreferences();
   }
-});
-
-// 添加股票到观察列表
-document.addEventListener('DOMContentLoaded', function() {
-  var addStockInput = document.getElementById('cfg-add-stock');
-  if (addStockInput) {
-    addStockInput.addEventListener('keypress', function(e) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        var stockCode = this.value.trim();
-        if (stockCode) {
-          var watchlistEl = document.getElementById('cfg-watchlist');
-          if (watchlistEl) {
-            var current = watchlistEl.value;
-            watchlistEl.value = current ? current + ',' + stockCode : stockCode;
-            this.value = '';
-          }
-        }
-      }
-    });
-  }
-
-  // 初始化模式状态
-  updateModeStatus();
 });
 
 // 工具函数：截断文本
