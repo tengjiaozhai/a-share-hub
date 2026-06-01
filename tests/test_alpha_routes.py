@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 from src.main import build_app
+from src.api import routes_alpha
 
 
 def test_alpha_assets_endpoint_returns_normalized_rows(monkeypatch):
@@ -117,3 +118,69 @@ def test_alpha_reconciliation_route_returns_run_id(test_app, pg_store):
     assert response.status_code == 200
     assert response.json()["run_id"].startswith("alpha-recon-")
     assert response.json()["status"] == "MISMATCH"
+
+
+def test_alpha_watchlist_api_supports_list_and_add():
+    from unittest.mock import MagicMock
+
+    mock_store = MagicMock()
+    mock_store.list_alpha_watchlist_items.return_value = [
+        {"symbol": "AAPLx", "underlying_symbol": "AAPL", "priority": 1}
+    ]
+
+    from src.storage.dependencies import get_runtime_store
+
+    app = build_app()
+    app.dependency_overrides[get_runtime_store] = lambda: mock_store
+    client = TestClient(app)
+
+    add_res = client.post(
+        "/api/v1/alpha/watchlist",
+        json={"symbol": "AAPLx", "underlying_symbol": "AAPL", "priority": 1},
+    )
+    assert add_res.status_code == 200
+    assert add_res.json()["stored"] is True
+    assert add_res.json()["symbol"] == "AAPLx"
+    mock_store.add_alpha_watchlist_item.assert_called_once_with(symbol="AAPLx", underlying_symbol="AAPL", priority=1)
+
+    list_res = client.get("/api/v1/alpha/watchlist")
+    assert list_res.status_code == 200
+    items = list_res.json()["items"]
+    assert len(items) == 1
+    assert items[0]["symbol"] == "AAPLx"
+
+
+def test_alpha_research_scan_endpoint_returns_ranked_candidates():
+    from unittest.mock import MagicMock
+
+    mock_store = MagicMock()
+    mock_store.list_alpha_watchlist_items.return_value = [
+        {"symbol": "AAPLx", "underlying_symbol": "AAPL", "priority": 1},
+        {"symbol": "SPYx", "underlying_symbol": "SPY", "priority": 2},
+    ]
+
+    from src.storage.dependencies import get_runtime_store
+
+    class FakeResearchService:
+        async def rank_watchlist(self, symbols: list[str]) -> list[dict]:
+            return [
+                {"symbol": "AAPLx", "score": 0.1, "action": "BUY", "reason": "trend=0.02, momentum=0.09"},
+                {"symbol": "SPYx", "score": -0.1, "action": "SELL", "reason": "trend=-0.01, momentum=-0.02"},
+            ]
+
+    async def override_get_alpha_research_service():
+        return FakeResearchService()
+
+    app = build_app()
+    app.dependency_overrides[get_runtime_store] = lambda: mock_store
+    app.dependency_overrides[routes_alpha.get_alpha_research_service] = override_get_alpha_research_service
+    client = TestClient(app)
+
+    response = client.post("/api/v1/alpha/research/scan")
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert len(items) == 2
+    assert items[0]["symbol"] == "AAPLx"
+    assert items[0]["action"] == "BUY"
+    assert items[1]["symbol"] == "SPYx"
+    assert items[1]["action"] == "SELL"

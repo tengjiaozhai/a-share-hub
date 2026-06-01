@@ -7,7 +7,9 @@ from pydantic import BaseModel
 
 from src.alpha.binance_public_client import BinanceAlphaPublicClient
 from src.alpha.reconciliation import reconcile_alpha_positions
+from src.alpha.research_service import AlphaResearchService
 from src.alpha.service import AlphaMarketService
+from src.alpha.signal_engine import AlphaSignalEngine
 from src.storage.dependencies import get_runtime_store
 from src.storage.runtime_store import RuntimeStore
 
@@ -38,6 +40,40 @@ class RecordAlphaFillRequest(BaseModel):
 async def get_alpha_service() -> AsyncGenerator[AlphaMarketService, None]:
     client = httpx.AsyncClient(base_url="https://www.binance.com")
     service = AlphaMarketService(BinanceAlphaPublicClient(client))
+    try:
+        yield service
+    finally:
+        await client.aclose()
+
+
+class BinanceHistoryClient:
+    def __init__(self, http_client: httpx.AsyncClient) -> None:
+        self._http = http_client
+
+    async def get_klines(self, symbol: str, interval: str, limit: int) -> list[dict]:
+        response = await self._http.get(
+            "/api/v3/klines",
+            params={"symbol": symbol, "interval": interval, "limit": limit},
+        )
+        response.raise_for_status()
+        raw = response.json()
+        return [
+            {
+                "open": float(item[1]),
+                "high": float(item[2]),
+                "low": float(item[3]),
+                "close": float(item[4]),
+                "volume": float(item[5]),
+            }
+            for item in raw
+        ]
+
+
+async def get_alpha_research_service() -> AsyncGenerator[AlphaResearchService, None]:
+    client = httpx.AsyncClient(base_url="https://api.binance.com")
+    history_client = BinanceHistoryClient(client)
+    signal_engine = AlphaSignalEngine(buy_threshold=0.02, sell_threshold=-0.02)
+    service = AlphaResearchService(history_client, signal_engine)
     try:
         yield service
     finally:
@@ -113,3 +149,23 @@ def run_alpha_reconciliation(payload: dict, store: RuntimeStore = Depends(get_ru
         discrepancies=result["discrepancies"],
     )
     return {"run_id": run_id, **result}
+
+
+@router.get("/watchlist")
+def list_alpha_watchlist(store: RuntimeStore = Depends(get_runtime_store)) -> dict:
+    return {"items": store.list_alpha_watchlist_items()}
+
+
+@router.post("/watchlist")
+def add_alpha_watchlist(payload: dict, store: RuntimeStore = Depends(get_runtime_store)) -> dict:
+    store.add_alpha_watchlist_item(**payload)
+    return {"stored": True, "symbol": payload["symbol"]}
+
+
+@router.post("/research/scan")
+async def scan_alpha_watchlist(
+    store: RuntimeStore = Depends(get_runtime_store),
+    research_service: AlphaResearchService = Depends(get_alpha_research_service),
+) -> dict:
+    symbols = [item["symbol"] for item in store.list_alpha_watchlist_items()]
+    return {"items": await research_service.rank_watchlist(symbols)}
