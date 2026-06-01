@@ -10,6 +10,7 @@ from src.core.config import Settings
 from src.decision.decision_runner import build_decision_run_record
 from src.decision.input_builder import build_decision_input_snapshot
 from src.api.routes_broker_events import router as broker_events_router
+from src.api.routes_crypto import router as crypto_router
 from src.api.routes_decision_runs import router as decision_runs_router
 from src.api.routes_execution_plans import router as execution_plans_router
 from src.api.routes_health import router as health_router
@@ -95,6 +96,7 @@ def build_app() -> FastAPI:
     app.include_router(kill_switch_router)
     app.include_router(market_router)
     app.include_router(dashboard_router)
+    app.include_router(crypto_router)
     return app
 
 
