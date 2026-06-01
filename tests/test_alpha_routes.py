@@ -95,3 +95,25 @@ def test_alpha_ticket_api_returns_404_for_nonexistent_ticket(test_app):
         },
     )
     assert fill_res.status_code == 404
+
+
+def test_alpha_reconciliation_route_returns_run_id(test_app, pg_store):
+    pg_store.replace_alpha_positions(
+        [{"symbol": "AAPLx", "quantity": 1.2, "avg_cost": 201.0, "mark_price": 225.0}]
+    )
+    pg_store.insert_alpha_portfolio_snapshot(
+        cash_balance=8_500.0,
+        realized_pnl=20.0,
+        unrealized_pnl=28.8,
+        nav=8_798.8,
+    )
+    client = TestClient(test_app)
+
+    response = client.post(
+        "/api/v1/alpha/reconciliation/run",
+        json={"external_positions": {"AAPLx": 1.0}, "external_cash": 8_420.0},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["run_id"].startswith("alpha-recon-")
+    assert response.json()["status"] == "MISMATCH"

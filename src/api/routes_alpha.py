@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from src.alpha.binance_public_client import BinanceAlphaPublicClient
+from src.alpha.reconciliation import reconcile_alpha_positions
 from src.alpha.service import AlphaMarketService
 from src.storage.dependencies import get_runtime_store
 from src.storage.runtime_store import RuntimeStore
@@ -94,3 +95,21 @@ def record_alpha_fill(ticket_id: str, payload: RecordAlphaFillRequest, store: Ru
         raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} not found")
     fill_id = store.insert_alpha_manual_fill(ticket_id=ticket_id, **payload.model_dump())
     return {"ticket_id": ticket_id, "fill_id": fill_id, "recorded": True}
+
+
+@router.post("/reconciliation/run")
+def run_alpha_reconciliation(payload: dict, store: RuntimeStore = Depends(get_runtime_store)) -> dict:
+    latest = store.get_latest_alpha_portfolio_snapshot() or {"cash_balance": 0.0}
+    internal_positions = {row["symbol"]: row["quantity"] for row in store.list_alpha_positions()}
+    result = reconcile_alpha_positions(
+        internal_positions=internal_positions,
+        external_positions=payload["external_positions"],
+        internal_cash=latest["cash_balance"],
+        external_cash=payload["external_cash"],
+    )
+    run_id = store.insert_alpha_reconciliation_run(
+        source="manual",
+        status=result["status"],
+        discrepancies=result["discrepancies"],
+    )
+    return {"run_id": run_id, **result}
