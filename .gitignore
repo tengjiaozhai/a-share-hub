@@ -24,6 +24,9 @@ env/
 .coverage
 htmlcov/
 
+# 代码检查
+.ruff_cache/
+
 # 数据文件
 *.db
 *.sqlite
