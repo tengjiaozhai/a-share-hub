@@ -39,3 +39,41 @@ const DashboardAPI = {
   activateKill:    ()         => apiFetch('/kill-switch/activate', { method: 'POST' }),
   deactivateKill:  ()         => apiFetch('/kill-switch/deactivate', { method: 'POST' }),
 };
+
+// 配置保存 API
+const CONFIG_API = '/api/v1/dashboard/config';
+const RUN_API = '/api/v1/dashboard/run';
+const BACKTEST_API = '/api/v1/dashboard/backtest';
+const SCAN_API = '/api/v1/dashboard/scan';
+
+// 保存配置
+async function saveConfig(config) {
+  const response = await fetch(CONFIG_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config)
+  });
+  return await parseResponseBody(response);
+}
+
+// 运行模拟
+async function runSimulation() {
+  const response = await fetch(RUN_API, { method: 'POST' });
+  return await parseResponseBody(response);
+}
+
+// 运行回测
+async function runBacktest(startDate, endDate) {
+  const response = await fetch(BACKTEST_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ start_date: startDate, end_date: endDate })
+  });
+  return await parseResponseBody(response);
+}
+
+// 运行扫描
+async function runScan() {
+  const response = await fetch(SCAN_API, { method: 'POST' });
+  return await parseResponseBody(response);
+}
