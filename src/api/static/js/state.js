@@ -55,3 +55,52 @@ function renderPagTab(key) {
   };
   if (renderers[key]) renderers[key](State.pagination[key].data);
 }
+
+// 配置状态
+const ConfigState = {
+  capital: 100,
+  watchlist: ['600519.SH', '000858.SZ', '601318.SH'],
+  maxPosition: 20,
+  stopLoss: -5,
+  maxDailyLoss: -3,
+  mode: 'mock',
+  allowNewPosition: true,
+  execMode: 'full'
+};
+
+// 更新配置
+function updateConfig(key, value) {
+  ConfigState[key] = value;
+  console.log('Config updated: ' + key + ' = ' + value);
+}
+
+// 获取配置
+function getConfig() {
+  return { ...ConfigState };
+}
+
+// 从表单同步配置
+function syncConfigFromForm() {
+  var capitalEl = document.getElementById('cfg-capital');
+  if (capitalEl) ConfigState.capital = parseInt(capitalEl.value) || 100;
+
+  var watchlistEl = document.getElementById('cfg-watchlist');
+  if (watchlistEl) {
+    ConfigState.watchlist = watchlistEl.value.split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s; });
+  }
+
+  var maxPosEl = document.getElementById('cfg-max-pos');
+  if (maxPosEl) ConfigState.maxPosition = parseInt(maxPosEl.value) || 20;
+
+  var stopLossEl = document.getElementById('cfg-stop-loss');
+  if (stopLossEl) ConfigState.stopLoss = parseFloat(stopLossEl.value) || -5;
+
+  var maxDailyEl = document.getElementById('cfg-max-daily');
+  if (maxDailyEl) ConfigState.maxDailyLoss = parseFloat(maxDailyEl.value) || -3;
+
+  var modeEl = document.getElementById('cfg-mode');
+  if (modeEl) ConfigState.mode = modeEl.value || 'mock';
+
+  var newPosEl = document.getElementById('cfg-new-pos');
+  if (newPosEl) ConfigState.allowNewPosition = newPosEl.classList.contains('on');
+}
