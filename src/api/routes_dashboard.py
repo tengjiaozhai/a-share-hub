@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from src.agents.llm_client import LLMClient
 from src.alpha.execution_service import AlphaExecutionService
@@ -806,6 +806,12 @@ def save_preferences(config: dict) -> dict:
     filtered = {k: v for k, v in config.items() if k in allowed_keys}
     store.set_preference("dashboard", filtered)
     return {"status": "ok"}
+
+
+@router.get("/new")
+def new_dashboard():
+    """Redirect to new modular dashboard"""
+    return RedirectResponse(url="/static/index.html")
 
 
 

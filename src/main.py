@@ -1,9 +1,11 @@
 import argparse
+import os
 import sys
 from datetime import datetime, timedelta
 from hashlib import sha256
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from src.agents.llm_client import LLMClient
 from src.api.routes_alpha import router as alpha_router
@@ -99,6 +101,12 @@ def build_app() -> FastAPI:
     app.include_router(dashboard_router)
     app.include_router(crypto_router)
     app.include_router(alpha_router)
+
+    # Mount static files for modular dashboard
+    static_dir = os.path.join(os.path.dirname(__file__), "api", "static")
+    if os.path.exists(static_dir):
+        app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
     return app
 
 
