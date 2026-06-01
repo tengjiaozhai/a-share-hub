@@ -1,7 +1,7 @@
 from src.alpha.ledger import AlphaPortfolioState, AlphaPositionState, apply_manual_fill, mark_to_market
 
 
-def test_apply_manual_fill_updates_cash_positions_and_realized_pnl():
+def test_apply_manual_fill_updates_cash_positions_and_realized_pnl() -> None:
     state = AlphaPortfolioState(
         cash_balance=10_000.0,
         realized_pnl=0.0,

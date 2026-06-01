@@ -49,7 +49,7 @@ def apply_manual_fill(
     )
 
 
-def mark_to_market(state: AlphaPortfolioState, prices: dict[str, float]) -> dict:
+def mark_to_market(state: AlphaPortfolioState, prices: dict[str, float]) -> dict[str, float]:
     unrealized = 0.0
     market_value = 0.0
     for symbol, position in state.positions.items():
