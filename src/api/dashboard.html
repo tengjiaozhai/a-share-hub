@@ -513,6 +513,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 <div class="view" id="view-alpha">
   <h2>Alpha 代币化证券</h2>
   <div class="risk-card">
+    <div class="risk-label">Alpha 组合</div>
+    <div id="alpha-portfolio-summary"></div>
+    <div id="alpha-positions"></div>
+  </div>
+  <div class="risk-card">
+    <div class="risk-label">Alpha 异常</div>
+    <div id="alpha-exceptions"></div>
+  </div>
+  <div class="risk-card">
     <div class="risk-label">资产状态</div>
     <div id="alpha-assets"></div>
   </div>
@@ -1851,6 +1860,24 @@ setInterval(() => {
 const ALPHA_ASSETS_API = '/api/v1/alpha/assets';
 const ALPHA_TICKETS_API = '/api/v1/alpha/tickets';
 
+function renderAlphaPortfolio(portfolio) {
+  const summary = portfolio?.snapshot;
+  const positions = portfolio?.positions || [];
+  document.getElementById('alpha-portfolio-summary').innerHTML = summary
+    ? `NAV: ${summary.nav} | Realized: ${summary.realized_pnl} | Unrealized: ${summary.unrealized_pnl}`
+    : '暂无组合快照';
+  document.getElementById('alpha-positions').innerHTML = positions.length
+    ? positions.map((item) => `<div>${escapeHtml(item.symbol)} ${item.quantity} @ ${item.mark_price}</div>`).join('')
+    : '暂无持仓';
+}
+
+function renderAlphaExceptions(exceptions) {
+  document.getElementById('alpha-exceptions').innerHTML =
+    exceptions?.latest_status === 'MISMATCH'
+      ? escapeHtml(JSON.stringify(exceptions.latest_discrepancies))
+      : '无异常';
+}
+
 function renderAlphaTickets(items) {
   const root = document.getElementById('alpha-tickets');
   if (!items.length) {
@@ -1926,6 +1953,8 @@ async function loadAlphaTickets() {
     if (res.ok) {
       const data = await res.json();
       renderAlphaTickets(data.alpha?.tickets || []);
+      renderAlphaPortfolio(data.alpha?.portfolio || {});
+      renderAlphaExceptions(data.alpha?.exceptions || {});
     }
   } catch (error) {
     console.error('加载Alpha建议单失败:', error);

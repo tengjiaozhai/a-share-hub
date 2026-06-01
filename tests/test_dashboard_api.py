@@ -243,3 +243,28 @@ def test_workbench_payload_includes_alpha_panel(test_app, pg_store):
     payload = response.json()
     assert "alpha" in payload
     assert payload["alpha"]["tickets"][0]["ticket_id"] == ticket_id
+
+
+def test_workbench_payload_includes_alpha_portfolio_and_exceptions(test_app, pg_store):
+    pg_store.replace_alpha_positions(
+        [{"symbol": "AAPLx", "quantity": 1.2, "avg_cost": 201.0, "mark_price": 225.0}]
+    )
+    pg_store.insert_alpha_portfolio_snapshot(
+        cash_balance=8_500.0,
+        realized_pnl=20.0,
+        unrealized_pnl=28.8,
+        nav=8_798.8,
+    )
+    pg_store.insert_alpha_reconciliation_run(
+        source="manual",
+        status="MISMATCH",
+        discrepancies={"positions": {"AAPLx": {"internal": 1.2, "external": 1.0}}},
+    )
+    client = TestClient(test_app)
+
+    response = client.get("/api/v1/dashboard/workbench")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["alpha"]["portfolio"]["snapshot"]["nav"] == 8_798.8
+    assert payload["alpha"]["exceptions"]["latest_status"] == "MISMATCH"
