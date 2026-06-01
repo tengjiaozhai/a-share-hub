@@ -54,6 +54,8 @@ class StockCatalogCache:
         if self._frame is not None and self._expires_at is not None and now < self._expires_at:
             return self._frame
         frame = normalize_stock_list_frame(fetcher())
+        if frame.empty:
+            return frame
         self._frame = frame
         self._expires_at = now + timedelta(seconds=self.ttl_seconds)
         return frame

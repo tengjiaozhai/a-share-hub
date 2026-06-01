@@ -153,14 +153,24 @@ def _fetch_tencent_kline(tx_code: str, start_date: str, end_date: str, freq: str
 
 
 def _build_catalog_frame() -> pd.DataFrame:
-    """从三大交易所官网获取全市场 A 股列表（不走东方财富）。"""
-    try:
-        import akshare as ak
-        df = ak.stock_info_a_code_name()
-        return df[["code", "name"]]
-    except Exception as e:
-        logger.warning(f"_build_catalog_frame 失败: {e}")
-        return pd.DataFrame(columns=["code", "name"])
+    """从三大交易所官网获取全市场 A 股列表（不走东方财富）。
+
+    冷启动时偶发 Connection reset by peer（SOCKS 隧道慢），重试 2 次。
+    """
+    import time
+    last_err = None
+    for attempt in range(3):
+        try:
+            import akshare as ak
+            df = ak.stock_info_a_code_name()
+            return df[["code", "name"]]
+        except Exception as e:
+            last_err = e
+            logger.warning(f"_build_catalog_frame 第{attempt+1}次失败: {e}")
+            if attempt < 2:
+                time.sleep(2 + attempt * 2)
+    logger.error(f"_build_catalog_frame 3次重试均失败: {last_err}")
+    return pd.DataFrame(columns=["code", "name"])
 
 
 class AkshareProvider(DataProvider):
