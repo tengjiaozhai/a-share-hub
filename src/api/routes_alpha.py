@@ -1,8 +1,8 @@
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
 import httpx
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from src.alpha.binance_public_client import BinanceAlphaPublicClient
