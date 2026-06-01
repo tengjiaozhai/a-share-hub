@@ -156,10 +156,16 @@ def list_alpha_watchlist(store: RuntimeStore = Depends(get_runtime_store)) -> di
     return {"items": store.list_alpha_watchlist_items()}
 
 
+class AddAlphaWatchlistRequest(BaseModel):
+    symbol: str
+    underlying_symbol: str
+    priority: int
+
+
 @router.post("/watchlist")
-def add_alpha_watchlist(payload: dict, store: RuntimeStore = Depends(get_runtime_store)) -> dict:
-    store.add_alpha_watchlist_item(**payload)
-    return {"stored": True, "symbol": payload["symbol"]}
+def add_alpha_watchlist(payload: AddAlphaWatchlistRequest, store: RuntimeStore = Depends(get_runtime_store)) -> dict:
+    store.add_alpha_watchlist_item(**payload.model_dump())
+    return {"stored": True, "symbol": payload.symbol}
 
 
 @router.post("/research/scan")
