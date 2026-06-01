@@ -6,12 +6,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from src.alpha.binance_public_client import BinanceAlphaPublicClient
+from src.alpha.execution_models import AlphaExecutionRequest
+from src.alpha.execution_service import AlphaExecutionService
 from src.alpha.reconciliation import reconcile_alpha_positions
 from src.alpha.research_service import AlphaResearchService
 from src.alpha.service import AlphaMarketService
 from src.alpha.signal_engine import AlphaSignalEngine
 from src.storage.dependencies import get_runtime_store
 from src.storage.runtime_store import RuntimeStore
+
+
+def _get_alpha_execution_service() -> AlphaExecutionService:
+    return AlphaExecutionService(mode="manual", gateway=None)
 
 router = APIRouter(prefix="/api/v1/alpha", tags=["alpha"])
 
@@ -199,3 +205,36 @@ async def propose_top_alpha_ticket(
     ticket_payload["expires_at"] = payload.expires_at or "2026-06-01T16:00:00+08:00"
     ticket_id = store.insert_alpha_ticket(**ticket_payload)
     return {"ticket_id": ticket_id, **ticket_payload}
+
+
+@router.get("/capabilities")
+def get_alpha_capabilities() -> dict:
+    capability = _get_alpha_execution_service().get_capability()
+    return capability if isinstance(capability, dict) else capability.__dict__
+
+
+@router.post("/orders/preview")
+def preview_alpha_order(payload: dict) -> dict:
+    request = AlphaExecutionRequest(**payload)
+    submission = _get_alpha_execution_service().build_submission(request)
+    return submission
+
+
+@router.post("/orders/submit")
+def submit_alpha_order(payload: dict, store=Depends(get_runtime_store)) -> dict:
+    request = AlphaExecutionRequest(**payload)
+    submission = _get_alpha_execution_service().build_submission(request)
+    if not submission["enabled"]:
+        raise HTTPException(status_code=409, detail=submission["reason"])
+    attempt_id = store.insert_alpha_api_order_attempt(
+        ticket_id=request.ticket_id,
+        asset_symbol=request.asset_symbol,
+        action=request.action,
+        quantity=request.quantity,
+        limit_price=request.limit_price,
+        mode=submission["mode"],
+        status="SUBMITTED",
+        remote_order_id=None,
+        response_payload=submission,
+    )
+    return {"attempt_id": attempt_id, **submission}

@@ -215,3 +215,50 @@ def test_alpha_research_candidate_can_be_promoted_to_ticket(test_app, pg_store, 
     assert response.status_code == 200
     assert response.json()["asset_symbol"] == "AAPLx"
     assert response.json()["ticket_id"].startswith("alpha-ticket-")
+
+
+def test_alpha_capabilities_report_manual_mode(monkeypatch):
+    from src.api import routes_alpha
+
+    class FakeExecutionService:
+        def get_capability(self):
+            return {"mode": "manual", "enabled": False, "reason": "manual execution only"}
+
+    monkeypatch.setattr(routes_alpha, "_get_alpha_execution_service", lambda: FakeExecutionService())
+
+    app = build_app()
+    client = TestClient(app)
+
+    response = client.get("/api/v1/alpha/capabilities")
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "manual"
+
+
+def test_alpha_submit_returns_409_when_capability_disabled(monkeypatch):
+    from src.api import routes_alpha
+
+    class FakeExecutionService:
+        def get_capability(self):
+            return {"mode": "manual", "enabled": False, "reason": "manual execution only"}
+
+        def build_submission(self, request):
+            return {"mode": "manual", "enabled": False, "reason": "manual execution only"}
+
+    monkeypatch.setattr(routes_alpha, "_get_alpha_execution_service", lambda: FakeExecutionService())
+
+    app = build_app()
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/alpha/orders/submit",
+        json={
+            "ticket_id": "alpha-ticket-001",
+            "asset_symbol": "AAPLx",
+            "action": "BUY",
+            "quantity": 1.0,
+            "limit_price": 210.0,
+        },
+    )
+
+    assert response.status_code == 409
