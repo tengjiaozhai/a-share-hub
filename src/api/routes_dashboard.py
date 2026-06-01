@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -69,7 +70,8 @@ def _compute_order_pnl(action: str, quantity: int, fill_price: float, current_pr
 
 @router.get("/dashboard", response_class=HTMLResponse)
 def get_dashboard():
-    with open("src/api/dashboard.html", "r", encoding="utf-8") as f:
+    html_path = Path(__file__).parent / "dashboard.html"
+    with open(html_path, "r", encoding="utf-8") as f:
         return f.read()
 
 
