@@ -1925,7 +1925,7 @@ function stopCryptoAutoRefresh() {
 // 加载加密货币系统状态
 async function loadCryptoSystemStatus() {
     try {
-        const response = await fetch('/api/v1/crypto/status');
+        const response = await fetch('/api/crypto/status');
         const data = await response.json();
         
         if (data.success) {
@@ -1944,7 +1944,7 @@ async function loadCryptoSystemStatus() {
 // 加载加密货币账户余额
 async function loadCryptoBalance() {
     try {
-        const response = await fetch('/api/v1/crypto/balance');
+        const response = await fetch('/api/crypto/balance');
         const data = await response.json();
         
         if (data.success) {
@@ -1959,7 +1959,7 @@ async function loadCryptoBalance() {
 // 加载加密货币技术指标
 async function loadCryptoIndicators(symbol) {
     try {
-        const response = await fetch(`/api/v1/crypto/indicators/${symbol}`);
+        const response = await fetch(`/api/crypto/indicators/${symbol}`);
         const data = await response.json();
         
         if (data.success) {
@@ -1977,7 +1977,7 @@ async function loadCryptoIndicators(symbol) {
 // 加载加密货币交易信号
 async function loadCryptoSignals() {
     try {
-        const response = await fetch('/api/v1/crypto/signals');
+        const response = await fetch('/api/crypto/signals');
         const data = await response.json();
         
         if (data.success) {
@@ -2004,7 +2004,7 @@ async function loadCryptoSignals() {
 // 加载加密货币持仓
 async function loadCryptoPositions() {
     try {
-        const response = await fetch('/api/v1/crypto/positions');
+        const response = await fetch('/api/crypto/positions');
         const data = await response.json();
         
         if (data.success) {
@@ -2036,7 +2036,7 @@ async function loadCryptoPositions() {
 // 加载加密货币订单
 async function loadCryptoOrders() {
     try {
-        const response = await fetch('/api/v1/crypto/orders');
+        const response = await fetch('/api/crypto/orders');
         const data = await response.json();
         
         if (data.success) {
