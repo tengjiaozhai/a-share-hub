@@ -16,3 +16,17 @@ def test_apply_manual_fill_updates_cash_positions_and_realized_pnl() -> None:
     assert round(next_state.positions["AAPLx"].quantity, 2) == 0.6
     assert round(summary["unrealized_pnl"], 2) == 15.0
     assert round(summary["nav"], 2) == 10_223.0
+
+
+def test_apply_manual_fill_caps_sell_quantity_to_position() -> None:
+    state = AlphaPortfolioState(
+        cash_balance=10_000.0,
+        realized_pnl=0.0,
+        positions={"AAPLx": AlphaPositionState(symbol="AAPLx", quantity=1.0, avg_cost=200.0)},
+    )
+
+    next_state = apply_manual_fill(state, symbol="AAPLx", side="SELL", quantity=1.5, price=220.0)
+
+    assert round(next_state.cash_balance, 2) == 10_220.0  # 只卖出 1.0 股
+    assert round(next_state.realized_pnl, 2) == 20.0  # 只计算 1.0 股的 PnL
+    assert round(next_state.positions["AAPLx"].quantity, 2) == 0.0

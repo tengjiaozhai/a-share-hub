@@ -37,10 +37,11 @@ def apply_manual_fill(
         )
         cash_balance -= quantity * price
     else:
-        realized_pnl += (price - current.avg_cost) * quantity
-        new_quantity = max(current.quantity - quantity, 0.0)
+        actual_sell = min(quantity, current.quantity)
+        realized_pnl += (price - current.avg_cost) * actual_sell
+        new_quantity = max(current.quantity - actual_sell, 0.0)
         positions[symbol] = AlphaPositionState(symbol=symbol, quantity=new_quantity, avg_cost=current.avg_cost)
-        cash_balance += quantity * price
+        cash_balance += actual_sell * price
 
     return AlphaPortfolioState(
         cash_balance=cash_balance,
