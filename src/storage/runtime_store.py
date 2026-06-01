@@ -20,6 +20,9 @@ from sqlalchemy import func, select
 from src.storage.models import (
     AccountSnapshotRow,
     AlphaManualFillRow,
+    AlphaPortfolioSnapshotRow,
+    AlphaPositionRow,
+    AlphaReconciliationRunRow,
     AlphaTicketRow,
     BrokerEventRow,
     DecisionInputSnapshotRow,
@@ -573,6 +576,98 @@ class RuntimeStore:
                     "executed_quantity": row.executed_quantity,
                     "executed_price": row.executed_price,
                     "notes": row.notes,
+                    "created_at": _cst_iso(row.created_at),
+                }
+                for row in rows
+            ]
+
+    def replace_alpha_positions(self, positions: list[dict]) -> None:
+        with self.engine.begin() as conn:
+            conn.execute(AlphaPositionRow.__table__.delete())
+            for position in positions:
+                conn.execute(
+                    AlphaPositionRow.__table__.insert().values(
+                        symbol=position["symbol"],
+                        quantity=position["quantity"],
+                        avg_cost=position["avg_cost"],
+                        mark_price=position["mark_price"],
+                    )
+                )
+
+    def list_alpha_positions(self) -> list[dict]:
+        with self.engine.begin() as conn:
+            rows = conn.execute(select(AlphaPositionRow).order_by(AlphaPositionRow.symbol)).fetchall()
+            return [
+                {
+                    "symbol": row.symbol,
+                    "quantity": row.quantity,
+                    "avg_cost": row.avg_cost,
+                    "mark_price": row.mark_price,
+                    "updated_at": _cst_iso(row.updated_at),
+                }
+                for row in rows
+            ]
+
+    def insert_alpha_portfolio_snapshot(
+        self,
+        cash_balance: float,
+        realized_pnl: float,
+        unrealized_pnl: float,
+        nav: float,
+    ) -> str:
+        snapshot_id = f"alpha-snap-{uuid.uuid4().hex[:12]}"
+        with self.engine.begin() as conn:
+            conn.execute(
+                AlphaPortfolioSnapshotRow.__table__.insert().values(
+                    snapshot_id=snapshot_id,
+                    cash_balance=cash_balance,
+                    realized_pnl=realized_pnl,
+                    unrealized_pnl=unrealized_pnl,
+                    nav=nav,
+                )
+            )
+        return snapshot_id
+
+    def get_latest_alpha_portfolio_snapshot(self) -> dict | None:
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                select(AlphaPortfolioSnapshotRow).order_by(AlphaPortfolioSnapshotRow.created_at.desc()).limit(1)
+            ).one_or_none()
+            if row is None:
+                return None
+            return {
+                "snapshot_id": row.snapshot_id,
+                "cash_balance": row.cash_balance,
+                "realized_pnl": row.realized_pnl,
+                "unrealized_pnl": row.unrealized_pnl,
+                "nav": row.nav,
+                "created_at": _cst_iso(row.created_at),
+            }
+
+    def insert_alpha_reconciliation_run(self, source: str, status: str, discrepancies: dict) -> str:
+        run_id = f"alpha-recon-{uuid.uuid4().hex[:12]}"
+        with self.engine.begin() as conn:
+            conn.execute(
+                AlphaReconciliationRunRow.__table__.insert().values(
+                    run_id=run_id,
+                    source=source,
+                    status=status,
+                    discrepancies_json=json.dumps(discrepancies, ensure_ascii=True, sort_keys=True),
+                )
+            )
+        return run_id
+
+    def list_alpha_reconciliation_runs(self) -> list[dict]:
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                select(AlphaReconciliationRunRow).order_by(AlphaReconciliationRunRow.created_at.desc())
+            ).fetchall()
+            return [
+                {
+                    "run_id": row.run_id,
+                    "source": row.source,
+                    "status": row.status,
+                    "discrepancies": json.loads(row.discrepancies_json),
                     "created_at": _cst_iso(row.created_at),
                 }
                 for row in rows

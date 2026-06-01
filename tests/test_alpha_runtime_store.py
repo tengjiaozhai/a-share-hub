@@ -34,3 +34,39 @@ def test_runtime_store_persists_alpha_ticket_and_manual_fill(tmp_path):
     assert tickets[0]["status"] == "APPROVED"
     assert fills[0]["fill_id"] == fill_id
     assert fills[0]["executed_price"] == 210.2
+
+
+def test_runtime_store_persists_alpha_portfolio_and_reconciliation_records(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path}/runtime.db", future=True)
+    Base.metadata.create_all(engine)
+    store = RuntimeStore(engine)
+
+    store.replace_alpha_positions(
+        [
+            {"symbol": "AAPLx", "quantity": 1.2, "avg_cost": 201.0, "mark_price": 225.0},
+            {"symbol": "SPYx", "quantity": 2.0, "avg_cost": 500.0, "mark_price": 504.0},
+        ]
+    )
+    snapshot_id = store.insert_alpha_portfolio_snapshot(
+        cash_balance=8_500.0,
+        realized_pnl=20.0,
+        unrealized_pnl=36.8,
+        nav=10_314.8,
+    )
+    run_id = store.insert_alpha_reconciliation_run(
+        source="manual",
+        status="MISMATCH",
+        discrepancies={"AAPLx": {"internal": 1.2, "external": 1.0}},
+    )
+
+    positions = store.list_alpha_positions()
+    snapshot = store.get_latest_alpha_portfolio_snapshot()
+    runs = store.list_alpha_reconciliation_runs()
+
+    assert len(positions) == 2
+    assert positions[0]["symbol"] in {"AAPLx", "SPYx"}
+    assert snapshot is not None
+    assert snapshot["snapshot_id"] == snapshot_id
+    assert snapshot["nav"] == 10_314.8
+    assert runs[0]["run_id"] == run_id
+    assert runs[0]["status"] == "MISMATCH"
