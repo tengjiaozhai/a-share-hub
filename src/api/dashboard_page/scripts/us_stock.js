@@ -6,6 +6,13 @@ var usCurrentRange = '1mo';
 var usRecentSearches = [];
 var usRefreshTimer = null;
 
+// ── 行情分页状态 ──
+var usQuotesAllData = [];
+var usQuotesFilteredData = [];
+var usQuotesPage = 1;
+var usQuotesPageSize = 30;
+var usQuotesSearchQuery = '';
+
 // ── 初始化 ──
 
 function usInit() {
@@ -25,6 +32,16 @@ function usInit() {
       if (e.key === 'Enter') usSearch();
     });
   }
+
+  // 行情搜索框
+  var quotesSearch = document.getElementById('us-quotes-search');
+  if (quotesSearch) {
+    quotesSearch.addEventListener('input', function() {
+      usQuotesSearchQuery = this.value.trim().toLowerCase();
+      usQuotesPage = 1;
+      usFilterAndRenderQuotes();
+    });
+  }
 }
 
 // ── Tab 切换 ──
@@ -40,8 +57,6 @@ function usSwitchCenterTab(btn, paneId) {
 
 function usLoadQuotes() {
   var loading = document.getElementById('us-quotes-loading');
-  var table = document.getElementById('us-quotes-table');
-  var tbody = document.getElementById('us-quotes-body');
 
   fetch('/api/v1/us-stock/quotes')
     .then(function(r) { return r.json(); })
@@ -50,41 +65,102 @@ function usLoadQuotes() {
       var el = document.getElementById('us-last-refresh');
       if (el) el.textContent = '更新于 ' + now.toLocaleTimeString();
 
-      if (!data || data.length === 0) {
-        if (loading) loading.textContent = '暂无自选股票，请在左侧添加';
-        if (loading) loading.style.display = '';
-        if (table) table.style.display = 'none';
-        return;
-      }
-      if (loading) loading.style.display = 'none';
-      if (table) table.style.display = '';
-      if (tbody) {
-        tbody.innerHTML = data.map(function(q) {
-          var pct = q.change_pct || 0;
-          var color = pct > 0 ? 'var(--green)' : pct < 0 ? 'var(--red)' : 'var(--dim)';
-          var sign = pct > 0 ? '+' : '';
-          var mcap = q.market_cap ? (q.market_cap / 1e9).toFixed(1) + 'B' : '-';
-          var vol = q.volume ? (q.volume / 1e6).toFixed(1) + 'M' : '-';
-          var chg = q.change ? (q.change > 0 ? '+' : '') + q.change.toFixed(2) : '-';
-          return '<tr>' +
-            '<td><a href="#" onclick="usSelectSymbol(\'' + q.symbol + '\');return false" style="font-weight:600">' + q.symbol + '</a></td>' +
-            '<td>' + (q.name || '-') + '</td>' +
-            '<td>' + (q.price ? q.price.toFixed(2) : '-') + '</td>' +
-            '<td style="color:' + color + '">' + chg + '</td>' +
-            '<td style="color:' + color + '">' + sign + pct.toFixed(2) + '%</td>' +
-            '<td>' + (q.open ? q.open.toFixed(2) : '-') + '</td>' +
-            '<td>' + (q.high ? q.high.toFixed(2) : '-') + '</td>' +
-            '<td>' + (q.low ? q.low.toFixed(2) : '-') + '</td>' +
-            '<td>' + vol + '</td>' +
-            '<td>' + mcap + '</td>' +
-            '<td><button onclick="usRemoveWatchlist(\'' + q.symbol + '\')" style="color:var(--red);background:none;border:none;cursor:pointer;font-size:11px">删除</button></td>' +
-            '</tr>';
-        }).join('');
-      }
+      usQuotesAllData = data || [];
+      usFilterAndRenderQuotes();
     })
     .catch(function() {
       if (loading) loading.textContent = '加载失败，请检查网络';
     });
+}
+
+function usFilterAndRenderQuotes() {
+  var loading = document.getElementById('us-quotes-loading');
+  var table = document.getElementById('us-quotes-table');
+  var tbody = document.getElementById('us-quotes-body');
+  var countEl = document.getElementById('us-quotes-count');
+  var paginationEl = document.getElementById('us-quotes-pagination');
+
+  // 搜索过滤
+  if (usQuotesSearchQuery) {
+    usQuotesFilteredData = usQuotesAllData.filter(function(q) {
+      var sym = (q.symbol || '').toLowerCase();
+      var name = (q.name || '').toLowerCase();
+      return sym.indexOf(usQuotesSearchQuery) !== -1 || name.indexOf(usQuotesSearchQuery) !== -1;
+    });
+  } else {
+    usQuotesFilteredData = usQuotesAllData.slice();
+  }
+
+  // 更新计数
+  if (countEl) {
+    countEl.textContent = usQuotesFilteredData.length + ' / ' + usQuotesAllData.length + ' 只';
+  }
+
+  if (!usQuotesFilteredData || usQuotesFilteredData.length === 0) {
+    if (loading) loading.textContent = usQuotesSearchQuery ? '无匹配结果' : '暂无自选股票，请在左侧添加';
+    if (loading) loading.style.display = '';
+    if (table) table.style.display = 'none';
+    if (paginationEl) paginationEl.innerHTML = '';
+    return;
+  }
+
+  if (loading) loading.style.display = 'none';
+  if (table) table.style.display = '';
+
+  // 分页
+  var totalPages = Math.ceil(usQuotesFilteredData.length / usQuotesPageSize);
+  if (usQuotesPage > totalPages) usQuotesPage = totalPages;
+  if (usQuotesPage < 1) usQuotesPage = 1;
+  var startIdx = (usQuotesPage - 1) * usQuotesPageSize;
+  var pageData = usQuotesFilteredData.slice(startIdx, startIdx + usQuotesPageSize);
+
+  // 渲染表格
+  if (tbody) {
+    tbody.innerHTML = pageData.map(function(q) {
+      var pct = q.change_pct || 0;
+      var color = pct > 0 ? 'var(--green)' : pct < 0 ? 'var(--red)' : 'var(--dim)';
+      var sign = pct > 0 ? '+' : '';
+      var mcap = q.market_cap ? (q.market_cap / 1e9).toFixed(1) + 'B' : '-';
+      var vol = q.volume ? (q.volume / 1e6).toFixed(1) + 'M' : '-';
+      var chg = q.change ? (q.change > 0 ? '+' : '') + q.change.toFixed(2) : '-';
+      return '<tr>' +
+        '<td><a href="#" onclick="usSelectSymbol(\'' + q.symbol + '\');return false" style="font-weight:600">' + q.symbol + '</a></td>' +
+        '<td>' + (q.name || '-') + '</td>' +
+        '<td>' + (q.price ? q.price.toFixed(2) : '-') + '</td>' +
+        '<td style="color:' + color + '">' + chg + '</td>' +
+        '<td style="color:' + color + '">' + sign + pct.toFixed(2) + '%</td>' +
+        '<td>' + (q.open ? q.open.toFixed(2) : '-') + '</td>' +
+        '<td>' + (q.high ? q.high.toFixed(2) : '-') + '</td>' +
+        '<td>' + (q.low ? q.low.toFixed(2) : '-') + '</td>' +
+        '<td>' + vol + '</td>' +
+        '<td>' + mcap + '</td>' +
+        '<td><button onclick="usRemoveWatchlist(\'' + q.symbol + '\')" style="color:var(--red);background:none;border:none;cursor:pointer;font-size:11px">删除</button></td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  // 渲染分页
+  if (paginationEl) {
+    if (totalPages <= 1) {
+      paginationEl.innerHTML = '';
+      return;
+    }
+    var html = '';
+    html += '<button class="us-page-btn" onclick="usGoToPage(1)" ' + (usQuotesPage === 1 ? 'disabled' : '') + '>&laquo;</button>';
+    html += '<button class="us-page-btn" onclick="usGoToPage(' + (usQuotesPage - 1) + ')" ' + (usQuotesPage === 1 ? 'disabled' : '') + '>&lsaquo;</button>';
+    html += '<span style="color:var(--muted)">' + usQuotesPage + ' / ' + totalPages + '</span>';
+    html += '<button class="us-page-btn" onclick="usGoToPage(' + (usQuotesPage + 1) + ')" ' + (usQuotesPage === totalPages ? 'disabled' : '') + '>&rsaquo;</button>';
+    html += '<button class="us-page-btn" onclick="usGoToPage(' + totalPages + ')" ' + (usQuotesPage === totalPages ? 'disabled' : '') + '>&raquo;</button>';
+    paginationEl.innerHTML = html;
+  }
+}
+
+function usGoToPage(page) {
+  usQuotesPage = page;
+  usFilterAndRenderQuotes();
+  // 滚动到顶部
+  var pane = document.getElementById('us-quotes-pane');
+  if (pane) pane.scrollTop = 0;
 }
 
 // ── 搜索 ──

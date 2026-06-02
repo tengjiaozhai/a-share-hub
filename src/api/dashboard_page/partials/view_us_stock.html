@@ -51,6 +51,10 @@
     </div>
 
     <div class="tab-pane active" id="us-quotes-pane">
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+        <input type="text" id="us-quotes-search" placeholder="搜索代码或名称..." style="flex:1">
+        <span id="us-quotes-count" style="font-size:12px;color:var(--dim)"></span>
+      </div>
       <div id="us-quotes-loading" style="color:var(--dim);padding:20px;text-align:center">加载中...</div>
       <table class="table" id="us-quotes-table" style="display:none">
         <thead>
@@ -61,6 +65,7 @@
         </thead>
         <tbody id="us-quotes-body"></tbody>
       </table>
+      <div id="us-quotes-pagination" style="display:flex;justify-content:center;align-items:center;gap:8px;margin-top:12px;font-size:12px"></div>
     </div>
 
     <div class="tab-pane" id="us-kline-pane">

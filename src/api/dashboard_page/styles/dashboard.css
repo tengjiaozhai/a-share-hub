@@ -837,3 +837,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   white-space: nowrap;
 }
 #us-quotes-table tr:hover { background: rgba(96,165,250,.05); }
+
+/* ── 行情搜索框 ── */
+#us-quotes-search {
+  background: var(--bg); border: 1px solid var(--border); color: var(--fg);
+  padding: 8px 12px; border-radius: 6px; font-size: 13px; font-family: inherit;
+}
+#us-quotes-search:focus { outline: none; border-color: var(--accent); }
+#us-quotes-search::placeholder { color: var(--dim); }
+
+/* ── 分页按钮 ── */
+.us-page-btn {
+  background: var(--surface2); color: var(--fg); border: 1px solid var(--border);
+  padding: 4px 10px; border-radius: 4px; font-size: 12px; cursor: pointer;
+  transition: .15s;
+}
+.us-page-btn:hover:not(:disabled) { background: var(--blue); color: #fff; border-color: var(--blue); }
+.us-page-btn:disabled { opacity: .4; cursor: not-allowed; }
