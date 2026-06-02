@@ -80,17 +80,63 @@ class YahooProvider:
         if not uncached:
             return results
 
-        for i in range(0, len(uncached), self._batch_size):
-            batch = uncached[i : i + self._batch_size]
-            for sym in batch:
+        # 使用 yf.download 批量获取（比逐个快 10x+）
+        try:
+            df = yf.download(uncached, period="1d", group_by="ticker", progress=False, threads=True)
+        except Exception as e:
+            logger.warning(f"yf.download batch failed: {e}, falling back to per-symbol")
+            df = None
+
+        if df is not None and not df.empty:
+            for sym in uncached:
+                try:
+                    if len(uncached) == 1:
+                        row = df.iloc[-1] if not df.empty else None
+                    else:
+                        sym_df = df[sym] if sym in df.columns.get_level_values(0) else None
+                        row = sym_df.iloc[-1] if sym_df is not None and not sym_df.empty else None
+
+                    if row is not None:
+                        close = float(row.get("Close", 0))
+                        open_p = float(row.get("Open", 0))
+                        high = float(row.get("High", 0))
+                        low = float(row.get("Low", 0))
+                        volume = int(row.get("Volume", 0))
+                        change = close - open_p if open_p else 0
+                        change_pct = (change / open_p * 100) if open_p else 0
+
+                        quote = USQuote(
+                            symbol=sym,
+                            name=sym,
+                            price=round(close, 2),
+                            change=round(change, 2),
+                            change_pct=round(change_pct, 2),
+                            open=round(open_p, 2),
+                            high=round(high, 2),
+                            low=round(low, 2),
+                            volume=volume,
+                            market_cap=0,
+                            prev_close=0,
+                            market_open=True,
+                            stale=False,
+                            updated_at=datetime.now(),
+                        )
+                        self._quote_cache.set(f"quote:{sym}", quote)
+                        results.append(quote)
+                    else:
+                        results.append(USQuote(symbol=sym, name=sym))
+                except Exception as e:
+                    logger.warning(f"get_quotes({sym}) parse failed: {e}")
+                    results.append(USQuote(symbol=sym, name=sym))
+        else:
+            # fallback: 逐个获取
+            for sym in uncached:
                 try:
                     quote = self.get_quote(sym)
                     results.append(quote)
                 except Exception as e:
                     logger.warning(f"get_quotes({sym}) failed: {e}")
                     results.append(USQuote(symbol=sym, name=sym))
-            if i + self._batch_size < len(uncached):
-                time.sleep(self._batch_delay)
 
         return results
 

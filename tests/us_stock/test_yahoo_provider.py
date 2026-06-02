@@ -1,4 +1,3 @@
-from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 from src.us_stock.yahoo_provider import YahooProvider

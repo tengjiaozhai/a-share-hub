@@ -1,5 +1,13 @@
 # Dashboard Frontend Modularization Design
 
+## Status
+
+Superseded by `docs/superpowers/plans/2026-06-01-dashboard-single-path-resplit.md`.
+
+- `src/api/static/` has been removed.
+- `/dashboard` is the only browser entrypoint.
+- Dashboard source now lives under `src/api/dashboard_page/` and is assembled server-side into one HTML response.
+
 ## Problem
 
 `src/api/dashboard.html` is 2034 lines containing all HTML, CSS, and JavaScript in a single file. This makes it difficult to understand, modify, and maintain.

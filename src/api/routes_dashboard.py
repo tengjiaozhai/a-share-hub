@@ -1,12 +1,12 @@
 import uuid
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 
 from src.agents.llm_client import LLMClient
 from src.alpha.execution_service import AlphaExecutionService
+from src.api.dashboard_page.render import render_dashboard_html
 from src.core.config import Settings
 from src.data.providers.akshare_provider import AkshareProvider
 from src.storage.dependencies import get_runtime_store
@@ -107,9 +107,7 @@ def _compute_order_pnl(action: str, quantity: int, fill_price: float, current_pr
 
 @router.get("/dashboard", response_class=HTMLResponse)
 def get_dashboard():
-    html_path = Path(__file__).parent / "dashboard.html"
-    with open(html_path, "r", encoding="utf-8") as f:
-        return f.read()
+    return render_dashboard_html()
 
 
 @router.get("/api/v1/dashboard/workbench")
@@ -789,29 +787,21 @@ def scan_stock_pool(config: dict | None = None) -> dict:
 
 
 @router.get("/api/v1/dashboard/preferences")
-def get_preferences() -> dict:
+def get_preferences(store: RuntimeStore = Depends(get_runtime_store)) -> dict:
     """获取用户偏好设置（watchlist 等）。"""
-    store = get_runtime_store()
     prefs = store.get_preference("dashboard") or {}
     return prefs
 
 
 @router.put("/api/v1/dashboard/preferences")
-def save_preferences(config: dict) -> dict:
+def save_preferences(config: dict, store: RuntimeStore = Depends(get_runtime_store)) -> dict:
     """保存用户偏好设置。"""
-    store = get_runtime_store()
     # 只允许保存白名单字段
     allowed_keys = {"watchlist", "capital_base", "max_position_ratio", "stop_loss_ratio",
                     "max_daily_loss_ratio", "execution_mode"}
     filtered = {k: v for k, v in config.items() if k in allowed_keys}
     store.set_preference("dashboard", filtered)
     return {"status": "ok"}
-
-
-@router.get("/new")
-def new_dashboard():
-    """Redirect to new modular dashboard"""
-    return RedirectResponse(url="/static/index.html")
 
 
 
