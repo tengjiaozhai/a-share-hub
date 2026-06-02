@@ -1,72 +1,152 @@
-let usSearchResults = [];
+// ── 美股工作台 ──
+
+var usCurrentSymbol = null;
+var usCurrentInterval = '1d';
+var usCurrentRange = '1mo';
+var usRecentSearches = [];
+var usRefreshTimer = null;
+
+// ── 初始化 ──
+
+function usInit() {
+  usLoadQuotes();
+  usLoadBinanceAssets();
+  usUpdateMarketStatus();
+  usLoadWatchlistChips();
+
+  usRefreshTimer = setInterval(function() {
+    usLoadQuotes();
+    usLoadBinanceAssets();
+  }, 60000);
+
+  var searchInput = document.getElementById('us-search-input');
+  if (searchInput) {
+    searchInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') usSearch();
+    });
+  }
+}
+
+// ── Tab 切换 ──
+
+function usSwitchCenterTab(btn, paneId) {
+  btn.parentElement.querySelectorAll('button').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  document.querySelectorAll('#view-us-stock .tab-pane').forEach(function(p) { p.classList.remove('active'); });
+  document.getElementById(paneId).classList.add('active');
+}
+
+// ── 行情加载 ──
 
 function usLoadQuotes() {
-  const loading = document.getElementById('us-quotes-loading');
-  const table = document.getElementById('us-quotes-table');
-  const tbody = document.getElementById('us-quotes-body');
+  var loading = document.getElementById('us-quotes-loading');
+  var table = document.getElementById('us-quotes-table');
+  var tbody = document.getElementById('us-quotes-body');
 
   fetch('/api/v1/us-stock/quotes')
-    .then(r => r.json())
-    .then(data => {
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var now = new Date();
+      var el = document.getElementById('us-last-refresh');
+      if (el) el.textContent = '更新于 ' + now.toLocaleTimeString();
+
       if (!data || data.length === 0) {
-        loading.textContent = '暂无自选股票';
-        loading.style.display = '';
-        table.style.display = 'none';
+        if (loading) loading.textContent = '暂无自选股票，请在左侧添加';
+        if (loading) loading.style.display = '';
+        if (table) table.style.display = 'none';
         return;
       }
-      loading.style.display = 'none';
-      table.style.display = '';
-      tbody.innerHTML = data.map(q => {
-        const pct = q.change_pct || 0;
-        const color = pct > 0 ? 'var(--green)' : pct < 0 ? 'var(--red)' : 'var(--dim)';
-        const sign = pct > 0 ? '+' : '';
-        const mcap = q.market_cap ? (q.market_cap / 1e9).toFixed(1) + 'B' : '-';
-        const vol = q.volume ? (q.volume / 1e6).toFixed(1) + 'M' : '-';
-        return `<tr>
-          <td><a href="#" onclick="usShowDetail('${q.symbol}');return false">${q.symbol}</a></td>
-          <td>${q.name || '-'}</td>
-          <td>${q.price ? q.price.toFixed(2) : '-'}</td>
-          <td style="color:${color}">${sign}${pct.toFixed(2)}%</td>
-          <td>${vol}</td>
-          <td>${mcap}</td>
-          <td><button onclick="usRemoveWatchlist('${q.symbol}')" style="color:var(--red);background:none;border:none;cursor:pointer">删除</button></td>
-        </tr>`;
-      }).join('');
+      if (loading) loading.style.display = 'none';
+      if (table) table.style.display = '';
+      if (tbody) {
+        tbody.innerHTML = data.map(function(q) {
+          var pct = q.change_pct || 0;
+          var color = pct > 0 ? 'var(--green)' : pct < 0 ? 'var(--red)' : 'var(--dim)';
+          var sign = pct > 0 ? '+' : '';
+          var mcap = q.market_cap ? (q.market_cap / 1e9).toFixed(1) + 'B' : '-';
+          var vol = q.volume ? (q.volume / 1e6).toFixed(1) + 'M' : '-';
+          var chg = q.change ? (q.change > 0 ? '+' : '') + q.change.toFixed(2) : '-';
+          return '<tr>' +
+            '<td><a href="#" onclick="usSelectSymbol(\'' + q.symbol + '\');return false" style="font-weight:600">' + q.symbol + '</a></td>' +
+            '<td>' + (q.name || '-') + '</td>' +
+            '<td>' + (q.price ? q.price.toFixed(2) : '-') + '</td>' +
+            '<td style="color:' + color + '">' + chg + '</td>' +
+            '<td style="color:' + color + '">' + sign + pct.toFixed(2) + '%</td>' +
+            '<td>' + (q.open ? q.open.toFixed(2) : '-') + '</td>' +
+            '<td>' + (q.high ? q.high.toFixed(2) : '-') + '</td>' +
+            '<td>' + (q.low ? q.low.toFixed(2) : '-') + '</td>' +
+            '<td>' + vol + '</td>' +
+            '<td>' + mcap + '</td>' +
+            '<td><button onclick="usRemoveWatchlist(\'' + q.symbol + '\')" style="color:var(--red);background:none;border:none;cursor:pointer;font-size:11px">删除</button></td>' +
+            '</tr>';
+        }).join('');
+      }
     })
-    .catch(() => {
-      loading.textContent = '加载失败';
+    .catch(function() {
+      if (loading) loading.textContent = '加载失败，请检查网络';
     });
 }
+
+// ── 搜索 ──
 
 function usSearch() {
-  const q = document.getElementById('us-search-input').value.trim();
+  var q = document.getElementById('us-search-input').value.trim();
   if (!q) return;
+  var resultsDiv = document.getElementById('us-search-results');
+  if (resultsDiv) {
+    resultsDiv.style.display = '';
+    resultsDiv.innerHTML = '<span style="color:var(--dim)">搜索中...</span>';
+  }
+
   fetch('/api/v1/us-stock/search?q=' + encodeURIComponent(q))
-    .then(r => r.json())
-    .then(data => {
-      usSearchResults = data || [];
-      const div = document.getElementById('us-search-results');
-      if (usSearchResults.length === 0) {
-        div.innerHTML = '<span style="color:var(--dim)">无结果</span>';
-      } else {
-        div.innerHTML = usSearchResults.map(s =>
-          '<span style="display:inline-block;padding:4px 8px;margin:2px;border:1px solid var(--border);border-radius:4px;cursor:pointer" onclick="usSelectSearch(\'' + s.symbol + '\',\'' + (s.name||'') + '\')">' + s.symbol + ' - ' + (s.name||'') + '</span>'
-        ).join('');
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!resultsDiv) return;
+      if (!data || data.length === 0) {
+        resultsDiv.innerHTML = '<span style="color:var(--dim)">无结果</span>';
+        return;
       }
-      div.style.display = '';
+      resultsDiv.innerHTML = data.map(function(s) {
+        return '<div style="padding:4px 6px;cursor:pointer;border-bottom:1px solid var(--border);font-size:12px" ' +
+          'onclick="usSelectSearchResult(\'' + s.symbol + '\',\'' + (s.name || '').replace(/'/g, "\\'") + '\')">' +
+          '<strong>' + s.symbol + '</strong> ' + (s.name || '') + ' <span style="color:var(--dim)">' + (s.exchange || '') + '</span></div>';
+      }).join('');
+    })
+    .catch(function() {
+      if (resultsDiv) resultsDiv.innerHTML = '<span style="color:var(--red)">搜索失败</span>';
     });
 }
 
-function usSelectSearch(symbol, name) {
+function usSelectSearchResult(symbol, name) {
   document.getElementById('us-search-input').value = symbol;
-  window._usSelectedSymbol = symbol;
-  window._usSelectedName = name;
+  document.getElementById('us-search-results').style.display = 'none';
+  usAddToWatchlist(symbol, name || symbol);
+  usAddRecentSearch(symbol);
 }
 
-function usAddFromSearch() {
-  const symbol = window._usSelectedSymbol || document.getElementById('us-search-input').value.trim().toUpperCase();
-  const name = window._usSelectedName || symbol;
+function usAddRecentSearch(symbol) {
+  usRecentSearches = usRecentSearches.filter(function(s) { return s !== symbol; });
+  usRecentSearches.unshift(symbol);
+  if (usRecentSearches.length > 10) usRecentSearches = usRecentSearches.slice(0, 10);
+  var el = document.getElementById('us-recent-searches');
+  if (el) {
+    el.innerHTML = usRecentSearches.map(function(s) {
+      return '<span style="display:inline-block;padding:2px 6px;margin:2px;border:1px solid var(--border);border-radius:3px;cursor:pointer;font-size:11px" onclick="usSelectSymbol(\'' + s + '\')">' + s + '</span>';
+    }).join('');
+  }
+}
+
+// ── 自选管理 ──
+
+function usAddManual() {
+  var input = document.getElementById('us-add-symbol');
+  var symbol = (input.value || '').trim().toUpperCase();
   if (!symbol) return;
+  usAddToWatchlist(symbol, symbol);
+  input.value = '';
+}
+
+function usAddToWatchlist(symbol, name) {
   fetch('/api/v1/us-stock/watchlist', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -74,8 +154,7 @@ function usAddFromSearch() {
   }).then(function(r) {
     if (r.ok) {
       usLoadQuotes();
-      window._usSelectedSymbol = null;
-      window._usSelectedName = null;
+      usLoadWatchlistChips();
     } else {
       r.json().then(function(d) { alert(d.detail || '添加失败'); });
     }
@@ -83,66 +162,251 @@ function usAddFromSearch() {
 }
 
 function usRemoveWatchlist(symbol) {
-  if (!confirm('确认删除 ' + symbol + '？')) return;
+  if (!confirm('确认从自选删除 ' + symbol + '？')) return;
   fetch('/api/v1/us-stock/watchlist/' + symbol, {method: 'DELETE'})
-    .then(function(r) { if (r.ok) usLoadQuotes(); });
+    .then(function(r) {
+      if (r.ok) {
+        usLoadQuotes();
+        usLoadWatchlistChips();
+        if (usCurrentSymbol === symbol) {
+          usCurrentSymbol = null;
+          document.getElementById('us-kline-chart').innerHTML = '点击股票代码查看K线';
+          document.getElementById('us-fundamental-content').innerHTML = '点击股票代码查看基本面';
+          document.getElementById('us-detail-summary').textContent = '点击股票代码查看详情';
+          document.getElementById('us-detail-content').style.display = 'none';
+        }
+      }
+    });
 }
 
-function usShowDetail(symbol) {
-  var panel = document.getElementById('us-detail-panel');
-  var title = document.getElementById('us-detail-title');
+function usLoadWatchlistChips() {
+  fetch('/api/v1/us-stock/watchlist')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var el = document.getElementById('us-watchlist-chips');
+      if (!el) return;
+      if (!data || data.length === 0) {
+        el.innerHTML = '<span style="font-size:11px;color:var(--dim)">暂无自选</span>';
+        return;
+      }
+      el.innerHTML = data.map(function(item) {
+        return '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border:1px solid var(--border);border-radius:3px;font-size:11px">' +
+          '<a href="#" onclick="usSelectSymbol(\'' + item.symbol + '\');return false" style="color:var(--text);text-decoration:none">' + item.symbol + '</a>' +
+          '<span style="color:var(--red);cursor:pointer" onclick="usRemoveWatchlist(\'' + item.symbol + '\')">&times;</span>' +
+          '</span>';
+      }).join('');
+    });
+}
+
+// ── 股票选择 ──
+
+function usSelectSymbol(symbol) {
+  usCurrentSymbol = symbol;
+  document.getElementById('us-kline-symbol').textContent = symbol;
+
+  var klineBtn = document.querySelector('#view-us-stock .tabs button:nth-child(2)');
+  if (klineBtn) usSwitchCenterTab(klineBtn, 'us-kline-pane');
+
+  usLoadKline();
+  usLoadFundamental();
+  usLoadDetailSummary(symbol);
+  usAddRecentSearch(symbol);
+}
+
+// ── K 线 ──
+
+function usSetKlineInterval(btn, interval, range) {
+  btn.parentElement.querySelectorAll('.us-kline-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  usCurrentInterval = interval;
+  usCurrentRange = range;
+  usLoadKline();
+}
+
+function usLoadKline() {
+  if (!usCurrentSymbol) return;
+  var chartDiv = document.getElementById('us-kline-chart');
+  if (chartDiv) chartDiv.innerHTML = '<span style="color:var(--dim)">加载中...</span>';
+
+  fetch('/api/v1/us-stock/kline/' + usCurrentSymbol + '?interval=' + usCurrentInterval + '&range=' + usCurrentRange)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data || data.length === 0) {
+        if (chartDiv) chartDiv.innerHTML = '<span style="color:var(--dim)">无K线数据</span>';
+        return;
+      }
+      usRenderKlineTable(chartDiv, data);
+    })
+    .catch(function() {
+      if (chartDiv) chartDiv.innerHTML = '<span style="color:var(--red)">加载失败</span>';
+    });
+}
+
+function usRenderKlineTable(container, klines) {
+  var rows = klines.slice(-30);
+  var html = '<div style="font-size:11px;color:var(--dim);margin-bottom:4px">最近 ' + rows.length + ' 根K线（共 ' + klines.length + ' 根）</div>';
+  html += '<div style="max-height:350px;overflow-y:auto"><table class="table"><thead><tr>';
+  html += '<th>日期</th><th>开</th><th>高</th><th>低</th><th>收</th><th>涨跌</th><th>成交量</th>';
+  html += '</tr></thead><tbody>';
+
+  rows.forEach(function(k, i) {
+    var dateStr = k.timestamp ? k.timestamp.split('T')[0] : '-';
+    var chg = i > 0 ? (k.close - rows[i-1].close) : 0;
+    var chgPct = i > 0 && rows[i-1].close > 0 ? (chg / rows[i-1].close * 100) : 0;
+    var color = chg > 0 ? 'var(--green)' : chg < 0 ? 'var(--red)' : 'var(--dim)';
+    var vol = k.volume ? (k.volume / 1e6).toFixed(1) + 'M' : '-';
+    html += '<tr>';
+    html += '<td>' + dateStr + '</td>';
+    html += '<td>' + (k.open || 0).toFixed(2) + '</td>';
+    html += '<td>' + (k.high || 0).toFixed(2) + '</td>';
+    html += '<td>' + (k.low || 0).toFixed(2) + '</td>';
+    html += '<td style="font-weight:600">' + (k.close || 0).toFixed(2) + '</td>';
+    html += '<td style="color:' + color + '">' + (chgPct > 0 ? '+' : '') + chgPct.toFixed(2) + '%</td>';
+    html += '<td>' + vol + '</td>';
+    html += '</tr>';
+  });
+
+  html += '</tbody></table></div>';
+  if (container) container.innerHTML = html;
+}
+
+// ── 基本面 ──
+
+function usLoadFundamental() {
+  if (!usCurrentSymbol) return;
+  var el = document.getElementById('us-fundamental-content');
+  if (el) el.innerHTML = '<span style="color:var(--dim)">加载中...</span>';
+
+  fetch('/api/v1/us-stock/fundamental/' + usCurrentSymbol)
+    .then(function(r) { return r.json(); })
+    .then(function(f) {
+      if (!el) return;
+      var html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">';
+      html += usFundRow('行业', f.sector || '-');
+      html += usFundRow('细分行业', f.industry || '-');
+      html += usFundRow('市值', f.market_cap ? (f.market_cap / 1e9).toFixed(1) + 'B' : '-');
+      html += usFundRow('市盈率 (PE)', f.pe_ratio ? f.pe_ratio.toFixed(2) : '-');
+      html += usFundRow('市净率 (PB)', f.pb_ratio ? f.pb_ratio.toFixed(2) : '-');
+      html += usFundRow('股息率', f.dividend_yield ? (f.dividend_yield * 100).toFixed(2) + '%' : '-');
+      html += usFundRow('EPS', f.eps ? f.eps.toFixed(2) : '-');
+      html += usFundRow('Beta', f.beta ? f.beta.toFixed(2) : '-');
+      html += usFundRow('52周高', f.fifty_two_week_high ? f.fifty_two_week_high.toFixed(2) : '-');
+      html += usFundRow('52周低', f.fifty_two_week_low ? f.fifty_two_week_low.toFixed(2) : '-');
+      html += '</div>';
+      el.innerHTML = html;
+    })
+    .catch(function() {
+      if (el) el.innerHTML = '<span style="color:var(--red)">加载失败</span>';
+    });
+}
+
+function usFundRow(label, value) {
+  return '<div style="color:var(--dim)">' + label + '</div><div style="font-weight:500">' + value + '</div>';
+}
+
+// ── 详情摘要 ──
+
+function usLoadDetailSummary(symbol) {
+  var el = document.getElementById('us-detail-summary');
   var content = document.getElementById('us-detail-content');
-  panel.style.display = '';
-  title.textContent = symbol + ' 详情';
-  content.innerHTML = '加载中...';
+  if (el) el.style.display = 'none';
+  if (content) {
+    content.style.display = '';
+    content.innerHTML = '<span style="color:var(--dim)">加载中...</span>';
+  }
 
   Promise.all([
+    fetch('/api/v1/us-stock/quote/' + symbol).then(function(r) { return r.json(); }),
     fetch('/api/v1/us-stock/fundamental/' + symbol).then(function(r) { return r.json(); }),
-    fetch('/api/v1/us-stock/kline/' + symbol + '?interval=1d&range=3mo').then(function(r) { return r.json(); }),
   ]).then(function(results) {
-    var fund = results[0];
-    var klines = results[1];
-    var html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">';
-    html += '<div>行业: ' + (fund.sector || '-') + '</div><div>细分: ' + (fund.industry || '-') + '</div>';
-    html += '<div>市盈率: ' + (fund.pe_ratio ? fund.pe_ratio.toFixed(2) : '-') + '</div><div>市净率: ' + (fund.pb_ratio ? fund.pb_ratio.toFixed(2) : '-') + '</div>';
-    html += '<div>股息率: ' + (fund.dividend_yield ? (fund.dividend_yield * 100).toFixed(2) + '%' : '-') + '</div><div>EPS: ' + (fund.eps ? fund.eps.toFixed(2) : '-') + '</div>';
-    html += '<div>Beta: ' + (fund.beta ? fund.beta.toFixed(2) : '-') + '</div><div>52周高: ' + (fund.fifty_two_week_high ? fund.fifty_two_week_high.toFixed(2) : '-') + '</div>';
-    html += '<div>52周低: ' + (fund.fifty_two_week_low ? fund.fifty_two_week_low.toFixed(2) : '-') + '</div>';
+    var q = results[0];
+    var f = results[1];
+    if (!content) return;
+    var pct = q.change_pct || 0;
+    var color = pct > 0 ? 'var(--green)' : pct < 0 ? 'var(--red)' : 'var(--dim)';
+    var html = '<div style="font-size:12px">';
+    html += '<div style="font-size:16px;font-weight:700;margin-bottom:4px">' + (q.name || symbol) + '</div>';
+    html += '<div style="font-size:20px;font-weight:700;color:' + color + '">' + (q.price ? q.price.toFixed(2) : '-') + '</div>';
+    html += '<div style="color:' + color + ';margin-bottom:8px">' + (pct > 0 ? '+' : '') + pct.toFixed(2) + '%</div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">';
+    html += '<div style="color:var(--dim)">开盘</div><div>' + (q.open ? q.open.toFixed(2) : '-') + '</div>';
+    html += '<div style="color:var(--dim)">最高</div><div>' + (q.high ? q.high.toFixed(2) : '-') + '</div>';
+    html += '<div style="color:var(--dim)">最低</div><div>' + (q.low ? q.low.toFixed(2) : '-') + '</div>';
+    html += '<div style="color:var(--dim)">昨收</div><div>' + (q.prev_close ? q.prev_close.toFixed(2) : '-') + '</div>';
+    html += '<div style="color:var(--dim)">成交量</div><div>' + (q.volume ? (q.volume / 1e6).toFixed(1) + 'M' : '-') + '</div>';
+    html += '<div style="color:var(--dim)">市值</div><div>' + (q.market_cap ? (q.market_cap / 1e9).toFixed(1) + 'B' : '-') + '</div>';
     html += '</div>';
-    if (klines && klines.length > 0) {
-      html += '<div style="max-height:200px;overflow-y:auto"><table class="table"><thead><tr><th>日期</th><th>开</th><th>高</th><th>低</th><th>收</th><th>量</th></tr></thead><tbody>';
-      klines.slice(-10).forEach(function(k) {
-        var dateStr = k.timestamp ? k.timestamp.split('T')[0] : '-';
-        html += '<tr><td>' + dateStr + '</td><td>' + (k.open||0).toFixed(2) + '</td><td>' + (k.high||0).toFixed(2) + '</td><td>' + (k.low||0).toFixed(2) + '</td><td>' + (k.close||0).toFixed(2) + '</td><td>' + ((k.volume||0)/1e6).toFixed(1) + 'M</td></tr>';
-      });
-      html += '</tbody></table></div>';
+    if (f && f.sector) {
+      html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">';
+      html += '<div style="color:var(--dim)">行业: ' + (f.sector || '-') + '</div>';
+      html += '<div style="color:var(--dim)">PE: ' + (f.pe_ratio ? f.pe_ratio.toFixed(2) : '-') + ' | PB: ' + (f.pb_ratio ? f.pb_ratio.toFixed(2) : '-') + '</div>';
+      html += '</div>';
     }
+    html += '</div>';
     content.innerHTML = html;
-  }).catch(function() { content.innerHTML = '加载失败'; });
+  }).catch(function() {
+    if (content) content.innerHTML = '<span style="color:var(--red)">加载失败</span>';
+  });
 }
+
+// ── 币安资产 ──
 
 function usLoadBinanceAssets() {
   var div = document.getElementById('us-binance-assets');
+  var statusEl = document.getElementById('us-binance-status');
+
   fetch('/api/v1/us-stock/binance/assets')
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (!data || data.length === 0) {
-        div.innerHTML = '<span style="color:var(--dim)">暂无币安资产数据（请检查 BINANCE_API_KEY 配置）</span>';
+        if (div) div.innerHTML = '<span style="color:var(--dim);font-size:11px">暂无资产（检查 BINANCE_API_KEY）</span>';
+        if (statusEl) statusEl.innerHTML = '<span style="color:var(--dim)">未配置</span>';
         return;
       }
-      var html = '<table class="table"><thead><tr><th>资产</th><th>可用</th><th>冻结</th><th>总计</th></tr></thead><tbody>';
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)">已连接</span>';
+
+      var html = '<div style="margin-bottom:8px;font-size:13px;font-weight:600">共 ' + data.length + ' 种资产</div>';
+      html += '<div style="max-height:200px;overflow-y:auto"><table class="table" style="font-size:11px"><thead><tr>';
+      html += '<th>资产</th><th>可用</th><th>冻结</th><th>总计</th>';
+      html += '</tr></thead><tbody>';
+
       data.forEach(function(a) {
-        html += '<tr><td>' + a.symbol + '</td><td>' + a.free.toFixed(4) + '</td><td>' + a.locked.toFixed(4) + '</td><td>' + a.total.toFixed(4) + '</td></tr>';
+        html += '<tr>';
+        html += '<td style="font-weight:600">' + a.symbol + '</td>';
+        html += '<td>' + a.free.toFixed(4) + '</td>';
+        html += '<td>' + a.locked.toFixed(4) + '</td>';
+        html += '<td>' + a.total.toFixed(4) + '</td>';
+        html += '</tr>';
       });
-      html += '</tbody></table>';
-      div.innerHTML = html;
+
+      html += '</tbody></table></div>';
+      if (div) div.innerHTML = html;
     })
-    .catch(function() { div.innerHTML = '加载失败'; });
+    .catch(function() {
+      if (div) div.innerHTML = '<span style="color:var(--red);font-size:11px">加载失败</span>';
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--red)">连接失败</span>';
+    });
 }
 
-function usInit() {
-  usLoadQuotes();
-  usLoadBinanceAssets();
-  setInterval(usLoadQuotes, 60000);
-  setInterval(usLoadBinanceAssets, 30000);
+// ── 市场状态 ──
+
+function usUpdateMarketStatus() {
+  var el = document.getElementById('us-market-status');
+  if (!el) return;
+
+  var now = new Date();
+  var utcHour = now.getUTCHours();
+  var utcMin = now.getUTCMinutes();
+  var day = now.getUTCDay();
+  var isWeekday = day >= 1 && day <= 5;
+  var isMarketHours = (utcHour > 13 || (utcHour === 13 && utcMin >= 30)) && utcHour < 20;
+  var isOpen = isWeekday && isMarketHours;
+
+  if (isOpen) {
+    el.innerHTML = '<span style="color:var(--green)">交易中</span> (美东 9:30-16:00 / 北京约 21:30-04:00)';
+  } else if (isWeekday) {
+    el.innerHTML = '<span style="color:var(--dim)">已收盘</span> (下次开盘: 周一至周五 美东 9:30)';
+  } else {
+    el.innerHTML = '<span style="color:var(--dim)">周末休市</span>';
+  }
 }
