@@ -434,12 +434,12 @@ function usLoadBinanceAssets() {
   fetch('/api/v1/us-stock/binance/assets')
     .then(function(r) { return r.json(); })
     .then(function(data) {
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)">已连接</span>';
+      
       if (!data || data.length === 0) {
-        if (div) div.innerHTML = '<span style="color:var(--dim);font-size:11px">暂无资产（检查 BINANCE_API_KEY）</span>';
-        if (statusEl) statusEl.innerHTML = '<span style="color:var(--dim)">未配置</span>';
+        if (div) div.innerHTML = '<span style="color:var(--dim);font-size:11px">暂无美股资产</span>';
         return;
       }
-      if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)">已连接</span>';
 
       var html = '<div style="margin-bottom:8px;font-size:13px;font-weight:600">共 ' + data.length + ' 种资产</div>';
       html += '<div style="max-height:200px;overflow-y:auto"><table class="table" style="font-size:11px"><thead><tr>';

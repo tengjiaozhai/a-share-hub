@@ -1,5 +1,4 @@
 import logging
-import os
 
 from src.crypto.data.binance_provider import BinanceProvider
 from src.us_stock.cache import TTLMemoryCache
@@ -16,8 +15,10 @@ def get_binance_us_assets() -> list[USBinanceAsset]:
     if cached is not None:
         return cached
 
-    api_key = os.getenv("BINANCE_API_KEY", "")
-    api_secret = os.getenv("BINANCE_API_SECRET", "")
+    from src.core.config import Settings
+    settings = Settings()
+    api_key = settings.binance_api_key
+    api_secret = settings.binance_api_secret
     if not api_key or not api_secret:
         return []
 
