@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from src.us_stock.watchlist import WatchlistStore
 
@@ -27,7 +28,9 @@ def test_list_items(mock_db):
 
 def test_add_item(mock_db):
     conn, cursor = mock_db
-    cursor.fetchone.return_value = {"id": 1, "symbol": "AAPL", "name": "Apple", "sort_order": 0, "created_at": "2026-01-01"}
+    cursor.fetchone.return_value = {
+        "id": 1, "symbol": "AAPL", "name": "Apple", "sort_order": 0, "created_at": "2026-01-01",
+    }
     store = WatchlistStore(conn)
     item = store.add("AAPL", "Apple")
     assert item.symbol == "AAPL"
