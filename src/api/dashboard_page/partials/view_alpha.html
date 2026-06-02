@@ -1,0 +1,119 @@
+<div class="view alpha-desk" id="view-alpha">
+
+  <!-- ═══ HERO ═══ -->
+  <section class="alpha-hero">
+    <div class="alpha-hero-copy">
+      <p class="alpha-kicker">Alpha Desk</p>
+      <h2>Alpha 代币化证券</h2>
+      <p class="alpha-summary">半自动执行台，先确认执行能力，再录入建议单，再回看资产与研究候选。</p>
+    </div>
+  </section>
+
+  <!-- ═══ STATUS GRID ═══ -->
+  <section class="alpha-status-grid">
+    <article class="alpha-panel" id="alpha-execution-capability">
+      <div class="alpha-panel-head">
+        <span class="alpha-panel-dot" id="alpha-cap-dot"></span>
+        Direct Execution Capability
+      </div>
+      <div class="alpha-panel-body">
+        <div id="alpha-execution-mode" class="alpha-big-value"></div>
+        <div id="alpha-execution-reason" class="alpha-dim-text"></div>
+        <div class="alpha-cap-hint">manual = 手动记录成交 · api = 远程提交交易所</div>
+      </div>
+    </article>
+
+    <article class="alpha-panel">
+      <div class="alpha-panel-head">Alpha 组合</div>
+      <div class="alpha-panel-body">
+        <div id="alpha-portfolio-summary" class="alpha-portfolio-summary"></div>
+        <div id="alpha-positions" class="alpha-positions-list"></div>
+      </div>
+    </article>
+
+    <article class="alpha-panel alpha-panel-exceptions">
+      <div class="alpha-panel-head">
+        <span class="alpha-panel-dot" id="alpha-exc-dot"></span>
+        Alpha 异常
+      </div>
+      <div class="alpha-panel-body">
+        <div id="alpha-exceptions"></div>
+      </div>
+    </article>
+  </section>
+
+  <!-- ═══ OPS GRID ═══ -->
+  <section class="alpha-ops-grid">
+    <article class="alpha-panel alpha-panel-form">
+      <div class="alpha-panel-head">建议单录入</div>
+      <div class="alpha-panel-body">
+        <form id="alpha-ticket-form" onsubmit="submitAlphaTicket(event)">
+          <div class="alpha-form-row">
+            <div class="alpha-field">
+              <label>资产代码</label>
+              <input id="alpha-symbol" placeholder="如 AAPL" />
+            </div>
+            <div class="alpha-field">
+              <label>标的代码</label>
+              <input id="alpha-underlying" placeholder="如 AAPL.US" />
+            </div>
+          </div>
+          <div class="alpha-form-row">
+            <div class="alpha-field">
+              <label>数量</label>
+              <input id="alpha-qty" type="number" placeholder="0" />
+            </div>
+            <div class="alpha-field">
+              <label>限价</label>
+              <input id="alpha-limit" type="number" step="0.01" placeholder="0.00" />
+            </div>
+          </div>
+          <div class="alpha-field">
+            <label>投资逻辑</label>
+            <textarea id="alpha-thesis" placeholder="描述你的投资逻辑..."></textarea>
+          </div>
+          <button type="submit">创建建议单</button>
+        </form>
+      </div>
+    </article>
+
+    <article class="alpha-panel alpha-panel-queue">
+      <div class="alpha-panel-head">
+        建议单队列
+        <span class="alpha-ticket-count" id="alpha-ticket-count">0</span>
+      </div>
+      <div class="alpha-panel-body">
+        <div id="alpha-tickets"></div>
+      </div>
+    </article>
+  </section>
+
+  <!-- ═══ DATA GRID ═══ -->
+  <section class="alpha-data-grid">
+    <article class="alpha-panel">
+      <div class="alpha-panel-head">资产状态</div>
+      <div class="alpha-panel-body alpha-assets-body">
+        <div id="alpha-assets"></div>
+      </div>
+    </article>
+
+    <article class="alpha-panel alpha-panel-research">
+      <div class="alpha-panel-head">观察列表与候选</div>
+      <div class="alpha-panel-body">
+        <div class="alpha-action-bar">
+          <button class="alpha-btn alpha-btn-primary" onclick="runAlphaScan()">运行扫描</button>
+          <button class="alpha-btn alpha-btn-secondary" onclick="proposeTopAlphaTicket()">生成建议单</button>
+        </div>
+        <div class="alpha-data-section">
+          <div class="alpha-section-label">观察列表</div>
+          <div id="alpha-watchlist"></div>
+        </div>
+        <div class="alpha-data-section">
+          <div class="alpha-section-label">候选标的</div>
+          <div id="alpha-candidates"></div>
+        </div>
+      </div>
+    </article>
+  </section>
+
+</div>

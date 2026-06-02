@@ -1,0 +1,20 @@
+<div class="status-bar">
+  <span class="brand">A股模拟工作台</span>
+  <span class="sep"></span>
+  <div class="nav-group">
+    <button class="active" onclick="switchView(this,'view-dashboard')">工作台</button>
+    <button onclick="switchView(this,'view-market')">实时行情</button>
+    <button onclick="switchView(this,'view-alpha')"><i class="bi bi-graph-up"></i> Alpha</button>
+    <button onclick="switchView(this,'view-us-stock')"><i class="bi bi-globe"></i> 美股</button>
+  </div>
+  <span class="sep"></span>
+  <span class="pill mode" id="mode-pill">影子模式</span>
+  <span class="sep"></span>
+  <span><span class="dot g" id="db-dot"></span> 数据库</span>
+  <span><span class="dot g" id="llm-dot"></span> LLM</span>
+  <span><span class="dot g" id="mkt-dot"></span> 行情</span>
+  <span class="sep"></span>
+  <span style="color:var(--dim)">交易日: <span id="trade-date">--</span></span>
+  <span style="color:var(--dim)">上次运行: <span id="last-run">--</span></span>
+  <button class="kill-btn" onclick="killSwitch()">KILL SWITCH</button>
+</div>

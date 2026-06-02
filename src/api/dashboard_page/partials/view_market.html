@@ -1,0 +1,26 @@
+<div class="view" id="view-market">
+  <h2>实时行情</h2>
+  <div class="search-bar">
+    <select id="market-select" style="background:var(--bg);border:1px solid var(--border);color:var(--fg);padding:8px 12px;border-radius:6px;font-size:13px;font-family:inherit;">
+      <option value="a">A 股</option>
+      <option value="us">美股</option>
+    </select>
+    <input type="text" id="stock-search-input" placeholder="输入股票代码或名称（如：600519 或 贵州茅台）">
+    <button class="run-btn" onclick="searchStock()" style="padding:8px 16px;font-size:12px">搜索</button>
+    <button class="save-btn" onclick="addSearchToWatchlist()" style="width:auto;padding:8px 16px;font-size:12px">+ 添加到观察列表</button>
+    <button class="run-btn" onclick="exitSearchMode()" style="padding:8px 16px;font-size:12px;background:var(--surface2)">返回观察列表</button>
+    <span id="search-status" style="font-size:11px;color:var(--dim)"></span>
+  </div>
+  <table class="market-table" id="market-table-a">
+    <thead>
+      <tr>
+        <th>更新时间</th><th>股票</th><th>最新价</th><th>涨跌额</th><th>涨跌幅</th>
+        <th>今开</th><th>最高</th><th>最低</th>
+        <th>成交量</th><th>换手率</th><th>振幅</th><th>量比</th>
+      </tr>
+    </thead>
+    <tbody id="tb-market-full">
+      <tr><td colspan="12" class="market-empty">暂无行情数据</td></tr>
+    </tbody>
+  </table>
+</div>

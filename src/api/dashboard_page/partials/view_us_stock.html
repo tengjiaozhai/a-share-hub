@@ -1,0 +1,28 @@
+<div id="view-us-stock" class="view" style="display:none">
+  <div class="panel">
+    <h3><i class="bi bi-globe"></i> 美股行情</h3>
+    <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center">
+      <input id="us-search-input" type="text" placeholder="搜索美股代码或名称..." style="flex:1;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text)">
+      <button onclick="usSearch()" style="padding:8px 16px">搜索</button>
+      <button onclick="usAddFromSearch()" style="padding:8px 16px">+ 添加自选</button>
+    </div>
+    <div id="us-search-results" style="display:none;margin-bottom:12px"></div>
+    <div id="us-quotes-loading" style="color:var(--dim)">加载中...</div>
+    <table class="table" id="us-quotes-table" style="display:none">
+      <thead>
+        <tr>
+          <th>代码</th><th>名称</th><th>最新价</th><th>涨跌幅</th><th>成交量</th><th>市值</th><th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="us-quotes-body"></tbody>
+    </table>
+  </div>
+  <div class="panel" style="margin-top:12px">
+    <h3><i class="bi bi-wallet2"></i> 币安美股资产</h3>
+    <div id="us-binance-assets" style="color:var(--dim)">加载中...</div>
+  </div>
+  <div class="panel" style="margin-top:12px;display:none" id="us-detail-panel">
+    <h3 id="us-detail-title">详情</h3>
+    <div id="us-detail-content"></div>
+  </div>
+</div>
