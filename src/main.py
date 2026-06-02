@@ -1,11 +1,9 @@
 import argparse
-import os
 import sys
 from datetime import datetime, timedelta
 from hashlib import sha256
 
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 
 from src.agents.llm_client import LLMClient
 from src.api.routes_alpha import router as alpha_router
@@ -24,6 +22,7 @@ from src.decision.decision_runner import build_decision_run_record
 from src.decision.input_builder import build_decision_input_snapshot
 from src.portfolio.target_planner import build_target_position
 from src.storage.dependencies import get_runtime_store
+from src.us_stock.routes import router as us_stock_router
 
 
 def run_decide_command(symbols: list[str], mock_llm: bool, store=None) -> dict:
@@ -101,11 +100,7 @@ def build_app() -> FastAPI:
     app.include_router(dashboard_router)
     app.include_router(crypto_router)
     app.include_router(alpha_router)
-
-    # Mount static files for modular dashboard
-    static_dir = os.path.join(os.path.dirname(__file__), "api", "static")
-    if os.path.exists(static_dir):
-        app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    app.include_router(us_stock_router)
 
     return app
 
