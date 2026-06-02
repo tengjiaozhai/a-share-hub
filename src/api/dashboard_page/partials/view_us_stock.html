@@ -9,7 +9,7 @@
       <label>搜索美股</label>
       <div style="display:flex;gap:6px">
         <input type="text" id="us-search-input" placeholder="输入代码或名称..." style="flex:1">
-        <button onclick="usSearch()" style="padding:4px 10px;font-size:12px">搜索</button>
+        <button class="us-btn-primary" onclick="usSearch()">搜索</button>
       </div>
       <div id="us-search-results" style="display:none;margin-top:6px;max-height:150px;overflow-y:auto"></div>
     </div>
@@ -18,7 +18,7 @@
       <label>自选管理</label>
       <div style="display:flex;gap:6px;margin-bottom:6px">
         <input type="text" id="us-add-symbol" placeholder="股票代码" style="flex:1">
-        <button onclick="usAddManual()" style="padding:4px 10px;font-size:12px">+ 添加</button>
+        <button class="us-btn-add" onclick="usAddManual()">+ 添加</button>
       </div>
       <div id="us-watchlist-chips" style="display:flex;flex-wrap:wrap;gap:4px;max-height:120px;overflow-y:auto"></div>
     </div>
@@ -32,7 +32,7 @@
       <label>数据刷新</label>
       <div style="display:flex;gap:6px;align-items:center">
         <span id="us-last-refresh" style="font-size:11px;color:var(--dim)">--</span>
-        <button onclick="usLoadQuotes()" style="padding:2px 8px;font-size:11px">刷新</button>
+        <button class="us-btn-refresh" onclick="usLoadQuotes()">刷新</button>
       </div>
     </div>
 
