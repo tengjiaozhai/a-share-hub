@@ -786,6 +786,59 @@ def scan_stock_pool(config: dict | None = None) -> dict:
     return {"status": "ok", **result}
 
 
+@router.post("/api/v1/dashboard/scan-us")
+def scan_us_stock_pool(config: dict | None = None) -> dict:
+    """美股全市场自动选股，扫描器预筛 + 历史K线确认。"""
+    from src.strategy.stock_scanner import confirm_us_buy_candidates, scan_us_market
+    from src.us_stock.watchlist import WatchlistStore
+    from src.us_stock.yahoo_provider import YahooProvider
+
+    cfg = config or {}
+    top_n = int(cfg.get("top_n", 10))
+
+    # 获取美股watchlist
+    import psycopg
+    settings = Settings()
+    database_url = settings.database_url
+    if not database_url:
+        return {"status": "no_database", "buy": [], "sell": [], "hold": [], "total_scanned": 0}
+
+    conn_url = database_url.replace("postgresql+psycopg://", "postgresql://")
+    conn = psycopg.connect(conn_url, row_factory=psycopg.rows.dict_row)
+    store = WatchlistStore(conn)
+    stock_list_items = store.list_items()
+    conn.close()
+
+    if not stock_list_items:
+        return {"status": "no_catalog", "buy": [], "sell": [], "hold": [], "total_scanned": 0}
+
+    stock_list = [{"symbol": item.symbol, "name": item.name} for item in stock_list_items]
+
+    # 初始化Yahoo数据源
+    yahoo_provider = YahooProvider()
+
+    # 第一轮：扫描器筛选（取 3x 候选给确认层）
+    result = scan_us_market(
+        stock_list=stock_list,
+        fetch_quotes_fn=lambda syms: yahoo_provider.get_quotes(syms),
+        top_n=top_n * 3,
+    )
+
+    # 第二轮：用历史 K 线确认 BUY 候选
+    def kline_fetcher(symbol, interval, range_str):
+        return yahoo_provider.get_kline(symbol, interval, range_str)
+
+    confirmed_buy = confirm_us_buy_candidates(
+        result["buy"], kline_fetcher, top_n=top_n
+    )
+    result["buy"] = confirmed_buy
+    # HOLD/SELL 截断到 top_n（scan_market 取 3x 是给 BUY 确认用的）
+    result["hold"] = result["hold"][:top_n]
+    result["sell"] = result["sell"][:top_n]
+
+    return {"status": "ok", **result}
+
+
 @router.get("/api/v1/dashboard/preferences")
 def get_preferences(store: RuntimeStore = Depends(get_runtime_store)) -> dict:
     """获取用户偏好设置（watchlist 等）。"""

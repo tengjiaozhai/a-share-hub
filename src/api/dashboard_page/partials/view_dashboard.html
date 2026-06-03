@@ -5,6 +5,13 @@
   <div class="panel-left">
     <h2>策略配置</h2>
     <div class="field">
+      <label>市场选择</label>
+      <select id="cfg-market" style="background:var(--bg);border:1px solid var(--border);color:var(--fg);padding:8px 12px;border-radius:6px;font-size:13px;font-family:inherit;">
+        <option value="a">A 股</option>
+        <option value="us">美股</option>
+      </select>
+    </div>
+    <div class="field">
       <label>模拟总资金 (万元)</label>
       <input type="number" id="cfg-capital" value="100" step="10" min="1">
     </div>

@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from src.strategy.stock_scanner import score_quote, scan_market, confirm_buy_candidates
+from src.strategy.stock_scanner import score_quote, scan_market, confirm_buy_candidates, score_us_quote, scan_us_market, confirm_us_buy_candidates
 
 
 def test_score_quote_returns_buy_for_strong_stock():
@@ -142,3 +142,96 @@ def test_confirm_buy_candidates_marks_insufficient_data():
     assert len(result) == 1
     assert result[0]["confirmed"] is False
     assert "历史数据不足" in result[0]["confirm_reason"]
+
+
+# 美股扫描测试
+def test_score_us_quote_returns_buy_for_strong_stock():
+    result = score_us_quote({
+        "symbol": "AAPL", "name": "苹果",
+        "change_pct": 6.0, "volume": 100000000, "market_cap": 3000000000000,
+    })
+    assert result["action"] == "BUY"
+    assert result["score"] >= 0.55
+    assert result["reason"]
+    assert "symbol" in result
+    assert "factors" in result
+
+
+def test_score_us_quote_returns_sell_for_declining_stock():
+    result = score_us_quote({
+        "symbol": "TSLA", "name": "特斯拉",
+        "change_pct": -4.76, "volume": 50000000, "market_cap": 500000000000,
+    })
+    assert result["action"] == "SELL"
+
+
+def test_score_us_quote_returns_hold_for_neutral_stock():
+    result = score_us_quote({
+        "symbol": "MSFT", "name": "微软",
+        "change_pct": 0.5, "volume": 30000000, "market_cap": 2000000000000,
+    })
+    assert result["action"] == "HOLD"
+
+
+def test_score_us_quote_handles_missing_fields():
+    result = score_us_quote({"symbol": "AAPL"})
+    assert result["action"] == "SELL"
+    assert result["score"] >= 0
+
+
+def test_scan_us_market_returns_grouped_results():
+    from src.us_stock.models import USQuote
+    from datetime import datetime
+
+    mock_quotes = [
+        USQuote(symbol="AAPL", name="苹果", price=150.0, change=10.0, change_pct=6.0,
+                open=140.0, high=155.0, low=139.0, volume=100000000, market_cap=3000000000000,
+                prev_close=140.0, market_open=True, stale=False, updated_at=datetime.now()),
+        USQuote(symbol="MSFT", name="微软", price=300.0, change=2.0, change_pct=0.5,
+                open=298.0, high=302.0, low=297.0, volume=30000000, market_cap=2000000000000,
+                prev_close=298.0, market_open=True, stale=False, updated_at=datetime.now()),
+        USQuote(symbol="TSLA", name="特斯拉", price=200.0, change=-10.0, change_pct=-4.76,
+                open=210.0, high=212.0, low=198.0, volume=50000000, market_cap=500000000000,
+                prev_close=210.0, market_open=True, stale=False, updated_at=datetime.now()),
+    ]
+
+    result = scan_us_market(
+        [{"symbol": "AAPL"}, {"symbol": "MSFT"}, {"symbol": "TSLA"}],
+        lambda syms: mock_quotes,
+    )
+
+    assert result["total_scanned"] == 3
+    assert len(result["buy"]) == 1
+    assert result["buy"][0]["symbol"] == "AAPL"
+    assert len(result["sell"]) == 1
+    assert result["sell"][0]["symbol"] == "TSLA"
+    assert len(result["hold"]) == 1
+
+
+def test_scan_us_market_respects_top_n():
+    from src.us_stock.models import USQuote
+    from datetime import datetime
+
+    mock_quotes = [
+        USQuote(symbol=f"STOCK{i}", name=f"股票{i}", price=100.0, change=10.0, change_pct=6.0,
+                open=90.0, high=105.0, low=89.0, volume=100000000, market_cap=1000000000000,
+                prev_close=90.0, market_open=True, stale=False, updated_at=datetime.now())
+        for i in range(20)
+    ]
+
+    result = scan_us_market(
+        [{"symbol": f"STOCK{i}"} for i in range(20)],
+        lambda syms: mock_quotes,
+        top_n=5,
+    )
+
+    assert len(result["buy"]) == 5
+
+
+def test_scan_us_market_handles_empty_quotes():
+    result = scan_us_market(
+        [{"symbol": "AAPL"}],
+        lambda syms: [],
+    )
+    assert result["total_scanned"] == 0
+    assert result["buy"] == []

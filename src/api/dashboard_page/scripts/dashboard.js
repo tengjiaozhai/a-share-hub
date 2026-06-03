@@ -493,23 +493,27 @@ function finishRun() {
 }
 
 const SCAN_API = '/api/v1/dashboard/scan';
+const SCAN_US_API = '/api/v1/dashboard/scan-us';
 
 async function triggerScan() {
   if (scanRunning) return;
   scanRunning = true;
   const btn = document.getElementById('scan-btn');
+  const market = document.getElementById('cfg-market').value;
+  const isUS = market === 'us';
   setButtonLoading(btn, true, '扫描中...');
-  document.getElementById('scan-content').innerHTML = '<span style="color:var(--yellow)">正在扫描全市场，请稍候（约 5-10 秒）...</span>';
+  document.getElementById('scan-content').innerHTML = '<span style="color:var(--yellow)">正在扫描' + (isUS ? '美股' : 'A股') + '全市场，请稍候...</span>';
 
   try {
-    const res = await fetch(SCAN_API, {
+    const api = isUS ? SCAN_US_API : SCAN_API;
+    const res = await fetch(api, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ top_n: 10 }),
     });
     const body = await res.json();
     if (!res.ok) throw new Error(body.detail || '扫描失败');
-    renderScanResult(body);
+    renderScanResult(body, isUS);
   } catch (e) {
     document.getElementById('scan-content').innerHTML = `<span style="color:var(--red)">扫描失败: ${escapeHtml(e.message)}</span>`;
   } finally {
@@ -519,14 +523,15 @@ async function triggerScan() {
   }
 }
 
-function renderScanResult(data) {
+function renderScanResult(data, isUS) {
   const area = document.getElementById('scan-content');
   if (data.status === 'no_catalog') {
     area.innerHTML = '<span style="color:var(--yellow)">股票列表不可用，请检查网络</span>';
     return;
   }
 
-  let html = `<div class="scan-summary">已扫描 ${data.total_scanned} 只股票</div>`;
+  const marketLabel = isUS ? '美股' : 'A股';
+  let html = `<div class="scan-summary">已扫描 ${data.total_scanned} 只${marketLabel}股票</div>`;
 
   const confirmedBuy = (data.buy || []).filter(item => item.confirmed);
   const unconfirmedBuy = (data.buy || []).filter(item => !item.confirmed);

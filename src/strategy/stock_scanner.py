@@ -149,6 +149,148 @@ def confirm_buy_candidates(
     return confirmed[:top_n]
 
 
+def score_us_quote(quote: dict[str, Any]) -> dict[str, Any]:
+    """对单只美股的实时行情计算简化因子评分。
+
+    因子权重: 涨跌幅(50%) + 成交量(30%) + 市值(20%)
+    美股没有振幅、换手率、量比等字段，使用可用字段进行评分。
+    """
+    change_pct = _safe_float(quote.get("change_pct"))
+    volume = _safe_float(quote.get("volume"))
+    market_cap = _safe_float(quote.get("market_cap"))
+    name = str(quote.get("name", ""))
+
+    # 归一化到 [0, 1]
+    f_change = max(0.0, min(1.0, (change_pct + 5) / 15))
+    # 成交量归一化（以1亿为基准）
+    f_volume = max(0.0, min(1.0, volume / 100_000_000))
+    # 市值归一化（以1000亿为基准）
+    f_market_cap = max(0.0, min(1.0, market_cap / 100_000_000_000))
+
+    score = (
+        0.50 * f_change
+        + 0.30 * f_volume
+        + 0.20 * f_market_cap
+    )
+
+    if score >= 0.55 and change_pct > 0:
+        action = "BUY"
+    elif score <= 0.20 or change_pct < -3:
+        action = "SELL"
+    else:
+        action = "HOLD"
+
+    reasons = []
+    if change_pct > 2:
+        reasons.append(f"涨幅{change_pct:.1f}%，趋势向好")
+    elif change_pct < -2:
+        reasons.append(f"跌幅{change_pct:.1f}%，注意风险")
+    if volume > 50_000_000:
+        reasons.append(f"成交量{volume/10000:.0f}万，交投活跃")
+    if market_cap > 500_000_000_000:
+        reasons.append(f"市值{market_cap/100000000:.0f}亿，大盘股")
+    if not reasons:
+        reasons.append("指标平稳")
+
+    return {
+        "symbol": quote.get("symbol", ""),
+        "name": name,
+        "score": round(score, 4),
+        "action": action,
+        "reason": "、".join(reasons),
+        "factors": {
+            "change_pct": round(change_pct, 2),
+            "volume": round(volume, 0),
+            "market_cap": round(market_cap, 0),
+        },
+    }
+
+
+def scan_us_market(
+    stock_list: list[dict[str, str]],
+    fetch_quotes_fn,
+    top_n: int = 10,
+) -> dict[str, Any]:
+    """美股全市场扫描入口。
+
+    stock_list: [{"symbol": "AAPL", "name": "苹果"}, ...]
+    fetch_quotes_fn: callable(symbols: list[str]) -> list[USQuote]
+    top_n: 每组返回前 N 只
+
+    返回: {"buy": [...], "sell": [...], "hold": [...], "total_scanned": N}
+    """
+    symbols = [s["symbol"] for s in stock_list if s.get("symbol")]
+    quotes = fetch_quotes_fn(symbols)
+
+    if not quotes:
+        return {"buy": [], "sell": [], "hold": [], "total_scanned": 0}
+
+    results = []
+    for quote in quotes:
+        quote_dict = quote.model_dump() if hasattr(quote, "model_dump") else quote
+        result = score_us_quote(quote_dict)
+        results.append(result)
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+
+    return {
+        "buy": [r for r in results if r["action"] == "BUY"][:top_n],
+        "sell": [r for r in results if r["action"] == "SELL"][:top_n],
+        "hold": [r for r in results if r["action"] == "HOLD"][:top_n],
+        "total_scanned": len(results),
+    }
+
+
+def confirm_us_buy_candidates(
+    candidates: list[dict],
+    kline_fetcher,
+    top_n: int = 10,
+) -> list[dict]:
+    """对扫描器的美股 BUY 候选用历史 K 线做二次确认。
+
+    candidates: 扫描器输出的 BUY 列表
+    kline_fetcher: callable(symbol, interval, range_str) -> list[USKline]
+    top_n: 最终返回数量
+
+    返回: 确认后的列表，每项增加 confirmed/final_score/final_action 字段
+    """
+    from src.indicators.technical_indicators import compute_feature_row
+    from src.strategy.signal_engine import build_signal
+
+    confirmed = []
+    for cand in candidates:
+        symbol = cand["symbol"]
+        try:
+            klines = kline_fetcher(symbol, "1d", "1y")
+            if not klines or len(klines) < 60:
+                cand["confirmed"] = False
+                cand["final_score"] = 0.0
+                cand["final_action"] = "HOLD"
+                cand["confirm_reason"] = "历史数据不足"
+                confirmed.append(cand)
+                continue
+            close_prices = [k.close for k in klines]
+            features = compute_feature_row(close_prices)
+            signal = build_signal(symbol, features, None)
+            cand["confirmed"] = signal["action"] == "BUY"
+            cand["final_score"] = signal["technical_score"]
+            cand["final_action"] = signal["action"]
+            if not cand["confirmed"]:
+                cand["confirm_reason"] = f"趋势评分{signal['technical_score']:.4f}，信号{signal['action']}"
+            else:
+                cand["confirm_reason"] = f"趋势评分{signal['technical_score']:.4f}，确认BUY"
+        except Exception as e:
+            cand["confirmed"] = False
+            cand["final_score"] = 0.0
+            cand["final_action"] = "HOLD"
+            cand["confirm_reason"] = f"确认失败: {e}"
+        confirmed.append(cand)
+
+    # 排序：已确认的在前，按扫描器评分降序
+    confirmed.sort(key=lambda x: (x["confirmed"], x["score"]), reverse=True)
+    return confirmed[:top_n]
+
+
 def _safe_float(value) -> float:
     if value is None:
         return 0.0
