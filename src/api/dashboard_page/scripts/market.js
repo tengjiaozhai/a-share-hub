@@ -30,6 +30,9 @@ function marketInit() {
       aQuotesPage = 1;
       aFilterAndRenderQuotes();
     });
+    quotesSearch.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') aQuotesSearchFull();
+    });
   }
 
   var searchInput = document.getElementById('a-search-input');
@@ -163,6 +166,46 @@ function aFilterAndRenderQuotes() {
 function aGoToPage(page) {
   aQuotesPage = page;
   aFilterAndRenderQuotes();
+}
+
+// ── 中栏搜索全库 ──
+
+function aQuotesSearchFull() {
+  var query = document.getElementById('a-quotes-search').value.trim();
+  if (!query) return;
+
+  var loading = document.getElementById('a-quotes-loading');
+  var table = document.getElementById('a-quotes-table');
+  if (loading) {
+    loading.textContent = '搜索全库中...';
+    loading.style.display = '';
+  }
+  if (table) table.style.display = 'none';
+
+  fetch('/api/v1/market/stocks?query=' + encodeURIComponent(query) + '&limit=100')
+    .then(function(r) { return r.json(); })
+    .then(function(stocks) {
+      if (!stocks || stocks.length === 0) {
+        if (loading) loading.textContent = '未找到匹配的股票';
+        return;
+      }
+      var symbols = stocks.map(function(s) { return s.symbol; });
+      return fetch('/api/v1/a-stock/quotes', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(symbols),
+      }).then(function(r) { return r.json(); });
+    })
+    .then(function(quotes) {
+      if (!quotes) return;
+      aQuotesAllData = quotes;
+      aQuotesFilteredData = quotes;
+      aQuotesPage = 1;
+      aFilterAndRenderQuotes();
+    })
+    .catch(function() {
+      if (loading) loading.textContent = '搜索失败';
+    });
 }
 
 // ── 搜索 ──
