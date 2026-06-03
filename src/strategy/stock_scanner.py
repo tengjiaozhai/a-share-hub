@@ -256,6 +256,11 @@ def confirm_us_buy_candidates(
     """
     from src.indicators.technical_indicators import compute_feature_row
     from src.strategy.signal_engine import build_signal
+    from src.strategy.strategy_config import StrategyConfig
+    from src.core.config import Settings
+
+    settings = Settings()
+    config = StrategyConfig.from_settings(settings)
 
     confirmed = []
     for cand in candidates:
@@ -271,7 +276,7 @@ def confirm_us_buy_candidates(
                 continue
             close_prices = [k.close for k in klines]
             features = compute_feature_row(close_prices)
-            signal = build_signal(symbol, features, None)
+            signal = build_signal(symbol, features, config)
             cand["confirmed"] = signal["action"] == "BUY"
             cand["final_score"] = signal["technical_score"]
             cand["final_action"] = signal["action"]
