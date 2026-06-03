@@ -891,3 +891,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #a-watchlist-chips a:hover {
   text-decoration: underline;
 }
+
+/* ── A 股面板去除 padding ── */
+#view-market .panel-left { padding: 0; gap: 10px; }
+#view-market .panel-left h2 { padding: 0 16px; }
+#view-market .panel-left .field { padding: 0 16px; }
