@@ -6,12 +6,14 @@ var aRecentSearches = [];
 var aRefreshTimer = null;
 
 // ── 行情分页状态 ──
-var aQuotesAllData = [];
-var aQuotesFilteredData = [];
+var aWatchlistData = []; // 全部自选列表
+var aQuotesPageData = []; // 当前页行情数据
 var aQuotesPage = 1;
 var aQuotesPageSize = 30;
 var aQuotesSearchQuery = '';
-var aWatchlistTotal = 0; // 自选列表总数
+var aWatchlistTotal = 0;
+var aIsSearchMode = false;
+var aSearchResults = [];
 
 // ── 初始化 ──
 
@@ -26,11 +28,6 @@ function marketInit() {
 
   var quotesSearch = document.getElementById('a-quotes-search');
   if (quotesSearch) {
-    quotesSearch.addEventListener('input', function() {
-      aQuotesSearchQuery = this.value.trim().toLowerCase();
-      aQuotesPage = 1;
-      aFilterAndRenderQuotes();
-    });
     quotesSearch.addEventListener('keydown', function(e) {
       if (e.key === 'Enter') aQuotesSearchFull();
     });
@@ -61,59 +58,91 @@ function aLoadQuotes() {
   fetch('/api/v1/a-stock/watchlist')
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      if (!data || data.length === 0) {
-        aQuotesAllData = [];
-        aWatchlistTotal = 0;
-        aFilterAndRenderQuotes();
-        return;
-      }
-      aWatchlistTotal = data.length; // 保存总数
-      // 只加载前 100 只股票的行情
-      var symbols = data.slice(0, 100).map(function(item) { return item.symbol; });
-      return fetch('/api/v1/a-stock/quotes', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(symbols),
-      }).then(function(r) { return r.json(); });
-    })
-    .then(function(quotes) {
-      var now = new Date();
-      var el = document.getElementById('a-last-refresh');
-      if (el) el.textContent = '更新于 ' + now.toLocaleTimeString();
-      aQuotesAllData = quotes || [];
-      aFilterAndRenderQuotes();
+      aWatchlistData = data || [];
+      aWatchlistTotal = aWatchlistData.length;
+      aQuotesPage = 1;
+      return aLoadPageQuotes();
     })
     .catch(function() {
       if (loading) loading.textContent = '加载失败，请检查网络';
     });
 }
 
-function aFilterAndRenderQuotes() {
+function aLoadPageQuotes() {
+  var loading = document.getElementById('a-quotes-loading');
+
+  if (aIsSearchMode) {
+    return aLoadSearchQuotes();
+  }
+
+  var totalPages = Math.ceil(aWatchlistTotal / aQuotesPageSize);
+  if (aQuotesPage > totalPages) aQuotesPage = totalPages;
+  if (aQuotesPage < 1) aQuotesPage = 1;
+
+  var startIdx = (aQuotesPage - 1) * aQuotesPageSize;
+  var pageSymbols = aWatchlistData.slice(startIdx, startIdx + aQuotesPageSize).map(function(item) { return item.symbol; });
+
+  if (pageSymbols.length === 0) {
+    aQuotesPageData = [];
+    aRenderQuotesTable();
+    return;
+  }
+
+  return fetch('/api/v1/a-stock/quotes', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(pageSymbols),
+  }).then(function(r) { return r.json(); }).then(function(quotes) {
+    var now = new Date();
+    var el = document.getElementById('a-last-refresh');
+    if (el) el.textContent = '更新于 ' + now.toLocaleTimeString();
+    aQuotesPageData = quotes || [];
+    aRenderQuotesTable();
+  }).catch(function() {
+    if (loading) loading.textContent = '加载失败，请检查网络';
+  });
+}
+
+function aLoadSearchQuotes() {
+  var loading = document.getElementById('a-quotes-loading');
+  var symbols = aSearchResults.slice(0, 100).map(function(item) { return item.symbol; });
+
+  if (symbols.length === 0) {
+    aQuotesPageData = [];
+    aRenderQuotesTable();
+    return;
+  }
+
+  return fetch('/api/v1/a-stock/quotes', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(symbols),
+  }).then(function(r) { return r.json(); }).then(function(quotes) {
+    aQuotesPageData = quotes || [];
+    aRenderQuotesTable();
+  }).catch(function() {
+    if (loading) loading.textContent = '加载失败';
+  });
+}
+
+function aRenderQuotesTable() {
   var loading = document.getElementById('a-quotes-loading');
   var table = document.getElementById('a-quotes-table');
   var tbody = document.getElementById('a-quotes-body');
   var countEl = document.getElementById('a-quotes-count');
   var paginationEl = document.getElementById('a-quotes-pagination');
 
-  if (aQuotesSearchQuery) {
-    aQuotesFilteredData = aQuotesAllData.filter(function(q) {
-      var sym = (q.symbol || '').toLowerCase();
-      var name = (q.name || '').toLowerCase();
-      return sym.indexOf(aQuotesSearchQuery) !== -1 || name.indexOf(aQuotesSearchQuery) !== -1;
-    });
-  } else {
-    // 按换手率降序排列，热门股排在前面
-    aQuotesFilteredData = aQuotesAllData.slice().sort(function(a, b) {
-      return (parseFloat(b.turnover) || 0) - (parseFloat(a.turnover) || 0);
-    });
-  }
+  var total = aIsSearchMode ? aSearchResults.length : aWatchlistTotal;
+  var totalPages = Math.ceil(total / aQuotesPageSize);
+  if (aQuotesPage > totalPages) aQuotesPage = totalPages;
+  if (aQuotesPage < 1) aQuotesPage = 1;
 
   if (countEl) {
-    countEl.textContent = aQuotesFilteredData.length + ' / ' + aWatchlistTotal + ' 只';
+    countEl.textContent = '共 ' + total + ' 只，第 ' + aQuotesPage + ' / ' + totalPages + ' 页';
   }
 
-  if (!aQuotesFilteredData || aQuotesFilteredData.length === 0) {
-    if (loading) loading.textContent = aQuotesSearchQuery ? '无匹配结果' : '暂无自选股票，请在左侧添加';
+  if (!aQuotesPageData || aQuotesPageData.length === 0) {
+    if (loading) loading.textContent = aIsSearchMode ? '无匹配结果' : '暂无自选股票，请在左侧添加';
     if (loading) loading.style.display = '';
     if (table) table.style.display = 'none';
     if (paginationEl) paginationEl.innerHTML = '';
@@ -123,14 +152,8 @@ function aFilterAndRenderQuotes() {
   if (loading) loading.style.display = 'none';
   if (table) table.style.display = '';
 
-  var totalPages = Math.ceil(aQuotesFilteredData.length / aQuotesPageSize);
-  if (aQuotesPage > totalPages) aQuotesPage = totalPages;
-  if (aQuotesPage < 1) aQuotesPage = 1;
-  var startIdx = (aQuotesPage - 1) * aQuotesPageSize;
-  var pageData = aQuotesFilteredData.slice(startIdx, startIdx + aQuotesPageSize);
-
   if (tbody) {
-    tbody.innerHTML = pageData.map(function(q) {
+    tbody.innerHTML = aQuotesPageData.map(function(q) {
       var pct = parseFloat(q.change_pct) || 0;
       var color = pct > 0 ? 'var(--green)' : pct < 0 ? 'var(--red)' : 'var(--dim)';
       var sign = pct > 0 ? '+' : '';
@@ -171,14 +194,21 @@ function aFilterAndRenderQuotes() {
 
 function aGoToPage(page) {
   aQuotesPage = page;
-  aFilterAndRenderQuotes();
+  aLoadPageQuotes();
 }
 
 // ── 中栏搜索全库 ──
 
 function aQuotesSearchFull() {
   var query = document.getElementById('a-quotes-search').value.trim();
-  if (!query) return;
+  if (!query) {
+    // 清空搜索，恢复正常模式
+    aIsSearchMode = false;
+    aSearchResults = [];
+    aQuotesPage = 1;
+    aLoadQuotes();
+    return;
+  }
 
   var loading = document.getElementById('a-quotes-loading');
   var table = document.getElementById('a-quotes-table');
@@ -188,26 +218,19 @@ function aQuotesSearchFull() {
   }
   if (table) table.style.display = 'none';
 
-  fetch('/api/v1/market/stocks?query=' + encodeURIComponent(query) + '&limit=100')
+  fetch('/api/v1/market/stocks?query=' + encodeURIComponent(query) + '&limit=500')
     .then(function(r) { return r.json(); })
     .then(function(stocks) {
       if (!stocks || stocks.length === 0) {
+        aIsSearchMode = false;
+        aSearchResults = [];
         if (loading) loading.textContent = '未找到匹配的股票';
         return;
       }
-      var symbols = stocks.map(function(s) { return s.symbol; });
-      return fetch('/api/v1/a-stock/quotes', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(symbols),
-      }).then(function(r) { return r.json(); });
-    })
-    .then(function(quotes) {
-      if (!quotes) return;
-      aQuotesAllData = quotes;
-      aQuotesFilteredData = quotes;
+      aIsSearchMode = true;
+      aSearchResults = stocks;
       aQuotesPage = 1;
-      aFilterAndRenderQuotes();
+      return aLoadSearchQuotes();
     })
     .catch(function() {
       if (loading) loading.textContent = '搜索失败';
