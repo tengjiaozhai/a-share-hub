@@ -11,6 +11,7 @@ var aQuotesFilteredData = [];
 var aQuotesPage = 1;
 var aQuotesPageSize = 30;
 var aQuotesSearchQuery = '';
+var aWatchlistTotal = 0; // 自选列表总数
 
 // ── 初始化 ──
 
@@ -62,9 +63,11 @@ function aLoadQuotes() {
     .then(function(data) {
       if (!data || data.length === 0) {
         aQuotesAllData = [];
+        aWatchlistTotal = 0;
         aFilterAndRenderQuotes();
         return;
       }
+      aWatchlistTotal = data.length; // 保存总数
       // 只加载前 100 只股票的行情
       var symbols = data.slice(0, 100).map(function(item) { return item.symbol; });
       return fetch('/api/v1/a-stock/quotes', {
@@ -106,7 +109,7 @@ function aFilterAndRenderQuotes() {
   }
 
   if (countEl) {
-    countEl.textContent = aQuotesFilteredData.length + ' / ' + aQuotesAllData.length + ' 只';
+    countEl.textContent = aQuotesFilteredData.length + ' / ' + aWatchlistTotal + ' 只';
   }
 
   if (!aQuotesFilteredData || aQuotesFilteredData.length === 0) {
