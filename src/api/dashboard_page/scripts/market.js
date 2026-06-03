@@ -99,7 +99,10 @@ function aFilterAndRenderQuotes() {
       return sym.indexOf(aQuotesSearchQuery) !== -1 || name.indexOf(aQuotesSearchQuery) !== -1;
     });
   } else {
-    aQuotesFilteredData = aQuotesAllData.slice();
+    // 按换手率降序排列，热门股排在前面
+    aQuotesFilteredData = aQuotesAllData.slice().sort(function(a, b) {
+      return (parseFloat(b.turnover) || 0) - (parseFloat(a.turnover) || 0);
+    });
   }
 
   if (countEl) {
