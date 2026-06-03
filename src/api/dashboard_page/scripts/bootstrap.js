@@ -67,6 +67,7 @@ document.addEventListener('keydown', (event) => {
 loadDashboard();
 updateModeStatus();
 usInit();
+marketInit();
 setInterval(() => {
   if (!simRunning) {
     loadDashboard();
