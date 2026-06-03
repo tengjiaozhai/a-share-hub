@@ -19,7 +19,7 @@ function switchView(btn, viewId) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById(viewId).classList.add('active');
   if (viewId === 'view-market') {
-    refreshMarketQuotes();
+    marketInit();
   } else if (viewId === 'view-alpha') {
     loadAlphaAssets();
     loadAlphaTickets();

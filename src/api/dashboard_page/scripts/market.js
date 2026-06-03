@@ -62,7 +62,8 @@ function aLoadQuotes() {
         aFilterAndRenderQuotes();
         return;
       }
-      var symbols = data.map(function(item) { return item.symbol; });
+      // 只加载前 100 只股票的行情
+      var symbols = data.slice(0, 100).map(function(item) { return item.symbol; });
       return fetch('/api/v1/a-stock/quotes', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
