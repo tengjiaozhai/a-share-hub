@@ -1,7 +1,25 @@
+from datetime import datetime
+
 import pandas as pd
 import pytest
 
 from src.strategy.stock_scanner import score_quote, scan_market, confirm_buy_candidates, score_us_quote, scan_us_market, confirm_us_buy_candidates
+from src.strategy.strategy_config import StrategyConfig
+
+_BASE_CONFIG = StrategyConfig(
+    top_n=10,
+    max_position_ratio=0.2,
+    buy_score_threshold=0.55,
+    sell_score_threshold=-0.20,
+    scan_buy_threshold_a=0.55,
+    scan_buy_threshold_us=0.45,
+    min_confirm_bars=61,
+    confirm_lookback_days=180,
+    lot_size=100,
+    fee_bps=3.0,
+    slippage_bps=5.0,
+    max_daily_loss_ratio=0.03,
+)
 
 
 def test_score_quote_returns_buy_for_strong_stock():
@@ -87,9 +105,7 @@ def test_scan_market_handles_empty_quotes():
 
 
 def test_confirm_buy_candidates_filters_holds(monkeypatch):
-    from src.strategy.strategy_config import StrategyConfig
-
-    config = StrategyConfig(top_n=10, max_position_ratio=0.2, buy_score_threshold=0.55, sell_score_threshold=-0.20)
+    config = _BASE_CONFIG
 
     candidates = [
         {"symbol": "300750.SZ", "name": "宁德时代", "score": 0.68, "action": "BUY", "reason": "涨幅6%"},
@@ -108,8 +124,9 @@ def test_confirm_buy_candidates_filters_holds(monkeypatch):
 
     def mock_kline_fn(symbol, start, end):
         return pd.DataFrame({
-            "date": [f"2025-01-{i+1:02d}" for i in range(60)],
-            "close": [100 + i for i in range(60)],
+            "date": [f"2025-01-{i+1:02d}" for i in range(61)],
+            "close": [100 + i for i in range(61)],
+            "volume": [1_000 for _ in range(61)],
         })
 
     result = confirm_buy_candidates(candidates, mock_kline_fn, config)
@@ -126,9 +143,7 @@ def test_confirm_buy_candidates_filters_holds(monkeypatch):
 
 
 def test_confirm_buy_candidates_marks_insufficient_data():
-    from src.strategy.strategy_config import StrategyConfig
-
-    config = StrategyConfig(top_n=10, max_position_ratio=0.2, buy_score_threshold=0.55, sell_score_threshold=-0.20)
+    config = _BASE_CONFIG
 
     candidates = [
         {"symbol": "NEW.SZ", "name": "新股", "score": 0.70, "action": "BUY", "reason": "涨幅8%"},
@@ -235,3 +250,56 @@ def test_scan_us_market_handles_empty_quotes():
     )
     assert result["total_scanned"] == 0
     assert result["buy"] == []
+
+
+def test_score_us_quote_keeps_small_positive_move_as_hold():
+    result = score_us_quote({
+        "symbol": "MSFT",
+        "name": "微软",
+        "change_pct": 0.5,
+        "volume": 30_000_000,
+    })
+
+    assert result["action"] == "HOLD"
+    assert result["score"] < 0.45
+
+
+def test_confirm_buy_candidates_uses_dynamic_window_and_volume():
+    from src.strategy.strategy_config import StrategyConfig
+
+    config = StrategyConfig(
+        top_n=10,
+        max_position_ratio=0.2,
+        buy_score_threshold=0.55,
+        sell_score_threshold=-0.20,
+        scan_buy_threshold_a=0.55,
+        scan_buy_threshold_us=0.45,
+        min_confirm_bars=61,
+        confirm_lookback_days=180,
+        lot_size=100,
+        fee_bps=3.0,
+        slippage_bps=5.0,
+        max_daily_loss_ratio=0.03,
+    )
+    seen = {}
+
+    def mock_kline_fn(symbol, start, end):
+        seen["start"] = datetime.fromisoformat(start)
+        seen["end"] = datetime.fromisoformat(end)
+        return pd.DataFrame({
+            "date": [f"2026-01-{(i % 28) + 1:02d}" for i in range(61)],
+            "close": [100 + i for i in range(61)],
+            "volume": [1_000 for _ in range(60)] + [3_000],
+        })
+
+    result = confirm_buy_candidates(
+        [{"symbol": "300750.SZ", "name": "宁德时代", "score": 0.80, "action": "BUY", "reason": "strong"}],
+        mock_kline_fn,
+        config,
+        top_n=10,
+        as_of=datetime(2026, 6, 4),
+    )
+
+    assert result[0]["confirmed"] is True
+    assert result[0]["features"]["volume_ratio_20"] > 2.0
+    assert (seen["end"] - seen["start"]).days == 180
