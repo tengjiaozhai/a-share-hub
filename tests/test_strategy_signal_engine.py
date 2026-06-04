@@ -1,4 +1,4 @@
-from src.indicators.technical_indicators import compute_feature_row
+from src.indicators.technical_indicators import compute_feature_row, compute_features_from_bars
 from src.strategy.signal_engine import build_signal, compute_technical_score
 from src.strategy.strategy_config import StrategyConfig
 
@@ -7,6 +7,14 @@ _BASE_CONFIG = StrategyConfig(
     max_position_ratio=0.2,
     buy_score_threshold=0.55,
     sell_score_threshold=-0.20,
+    scan_buy_threshold_a=0.55,
+    scan_buy_threshold_us=0.45,
+    min_confirm_bars=61,
+    confirm_lookback_days=180,
+    lot_size=100,
+    fee_bps=3.0,
+    slippage_bps=5.0,
+    max_daily_loss_ratio=0.03,
 )
 
 
@@ -88,3 +96,37 @@ def test_compute_technical_score_weights():
     }
     score = compute_technical_score(features)
     assert abs(score - 0.30) < 1e-9
+
+
+def test_compute_features_from_bars_uses_volume_ratio():
+    bars = [
+        {"date": f"2026-01-{(i % 28) + 1:02d}", "close": 100 + i, "volume": 1_000}
+        for i in range(61)
+    ]
+    bars[-1]["volume"] = 3_000
+
+    features = compute_features_from_bars(bars)
+
+    assert features["volume_ratio_20"] > 2.0
+    assert features["bar_count"] == 61
+
+
+def test_build_signal_returns_factor_contributions():
+    features = {
+        "ma20_gap": 0.50,
+        "ma60_gap": 0.40,
+        "momentum_20": 0.80,
+        "momentum_60": 0.60,
+        "rsi_14": 58,
+        "volatility_20": 0.01,
+        "volume_ratio_20": 1.50,
+        "bar_count": 61,
+    }
+
+    signal = build_signal("600519.SH", features, _BASE_CONFIG)
+
+    assert signal["action"] == "BUY"
+    assert signal["rsi_14"] == 58
+    assert signal["features"]["momentum_20"] == 0.80
+    assert signal["contributions"]["momentum_20"] == 0.24
+    assert signal["thresholds"]["buy"] == _BASE_CONFIG.buy_score_threshold

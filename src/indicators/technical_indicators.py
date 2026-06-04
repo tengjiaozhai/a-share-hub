@@ -95,3 +95,11 @@ def _std(values: List[float]) -> float:
     mean = sum(values) / len(values)
     variance = sum((v - mean) ** 2 for v in values) / len(values)
     return math.sqrt(variance)
+
+
+def compute_features_from_bars(bars: list[dict]) -> Dict[str, float]:
+    close_prices = [float(row["close"]) for row in bars if row.get("close") is not None]
+    volumes = [float(row["volume"]) for row in bars if row.get("volume") is not None]
+    features = compute_feature_row(close_prices, volumes if len(volumes) == len(close_prices) else None)
+    features["bar_count"] = len(close_prices)
+    return features
