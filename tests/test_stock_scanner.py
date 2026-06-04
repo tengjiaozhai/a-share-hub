@@ -1,5 +1,7 @@
 from datetime import datetime
 
+from datetime import datetime, timedelta
+
 import pandas as pd
 import pytest
 
@@ -303,3 +305,53 @@ def test_confirm_buy_candidates_uses_dynamic_window_and_volume():
     assert result[0]["confirmed"] is True
     assert result[0]["features"]["volume_ratio_20"] > 2.0
     assert (seen["end"] - seen["start"]).days == 180
+
+
+def test_confirm_us_buy_candidates_enriches_without_mutating_input(monkeypatch):
+    from src.us_stock.models import USKline
+
+    config = _BASE_CONFIG
+    original = {
+        "symbol": "AAPL",
+        "name": "苹果",
+        "score": 0.68,
+        "action": "BUY",
+        "reason": "涨幅6%",
+    }
+    candidates = [original]
+
+    def mock_build_signal(symbol, features, cfg):
+        return {
+            "symbol": symbol,
+            "action": "BUY",
+            "technical_score": 0.62,
+            "features": features,
+            "contributions": {"momentum": 0.3, "volume": 0.2},
+        }
+
+    monkeypatch.setattr("src.strategy.signal_engine.build_signal", mock_build_signal)
+
+    def mock_kline_fn(symbol, interval, range_str):
+        return [
+            USKline(
+                symbol=symbol,
+                interval=interval,
+                open=100.0 + i,
+                high=101.0 + i,
+                low=99.0 + i,
+                close=100.0 + i,
+                volume=1_000,
+                timestamp=datetime(2025, 1, 1) + timedelta(days=i),
+            )
+            for i in range(61)
+        ]
+
+    result = confirm_us_buy_candidates(candidates, mock_kline_fn, config)
+
+    assert len(result) == 1
+    assert result[0]["confirmed"] is True
+    assert result[0]["final_action"] == "BUY"
+    assert "features" in result[0]
+    assert "contributions" in result[0]
+    assert result[0]["contributions"]["momentum"] == 0.3
+    assert "confirmed" not in original

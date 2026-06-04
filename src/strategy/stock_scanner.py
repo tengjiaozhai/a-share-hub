@@ -243,12 +243,14 @@ def scan_us_market(
 def confirm_us_buy_candidates(
     candidates: list[dict],
     kline_fetcher,
+    config=None,
     top_n: int = 10,
 ) -> list[dict]:
     """对扫描器的美股 BUY 候选用历史 K 线做二次确认。
 
     candidates: 扫描器输出的 BUY 列表
     kline_fetcher: callable(symbol, interval, range_str) -> list[USKline]
+    config: StrategyConfig，默认从 Settings 加载
     top_n: 最终返回数量
 
     返回: 确认后的列表，每项增加 confirmed/final_score/final_action 字段
@@ -258,20 +260,21 @@ def confirm_us_buy_candidates(
     from src.strategy.strategy_config import StrategyConfig
     from src.core.config import Settings
 
-    settings = Settings()
-    config = StrategyConfig.from_settings(settings)
+    if config is None:
+        config = StrategyConfig.from_settings(Settings())
 
     confirmed = []
     for cand in candidates:
         symbol = cand["symbol"]
+        enriched = dict(cand)
         try:
             klines = kline_fetcher(symbol, "1d", "1y")
             if not klines or len(klines) < config.min_confirm_bars:
-                cand["confirmed"] = False
-                cand["final_score"] = 0.0
-                cand["final_action"] = "HOLD"
-                cand["confirm_reason"] = "历史数据不足"
-                confirmed.append(cand)
+                enriched["confirmed"] = False
+                enriched["final_score"] = 0.0
+                enriched["final_action"] = "HOLD"
+                enriched["confirm_reason"] = "历史数据不足"
+                confirmed.append(enriched)
                 continue
             bars = [
                 {"close": k.close, "volume": k.volume, "date": k.timestamp.isoformat()}
@@ -279,19 +282,21 @@ def confirm_us_buy_candidates(
             ]
             features = compute_features_from_bars(bars)
             signal = build_signal(symbol, features, config)
-            cand["confirmed"] = signal["action"] == "BUY"
-            cand["final_score"] = signal["technical_score"]
-            cand["final_action"] = signal["action"]
-            if not cand["confirmed"]:
-                cand["confirm_reason"] = f"趋势评分{signal['technical_score']:.4f}，信号{signal['action']}"
+            enriched["confirmed"] = signal["action"] == "BUY"
+            enriched["final_score"] = signal["technical_score"]
+            enriched["final_action"] = signal["action"]
+            enriched["features"] = signal.get("features", features)
+            enriched["contributions"] = signal.get("contributions", {})
+            if not enriched["confirmed"]:
+                enriched["confirm_reason"] = f"趋势评分{signal['technical_score']:.4f}，信号{signal['action']}"
             else:
-                cand["confirm_reason"] = f"趋势评分{signal['technical_score']:.4f}，确认BUY"
+                enriched["confirm_reason"] = f"趋势评分{signal['technical_score']:.4f}，确认BUY"
         except Exception as e:
-            cand["confirmed"] = False
-            cand["final_score"] = 0.0
-            cand["final_action"] = "HOLD"
-            cand["confirm_reason"] = f"确认失败: {e}"
-        confirmed.append(cand)
+            enriched["confirmed"] = False
+            enriched["final_score"] = 0.0
+            enriched["final_action"] = "HOLD"
+            enriched["confirm_reason"] = f"确认失败: {e}"
+        confirmed.append(enriched)
 
     # 排序：已确认的在前，按扫描器评分降序
     confirmed.sort(key=lambda x: (x["confirmed"], x["score"]), reverse=True)
