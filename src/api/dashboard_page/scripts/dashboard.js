@@ -563,7 +563,7 @@ function renderScanResult(data, isUS) {
     html += `<div class="scan-section-title" style="color:var(--yellow)">⚠️ 候选买入信号 (${unconfirmedBuy.length})</div>`;
     html += '<div style="font-size:11px;color:var(--dim);margin-bottom:6px">扫描器评分高但趋势未确认，仅供参考</div>';
     html += '<table class="scan-table"><thead><tr>';
-    html += '<th>排名</th><th>股票</th><th>候选信号</th><th>评分</th><th>未确认原因</th>';
+    html += '<th>排名</th><th>股票</th><th>扫描器</th><th>确认结果</th><th>评分</th><th>未确认原因</th>';
     html += '</tr></thead><tbody>';
     unconfirmedBuy.forEach((item, idx) => {
       const scoreDisplay = item.final_score !== undefined
@@ -573,7 +573,8 @@ function renderScanResult(data, isUS) {
       html += `<tr>
         <td>${idx + 1}</td>
         <td>${escapeHtml(item.symbol)} ${escapeHtml(item.name || '')}</td>
-        <td><span class="scan-badge hold">BUY → ${escapeHtml(item.final_action || 'HOLD')}</span></td>
+        <td><span class="scan-badge buy">BUY</span></td>
+        <td><span class="scan-badge hold">${escapeHtml(item.final_action || 'HOLD')}</span></td>
         <td style="font-weight:600">${scoreDisplay}</td>
         <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(reason)}">${escapeHtml(reason)}</td>
       </tr>`;
