@@ -80,7 +80,7 @@ class YahooProvider:
         if not uncached:
             return results
 
-        # 使用 yf.download 批量获取（比逐个快 10x+）
+        # 批量获取价格和成交量
         try:
             df = yf.download(uncached, period="1d", group_by="ticker", progress=False, threads=True)
         except Exception as e:
@@ -115,7 +115,7 @@ class YahooProvider:
                             high=round(high, 2),
                             low=round(low, 2),
                             volume=volume,
-                            market_cap=0,
+                            market_cap=0,  # 批量获取时无法获取market_cap
                             prev_close=0,
                             market_open=True,
                             stale=False,

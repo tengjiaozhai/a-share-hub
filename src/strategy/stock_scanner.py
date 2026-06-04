@@ -152,30 +152,28 @@ def confirm_buy_candidates(
 def score_us_quote(quote: dict[str, Any]) -> dict[str, Any]:
     """对单只美股的实时行情计算简化因子评分。
 
-    因子权重: 涨跌幅(50%) + 成交量(30%) + 市值(20%)
+    因子权重: 涨跌幅(50%) + 成交量(50%)
     美股没有振幅、换手率、量比等字段，使用可用字段进行评分。
+    注意：批量获取时无法获取market_cap，因此不使用market_cap因子。
     """
     change_pct = _safe_float(quote.get("change_pct"))
     volume = _safe_float(quote.get("volume"))
-    market_cap = _safe_float(quote.get("market_cap"))
     name = str(quote.get("name", ""))
 
     # 归一化到 [0, 1]
-    f_change = max(0.0, min(1.0, (change_pct + 5) / 15))
-    # 成交量归一化（以1亿为基准）
-    f_volume = max(0.0, min(1.0, volume / 100_000_000))
-    # 市值归一化（以1000亿为基准）
-    f_market_cap = max(0.0, min(1.0, market_cap / 100_000_000_000))
+    # 涨跌幅：涨5%即满分，跌5%即0分
+    f_change = max(0.0, min(1.0, (change_pct + 5) / 10))
+    # 成交量归一化（以5000万为基准）
+    f_volume = max(0.0, min(1.0, volume / 50_000_000))
 
     score = (
         0.50 * f_change
-        + 0.30 * f_volume
-        + 0.20 * f_market_cap
+        + 0.50 * f_volume
     )
 
-    if score >= 0.55 and change_pct > 0:
+    if score >= 0.45 and change_pct > 0:
         action = "BUY"
-    elif score <= 0.20 or change_pct < -3:
+    elif score <= 0.25 or change_pct < -3:
         action = "SELL"
     else:
         action = "HOLD"
@@ -187,8 +185,6 @@ def score_us_quote(quote: dict[str, Any]) -> dict[str, Any]:
         reasons.append(f"跌幅{change_pct:.1f}%，注意风险")
     if volume > 50_000_000:
         reasons.append(f"成交量{volume/10000:.0f}万，交投活跃")
-    if market_cap > 500_000_000_000:
-        reasons.append(f"市值{market_cap/100000000:.0f}亿，大盘股")
     if not reasons:
         reasons.append("指标平稳")
 
@@ -201,7 +197,6 @@ def score_us_quote(quote: dict[str, Any]) -> dict[str, Any]:
         "factors": {
             "change_pct": round(change_pct, 2),
             "volume": round(volume, 0),
-            "market_cap": round(market_cap, 0),
         },
     }
 

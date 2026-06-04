@@ -15,6 +15,12 @@ var aWatchlistTotal = 0;
 var aIsSearchMode = false;
 var aSearchResults = [];
 
+// ── 刷新行情（供 dashboard.js 调用） ──
+
+function refreshMarketQuotes() {
+  return aLoadQuotes();
+}
+
 // ── 初始化 ──
 
 function marketInit() {
