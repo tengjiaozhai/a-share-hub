@@ -10,8 +10,8 @@ from src.storage.runtime_store import RuntimeStore
 
 
 @pytest.fixture
-def pg_engine():
-    database_url = os.environ["TEST_DATABASE_URL"]
+def pg_engine(tmp_path):
+    database_url = os.environ.get("TEST_DATABASE_URL", f"sqlite:///{tmp_path}/runtime_store.db")
     engine = create_engine(database_url, future=True)
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)

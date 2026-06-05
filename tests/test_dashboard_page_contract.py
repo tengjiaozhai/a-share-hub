@@ -46,9 +46,21 @@ def test_render_dashboard_html_contains_alpha_contract():
 def test_render_dashboard_html_contains_market_contract():
     html = render_dashboard_html()
     assert "view-market" in html
-    assert "tb-market-full" in html
-    assert "实时行情" in html
-    assert "refreshMarketQuotes" in html
+    assert "A 股工作台" in html
+    assert "aLoadQuotes" in html
+
+
+def test_render_dashboard_html_contains_strategy_workbench_contract():
+    html = render_dashboard_html()
+
+    for marker in [
+        'id="scan-btn"',
+        'id="run-btn"',
+        'id="bt-btn"',
+        'id="last-run"',
+        'id="risk-pnl"',
+    ]:
+        assert marker in html
 
 
 def test_dashboard_route_uses_rendered_split_html():
@@ -121,8 +133,8 @@ def test_dashboard_preferences_and_workbench_stay_server_backed():
 def test_render_dashboard_html_contains_market_and_alpha_controls():
     html = render_dashboard_html()
     required_markers = [
-        'id="tb-market-full"',
-        'id="market-select"',
+        'id="a-quotes-table"',
+        'id="a-search-input"',
         'id="scan-btn"',
         'id="alpha-assets"',
         'id="alpha-ticket-form"',
@@ -132,7 +144,7 @@ def test_render_dashboard_html_contains_market_and_alpha_controls():
         "const ALPHA_TICKETS_API = '/api/v1/alpha/tickets';",
         'runAlphaScan',
         'proposeTopAlphaTicket',
-        'refreshMarketQuotes',
+        'aLoadQuotes',
     ]
     for marker in required_markers:
         assert marker in html
