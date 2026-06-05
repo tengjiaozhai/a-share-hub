@@ -438,3 +438,30 @@
   - 说明 symbol 不在 AkShare 股票池内
 - `503 quote upstream unavailable: ...`
   - 说明股票池存在该 symbol，但实时行情上游暂时不可用或熔断已打开
+
+## 近实盘策略成熟度验收
+
+1. 市场扫描必须经过两轮：
+   - 实时行情因子预筛。
+   - 最近动态 K 线窗口确认。
+2. BUY 候选必须带有：
+   - `features`
+   - `contributions`
+   - `thresholds`
+   - `confirm_reason`
+3. 模拟执行必须经过：
+   - target planner
+   - pre-trade risk gate
+   - paper execution service
+   - account snapshot
+4. 回测必须包含：
+   - 整手规则
+   - 费用
+   - 滑点
+   - 重复 BUY 控制
+   - 配对胜率
+5. 实盘前必须连续通过：
+   - 1m shadow evaluation
+   - 3m shadow evaluation
+   - 对账健康
+   - kill switch 可用
