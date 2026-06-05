@@ -134,11 +134,13 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
     decision_only = execution_mode == "decision"
 
     ratio_per_symbol = max_position_ratio / len(watchlist)
-    target_value_per_symbol = int(capital_base * ratio_per_symbol)
     run_context_id = f"wrk-{_now_cst().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
 
     from src.agents.schemas import DecisionOutput
     from src.decision.decision_runner import parse_decision_output
+    from src.execution.paper_execution_service import PaperExecutionService
+    from src.portfolio.target_planner import build_target_positions
+    from src.risk.pre_trade_risk import evaluate_risk_gate
 
     settings = Settings()
     llm = _get_llm()
@@ -148,9 +150,19 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
     decision_items: list[dict] = []
     target_items: list[dict] = []
     order_items: list[dict] = []
-    created_orders: list[dict] = []
 
-    # 清理过期的目标仓位
+    current_snapshot = store.get_latest_account_snapshot()
+    account_state = current_snapshot or {"cash": float(capital_base), "positions": {}}
+    current_positions = account_state.get("positions", {})
+    price_by_symbol: dict[str, float] = {}
+
+    for symbol in watchlist:
+        try:
+            real_snap = provider.get_realtime_quote(symbol)
+            price_by_symbol[symbol] = real_snap.close if real_snap else 100.0
+        except Exception:
+            price_by_symbol[symbol] = 100.0
+
     store.deactivate_expired_targets()
 
     for index, symbol in enumerate(watchlist):
@@ -196,6 +208,7 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
         )
         decision_items.append(
             {
+                "decision_run_id": decision_run_id,
                 "symbol": symbol,
                 "action": parsed_action,
                 "confidence": confidence,
@@ -203,96 +216,71 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
             }
         )
 
-        if parsed_action == "HOLD":
-            continue
+    targets = build_target_positions(
+        decisions=decision_items,
+        prices=price_by_symbol,
+        capital_base=capital_base,
+        max_position_ratio=max_position_ratio,
+        lot_size=settings.strategy_lot_size,
+        current_positions=current_positions,
+        expires_at=_today_close_cst().isoformat(),
+    )
 
-        target_value = target_value_per_symbol if parsed_action == "BUY" else 0
-        target_position_ratio = ratio_per_symbol if parsed_action == "BUY" else 0.0
-        target_quantity = target_value_per_symbol // 1000 if parsed_action == "BUY" else 0
+    executable_targets = []
+    for target in targets:
+        decision_run_id = next(
+            row["decision_run_id"] for row in decision_items
+            if row["symbol"] == target["symbol"]
+        )
         target_position_id = store.insert_target_position(
             decision_run_id=decision_run_id,
-            symbol=symbol,
-            action=parsed_action,
-            target_value=target_value,
-            target_position_ratio=target_position_ratio,
-            expires_at=_today_close_cst().isoformat(),
+            symbol=target["symbol"],
+            action=target["action"],
+            target_value=target["target_value"],
+            target_position_ratio=target["target_position_ratio"],
+            expires_at=target["expires_at"],
         )
+        target["target_position_id"] = target_position_id
+        target["price"] = price_by_symbol[target["symbol"]]
         target_items.append(
             {
-                "symbol": symbol,
-                "target_quantity": target_quantity if parsed_action == "BUY" else "0 (清仓)",
-                "target_position_ratio": target_position_ratio,
-                "action": parsed_action,
+                "symbol": target["symbol"],
+                "target_quantity": target["quantity"] if target["action"] == "BUY" else "0 (清仓)",
+                "target_position_ratio": target["target_position_ratio"],
+                "action": target["action"],
             }
         )
+        current_position = current_positions.get(target["symbol"], {})
+        current_position_value = int(current_position.get("quantity", 0)) * float(
+            price_by_symbol.get(target["symbol"], target["price"])
+        )
+        risk = evaluate_risk_gate(
+            symbol=target["symbol"],
+            action=target["action"],
+            kill_switch=store.get_kill_switch(),
+            available_cash=float(account_state["cash"]),
+            requested_value=float(target["notional"]),
+            current_position_value=current_position_value,
+            nav=float(account_state.get("nav", capital_base)),
+            max_position_ratio=max_position_ratio,
+            quantity=int(target["quantity"]),
+            lot_size=settings.strategy_lot_size,
+        )
+        if risk["approved"]:
+            executable_targets.append(target)
 
-        if not decision_only:
-            # 用真实行情价格和目标仓位计算实际数量
-            try:
-                real_snap = provider.get_realtime_quote(symbol)
-                real_price = real_snap.close if real_snap else 100.0
-            except Exception:
-                real_price = 100.0
-            target_value = capital_base * settings.strategy_max_position_ratio
-            quantity = max(100, int(target_value / real_price / 100) * 100) if real_price > 0 else 100
-            if parsed_action == "SELL":
-                quantity = max(100, quantity)
-            execution_order_id = store.insert_execution_order(
-                target_position_id=target_position_id,
-                symbol=symbol,
-                action=parsed_action,
-                quantity=quantity,
-                limit_price=real_price,
-            )
-            store.insert_broker_order_event(
-                execution_order_id=execution_order_id,
-                event_id=f"evt-submitted-{uuid.uuid4().hex[:10]}",
-                event_type="SUBMITTED",
-                payload={"source": "dashboard", "run_context_id": run_context_id},
-            )
-            created_orders.append(
-                {
-                    "execution_order_id": execution_order_id,
-                    "symbol": symbol,
-                    "action": parsed_action,
-                    "quantity": quantity,
-                    "limit_price": real_price,
-                    "status": "READY",
-                }
-            )
-
-    if not decision_only and created_orders:
-        for order in created_orders:
-            store.update_execution_order_status(order["execution_order_id"], status="FILLED")
-            # 用真实价格计算盈亏
-            try:
-                real_snap = provider.get_realtime_quote(order["symbol"])
-                current_price = real_snap.close if real_snap else order["limit_price"]
-            except Exception:
-                current_price = order["limit_price"]
-            pnl_delta = _compute_order_pnl(
-                action=order["action"],
-                quantity=order["quantity"],
-                fill_price=order["limit_price"],
-                current_price=current_price,
-            )
-            store.insert_broker_order_event(
-                execution_order_id=order["execution_order_id"],
-                event_id=f"evt-filled-{uuid.uuid4().hex[:10]}",
-                event_type="FILLED",
-                payload={"source": "dashboard", "run_context_id": run_context_id, "pnl_delta": pnl_delta},
-            )
-            order["status"] = "FILLED"
-            order["pnl_delta"] = pnl_delta
-            order_items.append(
-                {
-                    "symbol": order["symbol"],
-                    "action": order["action"],
-                    "quantity": order["quantity"],
-                    "status": order["status"],
-                    "pnl_delta": pnl_delta,
-                }
-            )
+    if not decision_only and executable_targets:
+        execution_result = PaperExecutionService(
+            store=store,
+            fee_bps=settings.strategy_fee_bps,
+            slippage_bps=settings.strategy_slippage_bps,
+        ).execute_targets(
+            targets=executable_targets,
+            initial_state=account_state,
+            mark_prices=price_by_symbol,
+            trade_date=_now_cst().date().isoformat(),
+        )
+        order_items.extend(execution_result["orders"])
 
     daily_pnl = store.sum_daily_pnl()
     latest_run = _build_run_timeline(
@@ -627,6 +615,7 @@ def _build_run_timeline(
         "finished_at": now,
         "status": "completed",
         "steps": steps,
+        "order_items": order_items,
     }
 
 
@@ -642,7 +631,7 @@ def run_backtest(config: dict) -> dict:
 
     from src.backtest.engine import run_daily_backtest
     from src.backtest.metrics import calculate_metrics
-    from src.indicators.technical_indicators import compute_feature_row
+    from src.indicators.technical_indicators import compute_features_from_bars
     from src.strategy.signal_engine import build_signal
     from src.strategy.strategy_config import StrategyConfig
 
@@ -663,12 +652,11 @@ def run_backtest(config: dict) -> dict:
             continue
 
         bars = bars_df.to_dict("records")
-        close_prices = [b["close"] for b in bars]
 
         signals = []
         for i in range(60, len(bars)):
-            window = close_prices[max(0, i - 60):i + 1]
-            features = compute_feature_row(window)
+            window_bars = bars[max(0, i - 60):i + 1]
+            features = compute_features_from_bars(window_bars)
             signal = build_signal(symbol, features, strategy_config)
             if signal["action"] != "HOLD":
                 signals.append({
@@ -682,11 +670,14 @@ def run_backtest(config: dict) -> dict:
             bars=bars,
             initial_cash=float(capital_base),
             signals=signals,
+            lot_size=settings.strategy_lot_size,
+            fee_bps=settings.strategy_fee_bps,
+            slippage_bps=settings.strategy_slippage_bps,
         )
         metrics = calculate_metrics(bt_result["equity_curve"], bt_result["trades"])
 
         # 多因子分析：取最后一根 K 线的特征
-        latest_features = compute_feature_row(close_prices)
+        latest_features = compute_features_from_bars(bars)
         latest_signal = build_signal(symbol, latest_features, strategy_config)
 
         factor_details = {

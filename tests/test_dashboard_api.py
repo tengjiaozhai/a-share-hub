@@ -268,3 +268,35 @@ def test_workbench_payload_includes_alpha_portfolio_and_exceptions(test_app, pg_
     payload = response.json()
     assert payload["alpha"]["portfolio"]["snapshot"]["nav"] == 8_798.8
     assert payload["alpha"]["exceptions"]["latest_status"] == "MISMATCH"
+
+
+def test_run_endpoint_uses_watchlist_allocation_for_order_quantity(test_app, monkeypatch):
+    from src.api import routes_dashboard
+
+    class FakeSnap:
+        close = 100.0
+
+    def fake_quote(self, symbol):
+        return FakeSnap()
+
+    monkeypatch.setattr(routes_dashboard.AkshareProvider, "get_realtime_quote", fake_quote)
+    monkeypatch.setattr(routes_dashboard, "_get_llm", lambda: FakeLLM())
+
+    client = TestClient(test_app)
+    response = client.post(
+        "/api/v1/dashboard/run",
+        json={
+            "watchlist": ["600519.SH", "000001.SZ"],
+            "capital_base": 1_000_000,
+            "max_position_ratio": 0.2,
+            "execution_mode": "full",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    buy_orders = [
+        item for item in payload["latest_run"]["order_items"]
+        if item["action"] == "BUY"
+    ]
+    assert buy_orders[0]["quantity"] == 1000
