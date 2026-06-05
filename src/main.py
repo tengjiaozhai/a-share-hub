@@ -60,8 +60,11 @@ def run_decide_command(symbols: list[str], mock_llm: bool, store=None) -> dict:
             target = build_target_position(
                 symbol=symbol,
                 action=record["parsed_action"],
-                target_position_ratio=record["target_position_ratio"],
-                net_asset_value=1_000_000.0,
+                capital_base=1_000_000.0,
+                max_position_ratio=0.2,
+                watchlist_size=len(symbols),
+                price=100.0,
+                lot_size=100,
                 expires_at=(datetime.utcnow() + timedelta(hours=1)).isoformat(),
             )
             target_position_id = runtime_store.insert_target_position(
