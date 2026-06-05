@@ -458,6 +458,23 @@ class RuntimeStore:
             "created_at": row.created_at.isoformat(),
         }
 
+    def list_account_snapshots(self, since: datetime | None = None) -> list[dict]:
+        with self.engine.begin() as conn:
+            stmt = select(AccountSnapshotRow).order_by(AccountSnapshotRow.created_at)
+            if since is not None:
+                stmt = stmt.where(AccountSnapshotRow.created_at >= since)
+            rows = conn.execute(stmt).fetchall()
+        return [
+            {
+                "snapshot_id": row.snapshot_id,
+                "cash": row.cash,
+                "nav": row.nav,
+                "positions": json.loads(row.positions_json),
+                "created_at": _cst_iso(row.created_at),
+            }
+            for row in rows
+        ]
+
     def get_preference(self, key: str) -> dict | None:
         with self.engine.begin() as conn:
             row = conn.execute(
