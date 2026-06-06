@@ -638,7 +638,8 @@ def run_backtest(config: dict) -> dict:
     start_str = config.get("start_date", "2025-01-01")
     end_str = config.get("end_date", "2025-03-31")
     capital_base = int(config.get("capital_base", 1_000_000))
-    market = config.get("market", "a")  # "a" 或 "us"
+    # 自动检测 market：从符号后缀推断，忽略前端可能不准确的 market 参数
+    market = "us" if any(s.upper().endswith(".US") for s in watchlist) else config.get("market", "a")
 
     from src.backtest.engine import run_daily_backtest
     from src.backtest.metrics import calculate_metrics
