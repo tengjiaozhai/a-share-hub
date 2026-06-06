@@ -297,8 +297,13 @@ function usAddToWatchlist(symbol, name) {
       }
       usFilterAndRenderQuotes();
       usLoadWatchlistChips();
-    } else {
+    } else if (r.status !== 409) {
+      // 409 表示已存在，其他错误才提示
       r.json().then(function(d) { alert(d.detail || '添加失败'); });
+    }
+    // 无论是否已在美股自选中，都同步到工作台观察列表
+    if (typeof addToWorkspaceWatchlist === 'function') {
+      addToWorkspaceWatchlist(symbol, name || symbol);
     }
   });
 }

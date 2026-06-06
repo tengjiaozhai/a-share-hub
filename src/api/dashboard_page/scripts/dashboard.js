@@ -791,3 +791,21 @@ function setButtonLoading(btn, loading, originalText) {
     btn.textContent = btn.dataset.originalText || originalText;
   }
 }
+
+// ── 观察列表同步 ──
+
+function addToWorkspaceWatchlist(symbol, name) {
+  var watchlistEl = document.getElementById('cfg-watchlist');
+  if (!watchlistEl) return false;
+
+  var current = watchlistEl.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+  if (current.indexOf(symbol) !== -1) {
+    showToast(symbol + ' 已在观察列表中', 'info');
+    return false;
+  }
+
+  current.push(symbol);
+  watchlistEl.value = current.join(',');
+  showToast(symbol + ' 已添加到观察列表', 'success');
+  return true;
+}

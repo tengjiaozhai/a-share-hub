@@ -14,6 +14,22 @@
   endEl.value = fmt(end);
 })();
 
+// 工作台手动添加股票回车处理
+(function initAddStockInput() {
+  var input = document.getElementById('cfg-add-stock');
+  if (!input) return;
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      var symbol = input.value.trim().toUpperCase();
+      if (!symbol) return;
+      if (addToWorkspaceWatchlist(symbol, symbol)) {
+        input.value = '';
+      }
+    }
+  });
+})();
+
 document.addEventListener('keydown', (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key === 's') {
     event.preventDefault();
