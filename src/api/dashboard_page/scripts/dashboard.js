@@ -633,6 +633,7 @@ async function triggerBacktest() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         watchlist,
+        market: document.getElementById('cfg-market').value,
         start_date: document.getElementById('cfg-bt-start').value,
         end_date: document.getElementById('cfg-bt-end').value,
         capital_base: Number(document.getElementById('cfg-capital').value),

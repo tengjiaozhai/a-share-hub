@@ -628,6 +628,7 @@ def run_backtest(config: dict) -> dict:
     start_str = config.get("start_date", "2025-01-01")
     end_str = config.get("end_date", "2025-03-31")
     capital_base = int(config.get("capital_base", 1_000_000))
+    market = config.get("market", "a")  # "a" 或 "us"
 
     from src.backtest.engine import run_daily_backtest
     from src.backtest.metrics import calculate_metrics
@@ -637,7 +638,6 @@ def run_backtest(config: dict) -> dict:
 
     settings = Settings()
     strategy_config = StrategyConfig.from_settings(settings)
-    provider = AkshareProvider()
 
     start_date = datetime.strptime(start_str, "%Y-%m-%d")
     end_date = datetime.strptime(end_str, "%Y-%m-%d")
@@ -645,74 +645,124 @@ def run_backtest(config: dict) -> dict:
     # 提前 90 天取数据，确保有足够的历史窗口计算特征
     data_start = start_date - timedelta(days=120)
 
+    # 根据市场类型选择数据源
+    if market == "us":
+        from src.us_stock.yahoo_provider import YahooProvider
+        yahoo_provider = YahooProvider()
+        use_yahoo = True
+    else:
+        provider = AkshareProvider()
+        use_yahoo = False
+
     results = []
     for symbol in watchlist:
-        bars_df = provider.get_history(symbol, data_start, end_date)
-        if bars_df.empty:
+        try:
+            if use_yahoo:
+                # 美股：使用 YahooProvider 获取 K 线
+                from datetime import timedelta as td
+                period_days = (end_date - data_start).days
+                if period_days <= 30:
+                    period = "1mo"
+                elif period_days <= 90:
+                    period = "3mo"
+                elif period_days <= 180:
+                    period = "6mo"
+                else:
+                    period = "1y"
+                klines = yahoo_provider.get_kline(symbol, interval="1d", range_str=period)
+                if not klines:
+                    continue
+                # 转换为 backtest 格式
+                bars = [
+                    {
+                        "date": k.timestamp.strftime("%Y-%m-%d") if hasattr(k.timestamp, "strftime") else str(k.timestamp)[:10],
+                        "open": k.open,
+                        "high": k.high,
+                        "low": k.low,
+                        "close": k.close,
+                        "volume": k.volume,
+                    }
+                    for k in klines
+                    if hasattr(k.timestamp, "strftime")
+                ]
+                # 过滤日期范围
+                bars = [
+                    b for b in bars
+                    if data_start.strftime("%Y-%m-%d") <= b["date"] <= end_date.strftime("%Y-%m-%d")
+                ]
+            else:
+                # A股：使用 AkshareProvider
+                bars_df = provider.get_history(symbol, data_start, end_date)
+                if bars_df.empty:
+                    continue
+                bars = bars_df.to_dict("records")
+
+            if not bars:
+                continue
+
+            signals = []
+            for i in range(60, len(bars)):
+                window_bars = bars[max(0, i - 60):i + 1]
+                features = compute_features_from_bars(window_bars)
+                signal = build_signal(symbol, features, strategy_config)
+                if signal["action"] != "HOLD":
+                    signals.append({
+                        "date": bars[i]["date"],
+                        "action": signal["action"],
+                        "target_position_ratio": settings.strategy_max_position_ratio if signal["action"] == "BUY" else 0.0,
+                    })
+
+            bt_result = run_daily_backtest(
+                symbol=symbol,
+                bars=bars,
+                initial_cash=float(capital_base),
+                signals=signals,
+                lot_size=settings.strategy_lot_size,
+                fee_bps=settings.strategy_fee_bps,
+                slippage_bps=settings.strategy_slippage_bps,
+            )
+            metrics = calculate_metrics(bt_result["equity_curve"], bt_result["trades"])
+
+            # 多因子分析：取最后一根 K 线的特征
+            latest_features = compute_features_from_bars(bars)
+            latest_signal = build_signal(symbol, latest_features, strategy_config)
+
+            factor_details = {
+                "features": latest_features,
+                "technical_score": latest_signal["technical_score"],
+                "action": latest_signal["action"],
+                "weights": {
+                    "momentum_20": 0.30,
+                    "momentum_60": 0.25,
+                    "ma20_gap": 0.20,
+                    "ma60_gap": 0.15,
+                    "volume_ratio_20": 0.10,
+                    "volatility_20": -0.10,
+                },
+                "contributions": {
+                    "momentum_20": round(0.30 * latest_features.get("momentum_20", 0), 6),
+                    "momentum_60": round(0.25 * latest_features.get("momentum_60", 0), 6),
+                    "ma20_gap": round(0.20 * latest_features.get("ma20_gap", 0), 6),
+                    "ma60_gap": round(0.15 * latest_features.get("ma60_gap", 0), 6),
+                    "volume_ratio_20": round(0.10 * latest_features.get("volume_ratio_20", 0), 6),
+                    "volatility_20": round(-0.10 * latest_features.get("volatility_20", 0), 6),
+                },
+                "thresholds": {
+                    "buy": strategy_config.buy_score_threshold,
+                    "sell": strategy_config.sell_score_threshold,
+                },
+            }
+
+            results.append({
+                "symbol": symbol,
+                "metrics": metrics,
+                "trade_count": len(bt_result["trades"]),
+                "final_nav": bt_result["final_nav"],
+                "factor_analysis": factor_details,
+            })
+        except Exception as e:
+            logger.warning(f"backtest({symbol}) failed: {e}")
             continue
-
-        bars = bars_df.to_dict("records")
-
-        signals = []
-        for i in range(60, len(bars)):
-            window_bars = bars[max(0, i - 60):i + 1]
-            features = compute_features_from_bars(window_bars)
-            signal = build_signal(symbol, features, strategy_config)
-            if signal["action"] != "HOLD":
-                signals.append({
-                    "date": bars[i]["date"],
-                    "action": signal["action"],
-                    "target_position_ratio": settings.strategy_max_position_ratio if signal["action"] == "BUY" else 0.0,
-                })
-
-        bt_result = run_daily_backtest(
-            symbol=symbol,
-            bars=bars,
-            initial_cash=float(capital_base),
-            signals=signals,
-            lot_size=settings.strategy_lot_size,
-            fee_bps=settings.strategy_fee_bps,
-            slippage_bps=settings.strategy_slippage_bps,
-        )
-        metrics = calculate_metrics(bt_result["equity_curve"], bt_result["trades"])
-
-        # 多因子分析：取最后一根 K 线的特征
-        latest_features = compute_features_from_bars(bars)
-        latest_signal = build_signal(symbol, latest_features, strategy_config)
-
-        factor_details = {
-            "features": latest_features,
-            "technical_score": latest_signal["technical_score"],
-            "action": latest_signal["action"],
-            "weights": {
-                "momentum_20": 0.30,
-                "momentum_60": 0.25,
-                "ma20_gap": 0.20,
-                "ma60_gap": 0.15,
-                "volume_ratio_20": 0.10,
-                "volatility_20": -0.10,
-            },
-            "contributions": {
-                "momentum_20": round(0.30 * latest_features.get("momentum_20", 0), 6),
-                "momentum_60": round(0.25 * latest_features.get("momentum_60", 0), 6),
-                "ma20_gap": round(0.20 * latest_features.get("ma20_gap", 0), 6),
-                "ma60_gap": round(0.15 * latest_features.get("ma60_gap", 0), 6),
-                "volume_ratio_20": round(0.10 * latest_features.get("volume_ratio_20", 0), 6),
-                "volatility_20": round(-0.10 * latest_features.get("volatility_20", 0), 6),
-            },
-            "thresholds": {
-                "buy": strategy_config.buy_score_threshold,
-                "sell": strategy_config.sell_score_threshold,
-            },
-        }
-
-        results.append({
-            "symbol": symbol,
-            "metrics": metrics,
-            "trade_count": len(bt_result["trades"]),
-            "final_nav": bt_result["final_nav"],
-            "factor_analysis": factor_details,
-        })
 
     if not results:
         return {"status": "no_data", "results": [], "summary": {}}
