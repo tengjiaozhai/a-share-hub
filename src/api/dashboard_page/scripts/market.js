@@ -167,6 +167,13 @@ function aRenderQuotesTable() {
       var prevClose = parseFloat(q.prev_close) || 0;
       var chg = prevClose ? (close - prevClose).toFixed(2) : '-';
       var vol = q.volume ? (parseInt(q.volume) / 10000).toFixed(0) + '万' : '-';
+      // 搜索模式下显示"添加"按钮，自选模式下显示"删除"按钮
+      var inWatchlist = aWatchlistData.some(function(item) { return item.symbol === q.symbol; });
+      var actionBtn = aIsSearchMode
+        ? (inWatchlist
+          ? '<span style="color:var(--dim);font-size:11px">已添加</span>'
+          : '<button onclick="aAddToWatchlist(\'' + q.symbol + '\',\'' + (q.name || '').replace(/'/g, "\\'") + '\')" style="color:var(--green);background:none;border:none;cursor:pointer;font-size:11px">+ 添加</button>')
+        : '<button onclick="aRemoveWatchlist(\'' + q.symbol + '\')" style="color:var(--red);background:none;border:none;cursor:pointer;font-size:11px">删除</button>';
       return '<tr>' +
         '<td><a href="#" onclick="aSelectSymbol(\'' + q.symbol + '\');return false" style="font-weight:600">' + (q.symbol || '') + '</a></td>' +
         '<td>' + (q.name || '-') + '</td>' +
@@ -178,7 +185,7 @@ function aRenderQuotesTable() {
         '<td>' + (parseFloat(q.low) || 0).toFixed(2) + '</td>' +
         '<td>' + vol + '</td>' +
         '<td>' + (parseFloat(q.turnover) || 0).toFixed(2) + '%</td>' +
-        '<td><button onclick="aRemoveWatchlist(\'' + q.symbol + '\')" style="color:var(--red);background:none;border:none;cursor:pointer;font-size:11px">删除</button></td>' +
+        '<td>' + actionBtn + '</td>' +
         '</tr>';
     }).join('');
   }
@@ -309,7 +316,12 @@ function aAddToWatchlist(symbol, name) {
     body: JSON.stringify({symbol: symbol, name: name}),
   }).then(function(r) {
     if (r.ok) {
-      aLoadQuotes();
+      // 更新本地自选列表
+      if (!aWatchlistData.some(function(item) { return item.symbol === symbol; })) {
+        aWatchlistData.push({symbol: symbol, name: name});
+      }
+      aWatchlistTotal = aWatchlistData.length;
+      aRenderQuotesTable();
       aLoadWatchlistChips();
     } else {
       r.json().then(function(d) { alert(d.detail || '添加失败'); });

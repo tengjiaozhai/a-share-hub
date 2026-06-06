@@ -13,6 +13,10 @@ var usQuotesPage = 1;
 var usQuotesPageSize = 30;
 var usQuotesSearchQuery = '';
 
+// ── 全库搜索状态 ──
+var usIsSearchMode = false;
+var usSearchResults = [];
+
 // ── 初始化 ──
 
 function usInit() {
@@ -33,13 +37,20 @@ function usInit() {
     });
   }
 
-  // 行情搜索框
+  // 行情搜索框 - 支持回车全库搜索
   var quotesSearch = document.getElementById('us-quotes-search');
   if (quotesSearch) {
+    quotesSearch.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') usQuotesSearchFull();
+    });
     quotesSearch.addEventListener('input', function() {
-      usQuotesSearchQuery = this.value.trim().toLowerCase();
-      usQuotesPage = 1;
-      usFilterAndRenderQuotes();
+      if (!this.value.trim()) {
+        // 清空搜索，恢复正常模式
+        usIsSearchMode = false;
+        usSearchResults = [];
+        usQuotesPage = 1;
+        usFilterAndRenderQuotes();
+      }
     });
   }
 }
@@ -80,8 +91,11 @@ function usFilterAndRenderQuotes() {
   var countEl = document.getElementById('us-quotes-count');
   var paginationEl = document.getElementById('us-quotes-pagination');
 
-  // 搜索过滤
-  if (usQuotesSearchQuery) {
+  // 搜索模式下使用搜索结果
+  if (usIsSearchMode) {
+    usQuotesFilteredData = usSearchResults;
+  } else if (usQuotesSearchQuery) {
+    // 过滤模式下过滤自选列表
     usQuotesFilteredData = usQuotesAllData.filter(function(q) {
       var sym = (q.symbol || '').toLowerCase();
       var name = (q.name || '').toLowerCase();
@@ -93,11 +107,12 @@ function usFilterAndRenderQuotes() {
 
   // 更新计数
   if (countEl) {
-    countEl.textContent = usQuotesFilteredData.length + ' / ' + usQuotesAllData.length + ' 只';
+    var total = usIsSearchMode ? usSearchResults.length : usQuotesAllData.length;
+    countEl.textContent = usQuotesFilteredData.length + ' / ' + total + ' 只';
   }
 
   if (!usQuotesFilteredData || usQuotesFilteredData.length === 0) {
-    if (loading) loading.textContent = usQuotesSearchQuery ? '无匹配结果' : '暂无自选股票，请在左侧添加';
+    if (loading) loading.textContent = usIsSearchMode ? '无匹配结果' : (usQuotesSearchQuery ? '无匹配结果' : '暂无自选股票，请在左侧添加');
     if (loading) loading.style.display = '';
     if (table) table.style.display = 'none';
     if (paginationEl) paginationEl.innerHTML = '';
@@ -123,6 +138,13 @@ function usFilterAndRenderQuotes() {
       var mcap = q.market_cap ? (q.market_cap / 1e9).toFixed(1) + 'B' : '-';
       var vol = q.volume ? (q.volume / 1e6).toFixed(1) + 'M' : '-';
       var chg = q.change ? (q.change > 0 ? '+' : '') + q.change.toFixed(2) : '-';
+      // 搜索模式下显示"添加"按钮，自选模式下显示"删除"按钮
+      var inWatchlist = usQuotesAllData.some(function(item) { return item.symbol === q.symbol; });
+      var actionBtn = usIsSearchMode
+        ? (inWatchlist
+          ? '<span style="color:var(--dim);font-size:11px">已添加</span>'
+          : '<button onclick="usAddToWatchlist(\'' + q.symbol + '\',\'' + (q.name || '').replace(/'/g, "\\'") + '\')" style="color:var(--green);background:none;border:none;cursor:pointer;font-size:11px">+ 添加</button>')
+        : '<button onclick="usRemoveWatchlist(\'' + q.symbol + '\')" style="color:var(--red);background:none;border:none;cursor:pointer;font-size:11px">删除</button>';
       return '<tr>' +
         '<td><a href="#" onclick="usSelectSymbol(\'' + q.symbol + '\');return false" style="font-weight:600">' + q.symbol + '</a></td>' +
         '<td>' + (q.name || '-') + '</td>' +
@@ -134,7 +156,7 @@ function usFilterAndRenderQuotes() {
         '<td>' + (q.low ? q.low.toFixed(2) : '-') + '</td>' +
         '<td>' + vol + '</td>' +
         '<td>' + mcap + '</td>' +
-        '<td><button onclick="usRemoveWatchlist(\'' + q.symbol + '\')" style="color:var(--red);background:none;border:none;cursor:pointer;font-size:11px">删除</button></td>' +
+        '<td>' + actionBtn + '</td>' +
         '</tr>';
     }).join('');
   }
@@ -161,6 +183,46 @@ function usGoToPage(page) {
   // 滚动到顶部
   var pane = document.getElementById('us-quotes-pane');
   if (pane) pane.scrollTop = 0;
+}
+
+// ── 中栏搜索全库 ──
+
+function usQuotesSearchFull() {
+  var query = document.getElementById('us-quotes-search').value.trim();
+  if (!query) {
+    // 清空搜索，恢复正常模式
+    usIsSearchMode = false;
+    usSearchResults = [];
+    usQuotesPage = 1;
+    usFilterAndRenderQuotes();
+    return;
+  }
+
+  var loading = document.getElementById('us-quotes-loading');
+  var table = document.getElementById('us-quotes-table');
+  if (loading) {
+    loading.textContent = '搜索全库中...';
+    loading.style.display = '';
+  }
+  if (table) table.style.display = 'none';
+
+  fetch('/api/v1/us-stock/search?q=' + encodeURIComponent(query))
+    .then(function(r) { return r.json(); })
+    .then(function(stocks) {
+      if (!stocks || stocks.length === 0) {
+        usIsSearchMode = false;
+        usSearchResults = [];
+        if (loading) loading.textContent = '未找到匹配的股票';
+        return;
+      }
+      usIsSearchMode = true;
+      usSearchResults = stocks;
+      usQuotesPage = 1;
+      usFilterAndRenderQuotes();
+    })
+    .catch(function() {
+      if (loading) loading.textContent = '搜索失败';
+    });
 }
 
 // ── 搜索 ──
@@ -229,7 +291,11 @@ function usAddToWatchlist(symbol, name) {
     body: JSON.stringify({symbol: symbol, name: name}),
   }).then(function(r) {
     if (r.ok) {
-      usLoadQuotes();
+      // 更新本地自选列表
+      if (!usQuotesAllData.some(function(item) { return item.symbol === symbol; })) {
+        usQuotesAllData.push({symbol: symbol, name: name});
+      }
+      usFilterAndRenderQuotes();
       usLoadWatchlistChips();
     } else {
       r.json().then(function(d) { alert(d.detail || '添加失败'); });
