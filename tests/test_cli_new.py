@@ -37,6 +37,14 @@ def test_cli_exposes_evalution_commands():
     assert "plan-execution" not in choices
 
 
+def test_cli_exposes_backtest_and_evaluate_shadow_commands():
+    parser = build_cli_parser()
+    choices = parser._subparsers._group_actions[0].choices
+
+    assert "backtest" in choices
+    assert "evaluate-shadow" in choices
+
+
 def test_decision_runs_route_is_available(test_app):
     client = TestClient(test_app)
     response = client.get("/api/v1/decision-runs")

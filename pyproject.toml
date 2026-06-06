@@ -23,6 +23,8 @@ dependencies = [
     "sqlalchemy>=2.0.43",
     "alembic>=1.18.0",
     "psycopg[binary]>=3.3.0",
+    "yfinance>=0.2.40",
+    "cachetools>=5.3.0",
 ]
 
 [project.optional-dependencies]

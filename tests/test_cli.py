@@ -63,7 +63,7 @@ def test_run_decide_command_persists_decision_and_target_position(runtime_store)
     targets = runtime_store.list_active_target_positions()
     assert len(targets) == 1
     assert targets[0]["decision_run_id"] == summary["decision_run_ids"][0]
-    assert targets[0]["target_value"] == 100000
+    assert targets[0]["target_value"] == 200000
 
 
 def test_run_decide_command_is_blocked_when_kill_switch_active(runtime_store):

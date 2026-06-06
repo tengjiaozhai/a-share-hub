@@ -5,6 +5,7 @@ from hashlib import sha256
 
 from fastapi import FastAPI
 
+from src.a_stock.routes import router as a_stock_router
 from src.agents.llm_client import LLMClient
 from src.api.routes_alpha import router as alpha_router
 from src.api.routes_broker_events import router as broker_events_router
@@ -22,6 +23,7 @@ from src.decision.decision_runner import build_decision_run_record
 from src.decision.input_builder import build_decision_input_snapshot
 from src.portfolio.target_planner import build_target_position
 from src.storage.dependencies import get_runtime_store
+from src.us_stock.routes import router as us_stock_router
 
 
 def run_decide_command(symbols: list[str], mock_llm: bool, store=None) -> dict:
@@ -58,8 +60,11 @@ def run_decide_command(symbols: list[str], mock_llm: bool, store=None) -> dict:
             target = build_target_position(
                 symbol=symbol,
                 action=record["parsed_action"],
-                target_position_ratio=record["target_position_ratio"],
-                net_asset_value=1_000_000.0,
+                capital_base=1_000_000.0,
+                max_position_ratio=0.2,
+                watchlist_size=len(symbols),
+                price=100.0,
+                lot_size=100,
                 expires_at=(datetime.utcnow() + timedelta(hours=1)).isoformat(),
             )
             target_position_id = runtime_store.insert_target_position(
@@ -99,6 +104,9 @@ def build_app() -> FastAPI:
     app.include_router(dashboard_router)
     app.include_router(crypto_router)
     app.include_router(alpha_router)
+    app.include_router(us_stock_router)
+    app.include_router(a_stock_router)
+
     return app
 
 

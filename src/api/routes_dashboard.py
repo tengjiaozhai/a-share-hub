@@ -1,12 +1,12 @@
 import uuid
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 
 from src.agents.llm_client import LLMClient
 from src.alpha.execution_service import AlphaExecutionService
+from src.api.dashboard_page.render import render_dashboard_html
 from src.core.config import Settings
 from src.data.providers.akshare_provider import AkshareProvider
 from src.storage.dependencies import get_runtime_store
@@ -107,9 +107,7 @@ def _compute_order_pnl(action: str, quantity: int, fill_price: float, current_pr
 
 @router.get("/dashboard", response_class=HTMLResponse)
 def get_dashboard():
-    html_path = Path(__file__).parent / "dashboard.html"
-    with open(html_path, "r", encoding="utf-8") as f:
-        return f.read()
+    return render_dashboard_html()
 
 
 @router.get("/api/v1/dashboard/workbench")
@@ -136,11 +134,13 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
     decision_only = execution_mode == "decision"
 
     ratio_per_symbol = max_position_ratio / len(watchlist)
-    target_value_per_symbol = int(capital_base * ratio_per_symbol)
     run_context_id = f"wrk-{_now_cst().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
 
     from src.agents.schemas import DecisionOutput
     from src.decision.decision_runner import parse_decision_output
+    from src.execution.paper_execution_service import PaperExecutionService
+    from src.portfolio.target_planner import build_target_positions
+    from src.risk.pre_trade_risk import evaluate_risk_gate
 
     settings = Settings()
     llm = _get_llm()
@@ -150,20 +150,40 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
     decision_items: list[dict] = []
     target_items: list[dict] = []
     order_items: list[dict] = []
-    created_orders: list[dict] = []
 
-    # 清理过期的目标仓位
+    current_snapshot = store.get_latest_account_snapshot()
+    account_state = current_snapshot or {"cash": float(capital_base), "positions": {}}
+    current_positions = account_state.get("positions", {})
+    price_by_symbol: dict[str, float] = {}
+
+    for symbol in watchlist:
+        try:
+            real_snap = provider.get_realtime_quote(symbol)
+            price_by_symbol[symbol] = real_snap.close if real_snap else 100.0
+        except Exception:
+            price_by_symbol[symbol] = 100.0
+
     store.deactivate_expired_targets()
 
     for index, symbol in enumerate(watchlist):
         # 尝试调用真实 LLM，失败则降级到 mock 决策模式
         if use_real_llm:
-            prompt = (
-                f"你是一个A股量化交易助手，请分析股票 {symbol} 并给出交易建议。"
-                f"总资金: {capital_base} 元，最大持仓比例: {max_position_ratio*100:.0f}%。"
-                "请以 JSON 格式回复，包含字段：symbol, action(BUY/SELL/HOLD), "
-                "confidence(0-100整数), target_position_ratio(0.0-1.0), reason(中文理由)。"
-            )
+            # 根据股票类型选择提示词
+            is_us_stock = symbol.endswith(".US") or symbol.endswith(".us") or (not symbol.endswith(".SH") and not symbol.endswith(".SZ"))
+            if is_us_stock:
+                prompt = (
+                    f"你是一个美股量化交易助手，请分析股票 {symbol} 并给出交易建议。"
+                    f"总资金: {capital_base} 元，最大持仓比例: {max_position_ratio*100:.0f}%。"
+                    "请以 JSON 格式回复，包含字段：symbol, action(BUY/SELL/HOLD), "
+                    "confidence(0-100整数), target_position_ratio(0.0-1.0), reason(中文理由)。"
+                )
+            else:
+                prompt = (
+                    f"你是一个A股量化交易助手，请分析股票 {symbol} 并给出交易建议。"
+                    f"总资金: {capital_base} 元，最大持仓比例: {max_position_ratio*100:.0f}%。"
+                    "请以 JSON 格式回复，包含字段：symbol, action(BUY/SELL/HOLD), "
+                    "confidence(0-100整数), target_position_ratio(0.0-1.0), reason(中文理由)。"
+                )
             raw = llm.generate(prompt)
         else:
             decision_pattern = [("BUY", 78), ("HOLD", 45), ("SELL", 82)]
@@ -198,6 +218,7 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
         )
         decision_items.append(
             {
+                "decision_run_id": decision_run_id,
                 "symbol": symbol,
                 "action": parsed_action,
                 "confidence": confidence,
@@ -205,96 +226,71 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
             }
         )
 
-        if parsed_action == "HOLD":
-            continue
+    targets = build_target_positions(
+        decisions=decision_items,
+        prices=price_by_symbol,
+        capital_base=capital_base,
+        max_position_ratio=max_position_ratio,
+        lot_size=settings.strategy_lot_size,
+        current_positions=current_positions,
+        expires_at=_today_close_cst().isoformat(),
+    )
 
-        target_value = target_value_per_symbol if parsed_action == "BUY" else 0
-        target_position_ratio = ratio_per_symbol if parsed_action == "BUY" else 0.0
-        target_quantity = target_value_per_symbol // 1000 if parsed_action == "BUY" else 0
+    executable_targets = []
+    for target in targets:
+        decision_run_id = next(
+            row["decision_run_id"] for row in decision_items
+            if row["symbol"] == target["symbol"]
+        )
         target_position_id = store.insert_target_position(
             decision_run_id=decision_run_id,
-            symbol=symbol,
-            action=parsed_action,
-            target_value=target_value,
-            target_position_ratio=target_position_ratio,
-            expires_at=_today_close_cst().isoformat(),
+            symbol=target["symbol"],
+            action=target["action"],
+            target_value=target["target_value"],
+            target_position_ratio=target["target_position_ratio"],
+            expires_at=target["expires_at"],
         )
+        target["target_position_id"] = target_position_id
+        target["price"] = price_by_symbol[target["symbol"]]
         target_items.append(
             {
-                "symbol": symbol,
-                "target_quantity": target_quantity if parsed_action == "BUY" else "0 (清仓)",
-                "target_position_ratio": target_position_ratio,
-                "action": parsed_action,
+                "symbol": target["symbol"],
+                "target_quantity": target["quantity"] if target["action"] == "BUY" else "0 (清仓)",
+                "target_position_ratio": target["target_position_ratio"],
+                "action": target["action"],
             }
         )
+        current_position = current_positions.get(target["symbol"], {})
+        current_position_value = int(current_position.get("quantity", 0)) * float(
+            price_by_symbol.get(target["symbol"], target["price"])
+        )
+        risk = evaluate_risk_gate(
+            symbol=target["symbol"],
+            action=target["action"],
+            kill_switch=store.get_kill_switch(),
+            available_cash=float(account_state["cash"]),
+            requested_value=float(target["notional"]),
+            current_position_value=current_position_value,
+            nav=float(account_state.get("nav", capital_base)),
+            max_position_ratio=max_position_ratio,
+            quantity=int(target["quantity"]),
+            lot_size=settings.strategy_lot_size,
+        )
+        if risk["approved"]:
+            executable_targets.append(target)
 
-        if not decision_only:
-            # 用真实行情价格和目标仓位计算实际数量
-            try:
-                real_snap = provider.get_realtime_quote(symbol)
-                real_price = real_snap.close if real_snap else 100.0
-            except Exception:
-                real_price = 100.0
-            target_value = capital_base * settings.strategy_max_position_ratio
-            quantity = max(100, int(target_value / real_price / 100) * 100) if real_price > 0 else 100
-            if parsed_action == "SELL":
-                quantity = max(100, quantity)
-            execution_order_id = store.insert_execution_order(
-                target_position_id=target_position_id,
-                symbol=symbol,
-                action=parsed_action,
-                quantity=quantity,
-                limit_price=real_price,
-            )
-            store.insert_broker_order_event(
-                execution_order_id=execution_order_id,
-                event_id=f"evt-submitted-{uuid.uuid4().hex[:10]}",
-                event_type="SUBMITTED",
-                payload={"source": "dashboard", "run_context_id": run_context_id},
-            )
-            created_orders.append(
-                {
-                    "execution_order_id": execution_order_id,
-                    "symbol": symbol,
-                    "action": parsed_action,
-                    "quantity": quantity,
-                    "limit_price": real_price,
-                    "status": "READY",
-                }
-            )
-
-    if not decision_only and created_orders:
-        for order in created_orders:
-            store.update_execution_order_status(order["execution_order_id"], status="FILLED")
-            # 用真实价格计算盈亏
-            try:
-                real_snap = provider.get_realtime_quote(order["symbol"])
-                current_price = real_snap.close if real_snap else order["limit_price"]
-            except Exception:
-                current_price = order["limit_price"]
-            pnl_delta = _compute_order_pnl(
-                action=order["action"],
-                quantity=order["quantity"],
-                fill_price=order["limit_price"],
-                current_price=current_price,
-            )
-            store.insert_broker_order_event(
-                execution_order_id=order["execution_order_id"],
-                event_id=f"evt-filled-{uuid.uuid4().hex[:10]}",
-                event_type="FILLED",
-                payload={"source": "dashboard", "run_context_id": run_context_id, "pnl_delta": pnl_delta},
-            )
-            order["status"] = "FILLED"
-            order["pnl_delta"] = pnl_delta
-            order_items.append(
-                {
-                    "symbol": order["symbol"],
-                    "action": order["action"],
-                    "quantity": order["quantity"],
-                    "status": order["status"],
-                    "pnl_delta": pnl_delta,
-                }
-            )
+    if not decision_only and executable_targets:
+        execution_result = PaperExecutionService(
+            store=store,
+            fee_bps=settings.strategy_fee_bps,
+            slippage_bps=settings.strategy_slippage_bps,
+        ).execute_targets(
+            targets=executable_targets,
+            initial_state=account_state,
+            mark_prices=price_by_symbol,
+            trade_date=_now_cst().date().isoformat(),
+        )
+        order_items.extend(execution_result["orders"])
 
     daily_pnl = store.sum_daily_pnl()
     latest_run = _build_run_timeline(
@@ -629,6 +625,7 @@ def _build_run_timeline(
         "finished_at": now,
         "status": "completed",
         "steps": steps,
+        "order_items": order_items,
     }
 
 
@@ -641,16 +638,16 @@ def run_backtest(config: dict) -> dict:
     start_str = config.get("start_date", "2025-01-01")
     end_str = config.get("end_date", "2025-03-31")
     capital_base = int(config.get("capital_base", 1_000_000))
+    market = config.get("market", "a")  # "a" 或 "us"
 
     from src.backtest.engine import run_daily_backtest
     from src.backtest.metrics import calculate_metrics
-    from src.indicators.technical_indicators import compute_feature_row
+    from src.indicators.technical_indicators import compute_features_from_bars
     from src.strategy.signal_engine import build_signal
     from src.strategy.strategy_config import StrategyConfig
 
     settings = Settings()
     strategy_config = StrategyConfig.from_settings(settings)
-    provider = AkshareProvider()
 
     start_date = datetime.strptime(start_str, "%Y-%m-%d")
     end_date = datetime.strptime(end_str, "%Y-%m-%d")
@@ -658,72 +655,124 @@ def run_backtest(config: dict) -> dict:
     # 提前 90 天取数据，确保有足够的历史窗口计算特征
     data_start = start_date - timedelta(days=120)
 
+    # 根据市场类型选择数据源
+    if market == "us":
+        from src.us_stock.yahoo_provider import YahooProvider
+        yahoo_provider = YahooProvider()
+        use_yahoo = True
+    else:
+        provider = AkshareProvider()
+        use_yahoo = False
+
     results = []
     for symbol in watchlist:
-        bars_df = provider.get_history(symbol, data_start, end_date)
-        if bars_df.empty:
+        try:
+            if use_yahoo:
+                # 美股：使用 YahooProvider 获取 K 线
+                from datetime import timedelta as td
+                period_days = (end_date - data_start).days
+                if period_days <= 30:
+                    period = "1mo"
+                elif period_days <= 90:
+                    period = "3mo"
+                elif period_days <= 180:
+                    period = "6mo"
+                else:
+                    period = "1y"
+                klines = yahoo_provider.get_kline(symbol, interval="1d", range_str=period)
+                if not klines:
+                    continue
+                # 转换为 backtest 格式
+                bars = [
+                    {
+                        "date": k.timestamp.strftime("%Y-%m-%d") if hasattr(k.timestamp, "strftime") else str(k.timestamp)[:10],
+                        "open": k.open,
+                        "high": k.high,
+                        "low": k.low,
+                        "close": k.close,
+                        "volume": k.volume,
+                    }
+                    for k in klines
+                    if hasattr(k.timestamp, "strftime")
+                ]
+                # 过滤日期范围
+                bars = [
+                    b for b in bars
+                    if data_start.strftime("%Y-%m-%d") <= b["date"] <= end_date.strftime("%Y-%m-%d")
+                ]
+            else:
+                # A股：使用 AkshareProvider
+                bars_df = provider.get_history(symbol, data_start, end_date)
+                if bars_df.empty:
+                    continue
+                bars = bars_df.to_dict("records")
+
+            if not bars:
+                continue
+
+            signals = []
+            for i in range(60, len(bars)):
+                window_bars = bars[max(0, i - 60):i + 1]
+                features = compute_features_from_bars(window_bars)
+                signal = build_signal(symbol, features, strategy_config)
+                if signal["action"] != "HOLD":
+                    signals.append({
+                        "date": bars[i]["date"],
+                        "action": signal["action"],
+                        "target_position_ratio": settings.strategy_max_position_ratio if signal["action"] == "BUY" else 0.0,
+                    })
+
+            bt_result = run_daily_backtest(
+                symbol=symbol,
+                bars=bars,
+                initial_cash=float(capital_base),
+                signals=signals,
+                lot_size=settings.strategy_lot_size,
+                fee_bps=settings.strategy_fee_bps,
+                slippage_bps=settings.strategy_slippage_bps,
+            )
+            metrics = calculate_metrics(bt_result["equity_curve"], bt_result["trades"])
+
+            # 多因子分析：取最后一根 K 线的特征
+            latest_features = compute_features_from_bars(bars)
+            latest_signal = build_signal(symbol, latest_features, strategy_config)
+
+            factor_details = {
+                "features": latest_features,
+                "technical_score": latest_signal["technical_score"],
+                "action": latest_signal["action"],
+                "weights": {
+                    "momentum_20": 0.30,
+                    "momentum_60": 0.25,
+                    "ma20_gap": 0.20,
+                    "ma60_gap": 0.15,
+                    "volume_ratio_20": 0.10,
+                    "volatility_20": -0.10,
+                },
+                "contributions": {
+                    "momentum_20": round(0.30 * latest_features.get("momentum_20", 0), 6),
+                    "momentum_60": round(0.25 * latest_features.get("momentum_60", 0), 6),
+                    "ma20_gap": round(0.20 * latest_features.get("ma20_gap", 0), 6),
+                    "ma60_gap": round(0.15 * latest_features.get("ma60_gap", 0), 6),
+                    "volume_ratio_20": round(0.10 * latest_features.get("volume_ratio_20", 0), 6),
+                    "volatility_20": round(-0.10 * latest_features.get("volatility_20", 0), 6),
+                },
+                "thresholds": {
+                    "buy": strategy_config.buy_score_threshold,
+                    "sell": strategy_config.sell_score_threshold,
+                },
+            }
+
+            results.append({
+                "symbol": symbol,
+                "metrics": metrics,
+                "trade_count": len(bt_result["trades"]),
+                "final_nav": bt_result["final_nav"],
+                "factor_analysis": factor_details,
+            })
+        except Exception as e:
+            logger.warning(f"backtest({symbol}) failed: {e}")
             continue
-
-        bars = bars_df.to_dict("records")
-        close_prices = [b["close"] for b in bars]
-
-        signals = []
-        for i in range(60, len(bars)):
-            window = close_prices[max(0, i - 60):i + 1]
-            features = compute_feature_row(window)
-            signal = build_signal(symbol, features, strategy_config)
-            if signal["action"] != "HOLD":
-                signals.append({
-                    "date": bars[i]["date"],
-                    "action": signal["action"],
-                    "target_position_ratio": settings.strategy_max_position_ratio if signal["action"] == "BUY" else 0.0,
-                })
-
-        bt_result = run_daily_backtest(
-            symbol=symbol,
-            bars=bars,
-            initial_cash=float(capital_base),
-            signals=signals,
-        )
-        metrics = calculate_metrics(bt_result["equity_curve"], bt_result["trades"])
-
-        # 多因子分析：取最后一根 K 线的特征
-        latest_features = compute_feature_row(close_prices)
-        latest_signal = build_signal(symbol, latest_features, strategy_config)
-
-        factor_details = {
-            "features": latest_features,
-            "technical_score": latest_signal["technical_score"],
-            "action": latest_signal["action"],
-            "weights": {
-                "momentum_20": 0.30,
-                "momentum_60": 0.25,
-                "ma20_gap": 0.20,
-                "ma60_gap": 0.15,
-                "volume_ratio_20": 0.10,
-                "volatility_20": -0.10,
-            },
-            "contributions": {
-                "momentum_20": round(0.30 * latest_features.get("momentum_20", 0), 6),
-                "momentum_60": round(0.25 * latest_features.get("momentum_60", 0), 6),
-                "ma20_gap": round(0.20 * latest_features.get("ma20_gap", 0), 6),
-                "ma60_gap": round(0.15 * latest_features.get("ma60_gap", 0), 6),
-                "volume_ratio_20": round(0.10 * latest_features.get("volume_ratio_20", 0), 6),
-                "volatility_20": round(-0.10 * latest_features.get("volatility_20", 0), 6),
-            },
-            "thresholds": {
-                "buy": strategy_config.buy_score_threshold,
-                "sell": strategy_config.sell_score_threshold,
-            },
-        }
-
-        results.append({
-            "symbol": symbol,
-            "metrics": metrics,
-            "trade_count": len(bt_result["trades"]),
-            "final_nav": bt_result["final_nav"],
-            "factor_analysis": factor_details,
-        })
 
     if not results:
         return {"status": "no_data", "results": [], "summary": {}}
@@ -778,7 +827,60 @@ def scan_stock_pool(config: dict | None = None) -> dict:
         return provider.get_history(symbol, datetime.fromisoformat(start), datetime.fromisoformat(end))
 
     confirmed_buy = confirm_buy_candidates(
-        result["buy"], kline_fetcher, strategy_config, top_n=top_n
+        result["buy"], kline_fetcher, strategy_config, top_n=top_n, as_of=datetime.now()
+    )
+    result["buy"] = confirmed_buy
+    # HOLD/SELL 截断到 top_n（scan_market 取 3x 是给 BUY 确认用的）
+    result["hold"] = result["hold"][:top_n]
+    result["sell"] = result["sell"][:top_n]
+
+    return {"status": "ok", **result}
+
+
+@router.post("/api/v1/dashboard/scan-us")
+def scan_us_stock_pool(config: dict | None = None) -> dict:
+    """美股全市场自动选股，扫描器预筛 + 历史K线确认。"""
+    from src.strategy.stock_scanner import confirm_us_buy_candidates, scan_us_market
+    from src.us_stock.watchlist import WatchlistStore
+    from src.us_stock.yahoo_provider import YahooProvider
+
+    cfg = config or {}
+    top_n = int(cfg.get("top_n", 10))
+
+    # 获取美股watchlist
+    import psycopg
+    settings = Settings()
+    database_url = settings.database_url
+    if not database_url:
+        return {"status": "no_database", "buy": [], "sell": [], "hold": [], "total_scanned": 0}
+
+    conn_url = database_url.replace("postgresql+psycopg://", "postgresql://")
+    conn = psycopg.connect(conn_url, row_factory=psycopg.rows.dict_row)
+    store = WatchlistStore(conn)
+    stock_list_items = store.list_items()
+    conn.close()
+
+    if not stock_list_items:
+        return {"status": "no_catalog", "buy": [], "sell": [], "hold": [], "total_scanned": 0}
+
+    stock_list = [{"symbol": item.symbol, "name": item.name} for item in stock_list_items]
+
+    # 初始化Yahoo数据源
+    yahoo_provider = YahooProvider()
+
+    # 第一轮：扫描器筛选（取 3x 候选给确认层）
+    result = scan_us_market(
+        stock_list=stock_list,
+        fetch_quotes_fn=lambda syms: yahoo_provider.get_quotes(syms),
+        top_n=top_n * 3,
+    )
+
+    # 第二轮：用历史 K 线确认 BUY 候选
+    def kline_fetcher(symbol, interval, range_str):
+        return yahoo_provider.get_kline(symbol, interval, range_str)
+
+    confirmed_buy = confirm_us_buy_candidates(
+        result["buy"], kline_fetcher, top_n=top_n
     )
     result["buy"] = confirmed_buy
     # HOLD/SELL 截断到 top_n（scan_market 取 3x 是给 BUY 确认用的）
@@ -789,19 +891,17 @@ def scan_stock_pool(config: dict | None = None) -> dict:
 
 
 @router.get("/api/v1/dashboard/preferences")
-def get_preferences() -> dict:
+def get_preferences(store: RuntimeStore = Depends(get_runtime_store)) -> dict:
     """获取用户偏好设置（watchlist 等）。"""
-    store = get_runtime_store()
     prefs = store.get_preference("dashboard") or {}
     return prefs
 
 
 @router.put("/api/v1/dashboard/preferences")
-def save_preferences(config: dict) -> dict:
+def save_preferences(config: dict, store: RuntimeStore = Depends(get_runtime_store)) -> dict:
     """保存用户偏好设置。"""
-    store = get_runtime_store()
     # 只允许保存白名单字段
-    allowed_keys = {"watchlist", "capital_base", "max_position_ratio", "stop_loss_ratio",
+    allowed_keys = {"watchlist", "market", "capital_base", "max_position_ratio", "stop_loss_ratio",
                     "max_daily_loss_ratio", "execution_mode"}
     filtered = {k: v for k, v in config.items() if k in allowed_keys}
     store.set_preference("dashboard", filtered)

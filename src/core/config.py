@@ -59,8 +59,20 @@ class Settings(BaseSettings):
     alpha_api_key: str = ""
     alpha_api_secret: str = ""
 
+    # 币安配置
+    binance_api_key: str = ""
+    binance_api_secret: str = ""
+
     # 策略配置
     strategy_top_n: int = 10
     strategy_max_position_ratio: float = 0.2
     strategy_buy_score_threshold: float = 0.55
     strategy_sell_score_threshold: float = -0.20
+    strategy_scan_buy_threshold_a: float = 0.55
+    strategy_scan_buy_threshold_us: float = 0.45
+    strategy_min_confirm_bars: int = 61
+    strategy_confirm_lookback_days: int = 180
+    strategy_lot_size: int = 100
+    strategy_fee_bps: float = 3.0
+    strategy_slippage_bps: float = 5.0
+    strategy_max_daily_loss_ratio: float = 0.03
