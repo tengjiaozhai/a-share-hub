@@ -123,11 +123,31 @@ def _register_scheduler_lifecycle(app: FastAPI) -> None:
         scheduler = get_scheduler()
         scheduler.start()
         try:
+            _run_startup_backfill()
             yield
         finally:
             scheduler.stop()
 
     app.router.lifespan_context = lifespan
+
+
+def _run_startup_backfill() -> None:
+    """启动时检查 auto 账户是否需要 backfill"""
+    try:
+        from sqlalchemy.orm import Session
+        from src.paper_ledger.backfill import backfill_recent_days, needs_backfill
+        from src.paper_ledger.store import PaperLedgerStore
+        from src.storage.db import get_engine
+
+        engine = get_engine()
+        with Session(engine) as session:
+            store = PaperLedgerStore(session)
+            for market in ("a", "us"):
+                if needs_backfill(store, market):
+                    backfill_recent_days(store, market, days=30)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"startup backfill failed: {e}")
 
 
 def build_cli_parser() -> argparse.ArgumentParser:
