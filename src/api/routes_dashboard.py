@@ -168,12 +168,22 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
     for index, symbol in enumerate(watchlist):
         # 尝试调用真实 LLM，失败则降级到 mock 决策模式
         if use_real_llm:
-            prompt = (
-                f"你是一个A股量化交易助手，请分析股票 {symbol} 并给出交易建议。"
-                f"总资金: {capital_base} 元，最大持仓比例: {max_position_ratio*100:.0f}%。"
-                "请以 JSON 格式回复，包含字段：symbol, action(BUY/SELL/HOLD), "
-                "confidence(0-100整数), target_position_ratio(0.0-1.0), reason(中文理由)。"
-            )
+            # 根据股票类型选择提示词
+            is_us_stock = symbol.endswith(".US") or symbol.endswith(".us") or (not symbol.endswith(".SH") and not symbol.endswith(".SZ"))
+            if is_us_stock:
+                prompt = (
+                    f"你是一个美股量化交易助手，请分析股票 {symbol} 并给出交易建议。"
+                    f"总资金: {capital_base} 元，最大持仓比例: {max_position_ratio*100:.0f}%。"
+                    "请以 JSON 格式回复，包含字段：symbol, action(BUY/SELL/HOLD), "
+                    "confidence(0-100整数), target_position_ratio(0.0-1.0), reason(中文理由)。"
+                )
+            else:
+                prompt = (
+                    f"你是一个A股量化交易助手，请分析股票 {symbol} 并给出交易建议。"
+                    f"总资金: {capital_base} 元，最大持仓比例: {max_position_ratio*100:.0f}%。"
+                    "请以 JSON 格式回复，包含字段：symbol, action(BUY/SELL/HOLD), "
+                    "confidence(0-100整数), target_position_ratio(0.0-1.0), reason(中文理由)。"
+                )
             raw = llm.generate(prompt)
         else:
             decision_pattern = [("BUY", 78), ("HOLD", 45), ("SELL", 82)]
