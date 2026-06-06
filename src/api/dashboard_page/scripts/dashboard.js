@@ -279,6 +279,91 @@ function renderRisk(risk, targets) {
   pnlEl.className = `risk-value ${pnl > 0 ? 'green' : pnl < 0 ? 'red' : ''}`;
 }
 
+function formatPercent(value) {
+  const num = Number(value) || 0;
+  const sign = num > 0 ? '+' : '';
+  return `${sign}${(num * 100).toFixed(2)}%`;
+}
+
+function renderPerformance(performance) {
+  const perf = performance || {};
+  const todayEl = document.getElementById('perf-today');
+  const monthEl = document.getElementById('perf-month');
+  const drawdownEl = document.getElementById('perf-drawdown');
+
+  if (todayEl) {
+    todayEl.textContent = formatPercent(perf.today_return);
+    todayEl.style.color = (Number(perf.today_return) || 0) >= 0 ? 'var(--green)' : 'var(--red)';
+  }
+  if (monthEl) {
+    monthEl.textContent = formatPercent(perf.month_return);
+    monthEl.style.color = (Number(perf.month_return) || 0) >= 0 ? 'var(--green)' : 'var(--red)';
+  }
+  if (drawdownEl) {
+    drawdownEl.textContent = formatPercent(perf.max_drawdown);
+  }
+
+  const canvas = document.getElementById('perf-nav-canvas');
+  if (canvas && toList(perf.nav_curve).length > 0) {
+    drawNavCurve(canvas, toList(perf.nav_curve));
+  } else if (canvas) {
+    drawNavCurve(canvas, []);
+  }
+}
+
+function drawNavCurve(canvas, points) {
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  canvas.width = width * dpr;
+  canvas.height = height * dpr;
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, width, height);
+
+  if (!points || points.length < 2) {
+    ctx.fillStyle = 'rgba(120, 120, 120, 0.5)';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('暂无净值数据', width / 2, height / 2);
+    return;
+  }
+
+  const navs = points.map(p => Number(p.nav) || 0);
+  const min = Math.min(...navs);
+  const max = Math.max(...navs);
+  const range = max - min || 1;
+
+  ctx.strokeStyle = '#22c55e';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  points.forEach((p, i) => {
+    const x = (i / (points.length - 1)) * width;
+    const y = height - ((Number(p.nav) - min) / range) * (height - 4) - 2;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+}
+
+function renderAutomation(automation) {
+  const auto = automation || {};
+  const statusEl = document.getElementById('auto-status');
+  const lastEl = document.getElementById('auto-last');
+  const nextEl = document.getElementById('auto-next');
+  if (statusEl) {
+    statusEl.textContent = auto.today_status || 'pending';
+    const s = String(auto.today_status || 'pending');
+    statusEl.style.color = s === 'success' ? 'var(--green)' : s === 'failed' ? 'var(--red)' : 'var(--yellow)';
+  }
+  if (lastEl) {
+    lastEl.textContent = auto.last_run_at ? formatTime(auto.last_run_at) : '尚未运行';
+  }
+  if (nextEl) {
+    nextEl.textContent = auto.next_run_at ? formatTime(auto.next_run_at) : '等待调度';
+  }
+}
+
 function renderErrorEvents(events) {
   const rows = toList(events);
   const dataChanged = rows !== pag.errors.data && JSON.stringify(rows) !== JSON.stringify(pag.errors.data);
@@ -435,6 +520,8 @@ function renderWorkbench(data, killStatus) {
   renderOrders(data.history?.orders || []);
   renderTargets(data.history?.targets || []);
   renderRisk(data.risk || {}, data.history?.targets || []);
+  renderPerformance(data.performance || {});
+  renderAutomation(data.automation || {});
   renderErrorEvents(data.history?.events || []);
   renderAlerts(data.risk?.alerts || []);
   renderTimeline(data.latest_run || { steps: [] });
