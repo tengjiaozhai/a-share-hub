@@ -891,7 +891,7 @@ def get_preferences(store: RuntimeStore = Depends(get_runtime_store)) -> dict:
 def save_preferences(config: dict, store: RuntimeStore = Depends(get_runtime_store)) -> dict:
     """保存用户偏好设置。"""
     # 只允许保存白名单字段
-    allowed_keys = {"watchlist", "capital_base", "max_position_ratio", "stop_loss_ratio",
+    allowed_keys = {"watchlist", "market", "capital_base", "max_position_ratio", "stop_loss_ratio",
                     "max_daily_loss_ratio", "execution_mode"}
     filtered = {k: v for k, v in config.items() if k in allowed_keys}
     store.set_preference("dashboard", filtered)

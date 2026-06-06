@@ -120,6 +120,7 @@ function savePreferences() {
   const prefs = {
     watchlist: document.getElementById('cfg-watchlist').value
       .split(',').map(s => s.trim()).filter(Boolean),
+    market: document.getElementById('cfg-market').value,
     capital_base: Number(document.getElementById('cfg-capital').value) * 10000,
     max_position_ratio: Number(document.getElementById('cfg-max-pos').value) / 100,
     stop_loss_ratio: Number(document.getElementById('cfg-stop-loss').value) / 100,
@@ -155,6 +156,9 @@ function renderConfig(config) {
   if (config.watchlist) {
     document.getElementById('cfg-watchlist').value = Array.isArray(config.watchlist)
       ? config.watchlist.join(',') : config.watchlist;
+  }
+  if (config.market) {
+    document.getElementById('cfg-market').value = config.market;
   }
   if (config.capital_base !== undefined) {
     const capitalWan = Number(config.capital_base) / 10000;
