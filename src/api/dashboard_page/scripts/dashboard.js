@@ -160,6 +160,8 @@ function renderConfig(config) {
   if (config.market) {
     document.getElementById('cfg-market').value = config.market;
   }
+  // 根据市场过滤观察列表
+  filterWatchlistByMarket();
   if (config.capital_base !== undefined) {
     const capitalWan = Number(config.capital_base) / 10000;
     document.getElementById('cfg-capital').value = capitalWan;
@@ -799,9 +801,39 @@ function setButtonLoading(btn, loading, originalText) {
 
 // ── 观察列表同步 ──
 
+function isUSSymbol(symbol) {
+  return !symbol.endsWith('.SH') && !symbol.endsWith('.SZ');
+}
+
+function filterWatchlistByMarket() {
+  var market = document.getElementById('cfg-market').value;
+  var watchlistEl = document.getElementById('cfg-watchlist');
+  if (!watchlistEl) return;
+
+  var symbols = watchlistEl.value.split(',').map(s => s.trim()).filter(Boolean);
+  var filtered = symbols.filter(function(s) {
+    return market === 'us' ? isUSSymbol(s) : !isUSSymbol(s);
+  });
+
+  watchlistEl.value = filtered.join(',');
+}
+
 function addToWorkspaceWatchlist(symbol, name) {
   var watchlistEl = document.getElementById('cfg-watchlist');
   if (!watchlistEl) return false;
+
+  var market = document.getElementById('cfg-market').value;
+  var isUS = isUSSymbol(symbol);
+  
+  // 检查是否与当前市场匹配
+  if (market === 'us' && !isUS) {
+    showToast(symbol + ' 是A股股票，请切换到A股市场', 'info');
+    return false;
+  }
+  if (market === 'a' && isUS) {
+    showToast(symbol + ' 是美股股票，请切换到美股市场', 'info');
+    return false;
+  }
 
   var current = watchlistEl.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
   if (current.indexOf(symbol) !== -1) {

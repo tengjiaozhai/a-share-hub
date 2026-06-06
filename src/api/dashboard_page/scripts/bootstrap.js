@@ -30,6 +30,15 @@
   });
 })();
 
+// 市场选择变化时过滤观察列表
+(function initMarketFilter() {
+  var marketEl = document.getElementById('cfg-market');
+  if (!marketEl) return;
+  marketEl.addEventListener('change', function() {
+    filterWatchlistByMarket();
+  });
+})();
+
 document.addEventListener('keydown', (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key === 's') {
     event.preventDefault();
