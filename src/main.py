@@ -107,7 +107,27 @@ def build_app() -> FastAPI:
     app.include_router(us_stock_router)
     app.include_router(a_stock_router)
 
+    _register_scheduler_lifecycle(app)
+
     return app
+
+
+def _register_scheduler_lifecycle(app: FastAPI) -> None:
+    """注册调度器生命周期钩子（启动/关闭）"""
+    from contextlib import asynccontextmanager
+
+    from src.scheduler.daily_scheduler import get_scheduler
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        scheduler = get_scheduler()
+        scheduler.start()
+        try:
+            yield
+        finally:
+            scheduler.stop()
+
+    app.router.lifespan_context = lifespan
 
 
 def build_cli_parser() -> argparse.ArgumentParser:

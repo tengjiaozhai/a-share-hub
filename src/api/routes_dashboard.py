@@ -21,8 +21,10 @@ def _now_cst() -> datetime:
 
 
 def _today_close_cst() -> datetime:
-    """返回今天 A 股收盘时间（北京时间 15:00:00）"""
+    """返回今天 A 股收盘时间（北京时间 15:00:00），若已过则推到次日"""
     today = _now_cst().replace(hour=15, minute=0, second=0, microsecond=0)
+    if today <= _now_cst():
+        today = today + timedelta(days=1)
     return today
 
 _llm_client: LLMClient | None = None
