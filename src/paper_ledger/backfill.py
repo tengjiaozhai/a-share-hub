@@ -53,6 +53,8 @@ def backfill_recent_days(
                 nav=round(nav, 2),
                 cash=round(cash, 2),
                 positions_value=round(positions_value, 2),
+                run_id=run.run_id,
+                source="backfill",
             )
             store.update_run_status(run.run_id, "success")
             completed += 1

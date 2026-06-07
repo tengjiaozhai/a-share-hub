@@ -111,7 +111,16 @@ class PaperLedgerStore:
         stmt = select(PaperPositionRow).where(PaperPositionRow.account_id == account_id)
         return list(self._session.execute(stmt).scalars().all())
     
-    def create_nav_snapshot(self, account_id: str, trade_date: date, nav: float, cash: float, positions_value: float) -> PaperNavDailyRow:
+    def create_nav_snapshot(
+        self,
+        account_id: str,
+        trade_date: date,
+        nav: float,
+        cash: float,
+        positions_value: float,
+        run_id: str | None = None,
+        source: str = "auto",
+    ) -> PaperNavDailyRow:
         """创建净值快照"""
         nav_row = PaperNavDailyRow(
             nav_id=f"nav-{uuid.uuid4().hex[:12]}",
@@ -120,6 +129,8 @@ class PaperLedgerStore:
             nav=nav,
             cash=cash,
             positions_value=positions_value,
+            run_id=run_id,
+            source=source,
         )
         self._session.add(nav_row)
         self._session.commit()
@@ -146,3 +157,92 @@ class PaperLedgerStore:
             )
         )
         return self._session.execute(stmt).scalar_one_or_none() is not None
+
+    def get_latest_run(self, market: str, account_kind: str) -> PaperRunRow | None:
+        """获取最近一次成功的运行"""
+        account = self.get_or_create_account(market, account_kind)
+        stmt = (
+            select(PaperRunRow)
+            .where(
+                and_(
+                    PaperRunRow.account_id == account.account_id,
+                    PaperRunRow.status == "success",
+                )
+            )
+            .order_by(PaperRunRow.created_at.desc())
+            .limit(1)
+        )
+        return self._session.execute(stmt).scalar_one_or_none()
+
+    def get_nav_range(
+        self,
+        account_id: str,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        limit: int = 100,
+    ) -> list[PaperNavDailyRow]:
+        """获取指定日期范围内的净值记录"""
+        conditions = [PaperNavDailyRow.account_id == account_id]
+        if start_date is not None:
+            conditions.append(PaperNavDailyRow.trade_date >= start_date)
+        if end_date is not None:
+            conditions.append(PaperNavDailyRow.trade_date <= end_date)
+        stmt = (
+            select(PaperNavDailyRow)
+            .where(and_(*conditions))
+            .order_by(PaperNavDailyRow.trade_date.asc())
+            .limit(limit)
+        )
+        return list(self._session.execute(stmt).scalars().all())
+
+    def get_comparison_windows(self, account_id: str, windows: list[str] | None = None) -> dict[str, float]:
+        """计算各时间窗口的收益率"""
+        if windows is None:
+            windows = ["7d", "30d", "90d", "ytd"]
+        today = date.today()
+        result: dict[str, float] = {}
+        latest_row = self._session.execute(
+            select(PaperNavDailyRow)
+            .where(PaperNavDailyRow.account_id == account_id)
+            .order_by(PaperNavDailyRow.trade_date.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if latest_row is None:
+            return {w: 0.0 for w in windows}
+        latest_nav = float(latest_row.nav)
+
+        for window in windows:
+            if window == "ytd":
+                start = date(today.year, 1, 1)
+            else:
+                days = int(window.rstrip("d"))
+                start = today - __import__("datetime").timedelta(days=days)
+            row = self._session.execute(
+                select(PaperNavDailyRow)
+                .where(
+                    and_(
+                        PaperNavDailyRow.account_id == account_id,
+                        PaperNavDailyRow.trade_date <= start,
+                    )
+                )
+                .order_by(PaperNavDailyRow.trade_date.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+            if row is not None and float(row.nav) > 0:
+                result[window] = round((latest_nav - float(row.nav)) / float(row.nav), 6)
+            else:
+                result[window] = 0.0
+        return result
+
+    def get_run_history(self, market: str, source: str = "all", limit: int = 20) -> list[PaperRunRow]:
+        """获取运行历史，可按 source 过滤"""
+        conditions = [PaperRunRow.market == market]
+        if source != "all":
+            conditions.append(PaperRunRow.run_source == source)
+        stmt = (
+            select(PaperRunRow)
+            .where(and_(*conditions))
+            .order_by(PaperRunRow.created_at.desc())
+            .limit(limit)
+        )
+        return list(self._session.execute(stmt).scalars().all())

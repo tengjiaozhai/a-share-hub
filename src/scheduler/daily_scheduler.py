@@ -43,6 +43,26 @@ class DailyScheduler:
         """停止调度器"""
         self._scheduler.shutdown()
         logger.info("Daily scheduler stopped")
+
+    def next_run_at(self, market: str) -> str | None:
+        """Return ISO timestamp of next scheduled run for the given market, or None."""
+        job_id = "a_share_daily" if market == "a" else "us_daily"
+        for job in self._scheduler.get_jobs():
+            if job.id == job_id:
+                return job.next_run_time.isoformat() if job.next_run_time else None
+        return None
+
+    def job_status(self, market: str) -> str:
+        """Return 'active' if job exists and is scheduled, 'paused' if exists but no next_run, 'missing' otherwise."""
+        job_id = "a_share_daily" if market == "a" else "us_daily"
+        for job in self._scheduler.get_jobs():
+            if job.id == job_id:
+                return "active" if job.next_run_time else "paused"
+        return "missing"
+
+    def has_job(self, market: str) -> bool:
+        """Return True if a job is registered for the given market."""
+        return self.job_status(market) != "missing"
     
     async def _run_a_share_job(self):
         """运行 A 股日频任务"""

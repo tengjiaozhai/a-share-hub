@@ -72,4 +72,6 @@ class PaperNavDailyRow(PaperBase):
     nav: Mapped[float] = mapped_column(Float, nullable=False)
     cash: Mapped[float] = mapped_column(Float, nullable=False)
     positions_value: Mapped[float] = mapped_column(Float, nullable=False)
+    run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="auto")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
