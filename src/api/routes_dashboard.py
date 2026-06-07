@@ -118,9 +118,17 @@ def get_dashboard(store: RuntimeStore = Depends(get_runtime_store)):
 def get_workbench(
     market: str = Query(default="a", description="市场: a 或 us"),
     account_kind: str = Query(default="auto", description="账户类型: auto 或 manual"),
+    decisions_page: int = Query(default=1, ge=1, description="决策页码"),
+    orders_page: int = Query(default=1, ge=1, description="订单页码"),
+    targets_page: int = Query(default=1, ge=1, description="目标仓位页码"),
+    page_size: int = Query(default=20, ge=1, le=100, description="每页条数"),
     store: RuntimeStore = Depends(get_runtime_store),
 ) -> dict:
-    payload = _build_workbench_payload(store, market=market)
+    payload = _build_workbench_payload(
+        store, market=market,
+        decisions_page=decisions_page, orders_page=orders_page,
+        targets_page=targets_page, page_size=page_size,
+    )
     payload["alpha"] = _build_alpha_panel_payload(store)
     return payload
 
@@ -527,16 +535,29 @@ def _load_automation_state(store, market: str = "a") -> dict:
     )
 
 
-def _build_workbench_payload(store, latest_run_override: dict | None = None, market: str = "a") -> dict:
+def _build_workbench_payload(store, latest_run_override: dict | None = None, market: str = "a",
+                              decisions_page: int = 1, orders_page: int = 1,
+                              targets_page: int = 1, page_size: int = 20) -> dict:
     reconciliation = store.get_reconciliation_status()
-    decision_rows = store.list_decision_runs(limit=_HISTORY_LIMIT)
-    target_rows = store.list_active_target_positions(limit=_HISTORY_LIMIT)
-    order_rows = store.list_execution_orders(limit=_HISTORY_LIMIT)
+
+    # Paginated queries
+    d_offset = (decisions_page - 1) * page_size
+    o_offset = (orders_page - 1) * page_size
+    t_offset = (targets_page - 1) * page_size
+
+    decision_rows = store.list_decision_runs(limit=page_size, offset=d_offset)
+    target_rows = store.list_active_target_positions(limit=page_size, offset=t_offset)
+    order_rows = store.list_execution_orders(limit=page_size, offset=o_offset)
 
     decisions = [_serialize_decision_row(row) for row in decision_rows]
     targets = [_serialize_target_row(row) for row in target_rows]
     orders = [_serialize_order_row(row) for row in order_rows]
     daily_pnl = store.sum_daily_pnl()
+
+    # Counts for pagination
+    decisions_total = store.count_decision_runs()
+    orders_total = store.count_execution_orders()
+    targets_total = store.count_active_target_positions()
 
     latest_run = latest_run_override or _build_latest_run(
         decisions=decisions,
@@ -565,7 +586,12 @@ def _build_workbench_payload(store, latest_run_override: dict | None = None, mar
             "decisions": decisions,
             "orders": orders,
             "targets": targets,
-            "events": _list_recent_events(store, limit=_HISTORY_LIMIT),
+            "events": _list_recent_events(store, limit=page_size),
+        },
+        "pagination": {
+            "decisions": {"page": decisions_page, "page_size": page_size, "total": decisions_total, "total_pages": max(1, -(-decisions_total // page_size))},
+            "orders": {"page": orders_page, "page_size": page_size, "total": orders_total, "total_pages": max(1, -(-orders_total // page_size))},
+            "targets": {"page": targets_page, "page_size": page_size, "total": targets_total, "total_pages": max(1, -(-targets_total // page_size))},
         },
     }
 

@@ -104,21 +104,10 @@ function renderThemeMenu() {
 }
 
 function saveThemePreference(themeId) {
-  // Merge with existing preferences
-  const prefs = {
-    watchlist: (document.getElementById('cfg-watchlist')?.value || '').split(',').map(s => s.trim()).filter(Boolean),
-    market: document.getElementById('cfg-market')?.value || 'a',
-    capital_base: Number(document.getElementById('cfg-capital')?.value || 100) * 10000,
-    max_position_ratio: Number(document.getElementById('cfg-max-pos')?.value || 20) / 100,
-    stop_loss_ratio: Number(document.getElementById('cfg-stop-loss')?.value || -5) / 100,
-    max_daily_loss_ratio: Number(document.getElementById('cfg-max-daily')?.value || -3) / 100,
-    execution_mode: typeof execMode !== 'undefined' ? execMode : 'full',
-    theme_id: themeId,
-  };
   fetch('/api/v1/dashboard/preferences', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(prefs),
+    body: JSON.stringify({ theme_id: themeId }),
   }).catch(() => {});
 }
 

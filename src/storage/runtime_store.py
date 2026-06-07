@@ -163,11 +163,11 @@ class RuntimeStore:
                 "snapshot": json.loads(snapshot_row[2]),
             }
 
-    def list_decision_runs(self, limit: int | None = None) -> list[dict]:
+    def list_decision_runs(self, limit: int | None = None, offset: int = 0) -> list[dict]:
         with self.engine.begin() as conn:
             stmt = select(DecisionRunRow).order_by(DecisionRunRow.created_at.desc())
             if limit is not None:
-                stmt = stmt.limit(limit)
+                stmt = stmt.offset(offset).limit(limit)
             rows = conn.execute(stmt).fetchall()
             return [
                 {
@@ -183,6 +183,12 @@ class RuntimeStore:
                 }
                 for row in rows
             ]
+
+    def count_decision_runs(self) -> int:
+        with self.engine.begin() as conn:
+            from sqlalchemy import func
+            stmt = select(func.count()).select_from(DecisionRunRow)
+            return conn.execute(stmt).scalar()
 
     def _get_decision_input_snapshot(self, conn, decision_run_id: str) -> dict:
         snapshot_row = conn.execute(
@@ -219,7 +225,7 @@ class RuntimeStore:
             )
         return target_position_id
 
-    def list_active_target_positions(self, limit: int | None = None) -> list[dict]:
+    def list_active_target_positions(self, limit: int | None = None, offset: int = 0) -> list[dict]:
         with self.engine.begin() as conn:
             now = datetime.utcnow()
             stmt = (
@@ -229,7 +235,7 @@ class RuntimeStore:
                 .order_by(TargetPositionRow.created_at.desc())
             )
             if limit is not None:
-                stmt = stmt.limit(limit)
+                stmt = stmt.offset(offset).limit(limit)
             rows = conn.execute(stmt).fetchall()
             return [
                 {
@@ -245,6 +251,18 @@ class RuntimeStore:
                 }
                 for row in rows
             ]
+
+    def count_active_target_positions(self) -> int:
+        with self.engine.begin() as conn:
+            from sqlalchemy import func
+            now = datetime.utcnow()
+            stmt = (
+                select(func.count())
+                .select_from(TargetPositionRow)
+                .where(TargetPositionRow.status == "ACTIVE")
+                .where(TargetPositionRow.expires_at > now)
+            )
+            return conn.execute(stmt).scalar()
 
     def deactivate_expired_targets(self) -> int:
         """将已过期的 ACTIVE 目标标记为 EXPIRED，返回更新数量。"""
@@ -314,11 +332,11 @@ class RuntimeStore:
                 .values(**values)
             )
 
-    def list_execution_orders(self, limit: int | None = None) -> list[dict]:
+    def list_execution_orders(self, limit: int | None = None, offset: int = 0) -> list[dict]:
         with self.engine.begin() as conn:
             stmt = select(ExecutionOrderRow).order_by(ExecutionOrderRow.created_at.desc())
             if limit is not None:
-                stmt = stmt.limit(limit)
+                stmt = stmt.offset(offset).limit(limit)
             rows = conn.execute(stmt).fetchall()
             return [
                 {
@@ -334,6 +352,12 @@ class RuntimeStore:
                 }
                 for row in rows
             ]
+
+    def count_execution_orders(self) -> int:
+        with self.engine.begin() as conn:
+            from sqlalchemy import func
+            stmt = select(func.count()).select_from(ExecutionOrderRow)
+            return conn.execute(stmt).scalar()
 
     def list_broker_events(self, limit: int | None = None) -> list[dict]:
         with self.engine.begin() as conn:
