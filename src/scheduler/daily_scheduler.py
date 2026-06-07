@@ -78,10 +78,10 @@ class DailyScheduler:
         
         try:
             # 获取数据库会话
-            from src.storage.db import get_engine
             from sqlalchemy.orm import Session
+            from src.storage.dependencies import get_runtime_store
             
-            engine = get_engine()
+            engine = get_runtime_store().engine
             with Session(engine) as session:
                 store = PaperLedgerStore(session)
                 

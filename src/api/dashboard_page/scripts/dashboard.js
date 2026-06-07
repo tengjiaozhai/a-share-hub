@@ -66,6 +66,11 @@ function renderStatus(workbench, killStatus) {
   document.getElementById('trade-date').textContent = formatDate(workbench.trade_date);
   document.getElementById('last-run').textContent = formatTime(workbench.last_run_at);
 
+  const innerTradeDate = document.getElementById('inner-trade-date');
+  const innerLastRun = document.getElementById('inner-last-run');
+  if (innerTradeDate) innerTradeDate.textContent = formatDate(workbench.trade_date);
+  if (innerLastRun) innerLastRun.textContent = formatTime(workbench.last_run_at);
+
   const services = workbench.services || {};
   document.getElementById('db-dot').className = serviceDotClass(services.database);
   document.getElementById('llm-dot').className = serviceDotClass(services.llm);

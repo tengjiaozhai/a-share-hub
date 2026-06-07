@@ -129,11 +129,11 @@ def get_performance(
     account_kind: str = Query(default="auto"),
     window: str = Query(default="30d"),
 ) -> dict:
-    from src.storage.db import get_engine
     from sqlalchemy.orm import Session as OrmSession
     from src.paper_ledger.store import PaperLedgerStore
+    from src.storage.dependencies import get_runtime_store
 
-    engine = get_engine()
+    engine = get_runtime_store().engine
     with OrmSession(engine) as session:
         ledger = PaperLedgerStore(session)
         account = ledger.get_or_create_account(market, account_kind)
@@ -172,11 +172,11 @@ def get_history(
     source: str = Query(default="all", description="auto, manual, backfill, or all"),
     limit: int = Query(default=20, ge=1, le=100),
 ) -> dict:
-    from src.storage.db import get_engine
     from sqlalchemy.orm import Session as OrmSession
     from src.paper_ledger.store import PaperLedgerStore
+    from src.storage.dependencies import get_runtime_store
 
-    engine = get_engine()
+    engine = get_runtime_store().engine
     with OrmSession(engine) as session:
         ledger = PaperLedgerStore(session)
         runs = ledger.get_run_history(market, source=source, limit=limit)
@@ -462,11 +462,11 @@ def _build_automation_payload(
 def _load_paper_nav_history(store, market: str = "a") -> list[dict]:
     """从 paper_ledger 加载净值历史；如未初始化则返回空列表"""
     try:
-        from src.storage.db import get_engine
         from sqlalchemy.orm import Session
         from src.paper_ledger.store import PaperLedgerStore
+        from src.storage.dependencies import get_runtime_store
 
-        engine = get_engine()
+        engine = get_runtime_store().engine
         with Session(engine) as session:
             ledger = PaperLedgerStore(session)
             account = ledger.get_or_create_account(market, "auto")
@@ -484,12 +484,12 @@ def _load_automation_state(store, market: str = "a") -> dict:
     last_run_at: str | None = None
     last_status: str | None = None
     try:
-        from src.storage.db import get_engine
         from sqlalchemy import select
         from sqlalchemy.orm import Session
         from src.paper_ledger.models import PaperRunRow
+        from src.storage.dependencies import get_runtime_store
 
-        engine = get_engine()
+        engine = get_runtime_store().engine
         with Session(engine) as session:
             stmt = (
                 select(PaperRunRow)

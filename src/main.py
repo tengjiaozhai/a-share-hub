@@ -137,9 +137,9 @@ def _run_startup_backfill() -> None:
         from sqlalchemy.orm import Session
         from src.paper_ledger.backfill import backfill_recent_days, needs_backfill
         from src.paper_ledger.store import PaperLedgerStore
-        from src.storage.db import get_engine
+        from src.storage.dependencies import get_runtime_store
 
-        engine = get_engine()
+        engine = get_runtime_store().engine
         with Session(engine) as session:
             store = PaperLedgerStore(session)
             for market in ("a", "us"):

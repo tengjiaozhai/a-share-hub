@@ -28,6 +28,13 @@ def ensure_runtime_schema(engine) -> None:
     with _runtime_schema_bootstrap_lock:
         Base.metadata.create_all(engine)
 
+        try:
+            from src.paper_ledger.models import PaperBase
+            if PaperBase.metadata.tables:
+                PaperBase.metadata.create_all(engine)
+        except Exception:
+            pass
+
 
 def create_session_factory(engine):
     return sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
