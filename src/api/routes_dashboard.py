@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
 
 from src.agents.llm_client import LLMClient
@@ -113,10 +113,107 @@ def get_dashboard():
 
 
 @router.get("/api/v1/dashboard/workbench")
-def get_workbench(store: RuntimeStore = Depends(get_runtime_store)) -> dict:
-    payload = _build_workbench_payload(store)
+def get_workbench(
+    market: str = Query(default="a", description="市场: a 或 us"),
+    account_kind: str = Query(default="auto", description="账户类型: auto 或 manual"),
+    store: RuntimeStore = Depends(get_runtime_store),
+) -> dict:
+    payload = _build_workbench_payload(store, market=market)
     payload["alpha"] = _build_alpha_panel_payload(store)
     return payload
+
+
+@router.get("/api/v1/dashboard/performance")
+def get_performance(
+    market: str = Query(default="a"),
+    account_kind: str = Query(default="auto"),
+    window: str = Query(default="30d"),
+) -> dict:
+    from src.storage.db import get_engine
+    from sqlalchemy.orm import Session as OrmSession
+    from src.paper_ledger.store import PaperLedgerStore
+
+    engine = get_engine()
+    with OrmSession(engine) as session:
+        ledger = PaperLedgerStore(session)
+        account = ledger.get_or_create_account(market, account_kind)
+
+        days_map = {"7d": 7, "30d": 30, "90d": 90, "180d": 180, "365d": 365}
+        days = days_map.get(window, 30)
+        nav_rows = ledger.get_nav_history(account.account_id, days=days)
+        history = [
+            {"trade_date": row.trade_date.isoformat(), "nav": float(row.nav)}
+            for row in nav_rows
+        ]
+
+        perf = _build_performance_payload(history)
+
+        windows = ["7d", "30d", "90d", "ytd"]
+        comparison = ledger.get_comparison_windows(account.account_id, windows)
+        perf["comparison_cards"] = [
+            {"window": w, "return": comparison.get(w, 0.0)} for w in windows
+        ]
+
+        return perf
+
+
+@router.get("/api/v1/dashboard/automation")
+def get_automation(
+    market: str = Query(default="a"),
+    account_kind: str = Query(default="auto"),
+) -> dict:
+    return _load_automation_state(None, market=market)
+
+
+@router.get("/api/v1/dashboard/history")
+def get_history(
+    market: str = Query(default="a"),
+    account_kind: str = Query(default="auto"),
+    source: str = Query(default="all", description="auto, manual, backfill, or all"),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> dict:
+    from src.storage.db import get_engine
+    from sqlalchemy.orm import Session as OrmSession
+    from src.paper_ledger.store import PaperLedgerStore
+
+    engine = get_engine()
+    with OrmSession(engine) as session:
+        ledger = PaperLedgerStore(session)
+        runs = ledger.get_run_history(market, source=source, limit=limit)
+
+        auto_runs = []
+        manual_runs = []
+        for run in runs:
+            entry = {
+                "run_id": run.run_id,
+                "trade_date": run.trade_date.isoformat(),
+                "status": run.status,
+                "source": run.run_source,
+                "created_at": run.created_at.isoformat() if run.created_at else None,
+            }
+            if run.run_source == "auto":
+                auto_runs.append(entry)
+            else:
+                manual_runs.append(entry)
+
+        account = ledger.get_or_create_account(market, account_kind)
+        nav_rows = ledger.get_nav_history(account.account_id, days=limit)
+        fills = [
+            {
+                "nav_id": row.nav_id,
+                "trade_date": row.trade_date.isoformat(),
+                "nav": float(row.nav),
+                "source": row.source,
+            }
+            for row in nav_rows
+        ]
+
+        return {
+            "auto_runs": auto_runs,
+            "manual_runs": manual_runs,
+            "fills": fills,
+            "decisions": [],
+        }
 
 
 @router.post("/api/v1/dashboard/run")
