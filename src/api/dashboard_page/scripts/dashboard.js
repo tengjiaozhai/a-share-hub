@@ -5,6 +5,9 @@ const KILL_SWITCH_STATUS_API = '/api/v1/kill-switch/status';
 const KILL_SWITCH_ACTIVATE_API = '/api/v1/kill-switch/activate';
 const KILL_SWITCH_DEACTIVATE_API = '/api/v1/kill-switch/deactivate';
 const PREFS_API = '/api/v1/dashboard/preferences';
+const PERFORMANCE_API = '/api/v1/dashboard/performance';
+const AUTOMATION_API = '/api/v1/dashboard/automation';
+const HISTORY_API = '/api/v1/dashboard/history';
 
 function switchTab(btn, paneId) {
   btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
@@ -528,9 +531,11 @@ function renderWorkbench(data, killStatus) {
 }
 
 async function loadDashboard() {
+  const market = document.getElementById('cfg-market')?.value || 'a';
   try {
+    setPanelLoading('all');
     const [workbenchRes, killStatusRes] = await Promise.all([
-      fetch(WORKBENCH_API),
+      fetch(`${WORKBENCH_API}?market=${market}&account_kind=auto`),
       fetch(KILL_SWITCH_STATUS_API),
     ]);
     const workbenchBody = await parseResponseBody(workbenchRes);
@@ -556,11 +561,99 @@ async function loadDashboard() {
     }
 
     renderWorkbench(workbenchBody, killStatusBody);
+
+    Promise.allSettled([
+      loadPerformancePanel(market),
+      loadAutomationPanel(market),
+      loadHistoryPanel(market),
+    ]).then(() => { clearPanelLoading(); });
+
     await refreshMarketQuotes();
   } catch (error) {
+    clearPanelLoading();
     addAlert('err', `数据加载失败: ${error.message}`);
   }
 }
+
+async function loadPerformancePanel(market, window) {
+  const win = window || '30d';
+  try {
+    const res = await fetch(`${PERFORMANCE_API}?market=${market}&account_kind=auto&window=${win}`);
+    if (!res.ok) return;
+    const data = await parseResponseBody(res);
+    renderPerformance(data);
+  } catch (_) {}
+}
+
+async function loadAutomationPanel(market) {
+  try {
+    const res = await fetch(`${AUTOMATION_API}?market=${market}&account_kind=auto`);
+    if (!res.ok) return;
+    const data = await parseResponseBody(res);
+    renderAutomation(data);
+  } catch (_) {}
+}
+
+async function loadHistoryPanel(market) {
+  try {
+    const res = await fetch(`${HISTORY_API}?market=${market}&account_kind=auto&source=all&limit=20`);
+    if (!res.ok) return;
+    const data = await parseResponseBody(res);
+    renderHistoryPanel(data);
+  } catch (_) {}
+}
+
+function renderHistoryPanel(data) {
+  const autoPane = document.getElementById('pane-auto');
+  const manualPane = document.getElementById('pane-manual');
+  if (autoPane) {
+    const runs = toList(data.auto_runs);
+    if (runs.length) {
+      autoPane.innerHTML = runs.map(r => `
+        <div class="tl-step done">
+          <div class="step-head">
+            <span class="step-tag execute">${escapeHtml(r.market || 'a')}</span>
+            <span class="step-time">${escapeHtml(formatTime(r.created_at))}</span>
+          </div>
+          <div class="step-body">${escapeHtml(r.status || '')} ${r.error_message ? '— ' + escapeHtml(r.error_message) : ''}</div>
+        </div>
+      `).join('');
+    } else {
+      autoPane.innerHTML = '<div class="timeline-empty">暂无自动运行记录</div>';
+    }
+  }
+  if (manualPane) {
+    const runs = toList(data.manual_runs);
+    if (runs.length) {
+      manualPane.innerHTML = runs.map(r => `
+        <div class="tl-step done">
+          <div class="step-head">
+            <span class="step-tag decision">${escapeHtml(r.market || 'a')}</span>
+            <span class="step-time">${escapeHtml(formatTime(r.created_at))}</span>
+          </div>
+          <div class="step-body">${escapeHtml(r.status || '')}</div>
+        </div>
+      `).join('');
+    } else {
+      manualPane.innerHTML = '<div class="timeline-empty">手动运行记录将在此显示</div>';
+    }
+  }
+}
+
+function setPanelLoading(panel) {
+  const loaders = {
+    'perf-today': '--', 'perf-month': '--', 'perf-drawdown': '--',
+    'auto-status': '...', 'auto-last': '...', 'auto-next': '...',
+  };
+  if (panel === 'all' || panel === 'perf') {
+    Object.entries(loaders).forEach(([id, val]) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val;
+    });
+  }
+}
+
+function clearPanelLoading() {}
 
 function buildRunPayload() {
   const watchlist = document.getElementById('cfg-watchlist').value

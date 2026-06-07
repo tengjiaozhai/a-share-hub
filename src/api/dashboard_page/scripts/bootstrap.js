@@ -30,12 +30,28 @@
   });
 })();
 
-// 市场选择变化时过滤观察列表
+// 市场选择变化时过滤观察列表并刷新所有面板
 (function initMarketFilter() {
   var marketEl = document.getElementById('cfg-market');
   if (!marketEl) return;
   marketEl.addEventListener('change', function() {
     filterWatchlistByMarket();
+    loadDashboard();
+  });
+})();
+
+// 区间表现对比 range pills 点击
+(function initRangePills() {
+  var container = document.getElementById('perf-range-pills');
+  if (!container) return;
+  container.addEventListener('click', function(e) {
+    var btn = e.target.closest('.pill-btn');
+    if (!btn) return;
+    container.querySelectorAll('.pill-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    var market = document.getElementById('cfg-market')?.value || 'a';
+    var window = btn.dataset.window || '30d';
+    loadPerformancePanel(market, window);
   });
 })();
 
