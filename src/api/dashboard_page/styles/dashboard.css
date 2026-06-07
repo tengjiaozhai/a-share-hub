@@ -1195,3 +1195,264 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   white-space: nowrap;
 }
 #a-quotes-table tr:hover { background: rgba(77,212,198,.04); }
+
+/* ═══════════════════════════════════════════════
+   THEME TOKEN SYSTEM
+   ═══════════════════════════════════════════════ */
+
+/* Default: Trading Terminal (already defined in :root) */
+
+/* Mission Control - navy + amber telemetry */
+html[data-theme='mission-control'] {
+  --bg: #0a0e1a;
+  --panel: #111827;
+  --panel-2: #0f1525;
+  --fg: #e2e8f0;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --dim: #64748b;
+  --accent: #f59e0b;
+  --accent-2: #3b82f6;
+  --green: #22c55e;
+  --red: #ef4444;
+  --yellow: #eab308;
+  --warn: #f59e0b;
+  --danger: #dc2626;
+  --blue: #3b82f6;
+  --stroke: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.06);
+}
+
+/* Neutral Modern - balanced light reading */
+html[data-theme='neutral-modern'] {
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --panel-2: #f1f5f9;
+  --fg: #1e293b;
+  --text: #1e293b;
+  --muted: #64748b;
+  --dim: #94a3b8;
+  --accent: #2563eb;
+  --accent-2: #7c3aed;
+  --green: #16a34a;
+  --red: #dc2626;
+  --yellow: #ca8a04;
+  --warn: #d97706;
+  --danger: #dc2626;
+  --blue: #2563eb;
+  --stroke: rgba(0, 0, 0, 0.08);
+  --border: rgba(0, 0, 0, 0.08);
+}
+
+/* HUD Signal - high-contrast operational dark */
+html[data-theme='hud-signal'] {
+  --bg: #000000;
+  --panel: #0a0a0a;
+  --panel-2: #111111;
+  --fg: #00ff88;
+  --text: #00ff88;
+  --muted: #00cc6a;
+  --dim: #00994f;
+  --accent: #00ff88;
+  --accent-2: #ff6600;
+  --green: #00ff88;
+  --red: #ff3333;
+  --yellow: #ffaa00;
+  --warn: #ffaa00;
+  --danger: #ff3333;
+  --blue: #00aaff;
+  --stroke: rgba(0, 255, 136, 0.15);
+  --border: rgba(0, 255, 136, 0.15);
+}
+
+/* Mono Grid - terminal-like monochrome */
+html[data-theme='mono-grid'] {
+  --bg: #111111;
+  --panel: #1a1a1a;
+  --panel-2: #222222;
+  --fg: #cccccc;
+  --text: #cccccc;
+  --muted: #888888;
+  --dim: #555555;
+  --accent: #ffffff;
+  --accent-2: #999999;
+  --green: #cccccc;
+  --red: #cccccc;
+  --yellow: #cccccc;
+  --warn: #999999;
+  --danger: #666666;
+  --blue: #aaaaaa;
+  --stroke: rgba(255, 255, 255, 0.1);
+  --border: rgba(255, 255, 255, 0.1);
+}
+
+/* OpenAI Editorial - calm dark editorial */
+html[data-theme='openai-editorial'] {
+  --bg: #1a1a2e;
+  --panel: #222240;
+  --panel-2: #1e1e38;
+  --fg: #e8e8f0;
+  --text: #e8e8f0;
+  --muted: #a0a0c0;
+  --dim: #707090;
+  --accent: #10a37f;
+  --accent-2: #6366f1;
+  --green: #10a37f;
+  --red: #ef4444;
+  --yellow: #f59e0b;
+  --warn: #f59e0b;
+  --danger: #ef4444;
+  --blue: #6366f1;
+  --stroke: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.06);
+}
+
+/* NVIDIA Power - performance green on black */
+html[data-theme='nvidia-power'] {
+  --bg: #000000;
+  --panel: #111111;
+  --panel-2: #0a0a0a;
+  --fg: #ffffff;
+  --text: #ffffff;
+  --muted: #a0a0a0;
+  --dim: #666666;
+  --accent: #76b900;
+  --accent-2: #00d4aa;
+  --green: #76b900;
+  --red: #ff4444;
+  --yellow: #ffaa00;
+  --warn: #ffaa00;
+  --danger: #ff4444;
+  --blue: #00d4aa;
+  --stroke: rgba(118, 185, 0, 0.2);
+  --border: rgba(118, 185, 0, 0.2);
+}
+
+/* Coinbase Institutional - clean finance white */
+html[data-theme='coinbase-institutional'] {
+  --bg: #f5f5f7;
+  --panel: #ffffff;
+  --panel-2: #f0f0f2;
+  --fg: #0a0a0a;
+  --text: #0a0a0a;
+  --muted: #666666;
+  --dim: #999999;
+  --accent: #0052ff;
+  --accent-2: #00d4aa;
+  --green: #00875a;
+  --red: #d32f2f;
+  --yellow: #f9a825;
+  --warn: #f9a825;
+  --danger: #d32f2f;
+  --blue: #0052ff;
+  --stroke: rgba(0, 0, 0, 0.08);
+  --border: rgba(0, 0, 0, 0.08);
+}
+
+/* Theme switcher styles */
+.theme-switcher {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+#theme-switcher-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--stroke);
+  border-radius: 5px;
+  color: var(--fg);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+#theme-switcher-btn:hover {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+
+#theme-switcher-btn i {
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.theme-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--panel);
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 280px;
+  z-index: 1000;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.theme-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .12s;
+  font-size: 12px;
+  color: var(--fg);
+}
+
+.theme-menu-item:hover,
+.theme-menu-item:focus {
+  background: var(--stroke);
+  outline: none;
+}
+
+.theme-menu-item.active {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.theme-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--stroke);
+  flex-shrink: 0;
+}
+
+.theme-menu-item.active .theme-swatch {
+  border-color: var(--bg);
+}
+
+.theme-item-label {
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.theme-item-intent {
+  color: var(--muted);
+  font-size: 10px;
+  margin-left: auto;
+}
+
+.theme-menu-item.active .theme-item-intent {
+  color: var(--bg);
+  opacity: 0.7;
+}
+
+.theme-swatch[data-theme-preview="trading-terminal"] { background: #4dd4c6; }
+.theme-swatch[data-theme-preview="mission-control"] { background: #f59e0b; }
+.theme-swatch[data-theme-preview="neutral-modern"] { background: #2563eb; }
+.theme-swatch[data-theme-preview="hud-signal"] { background: #00ff88; }
+.theme-swatch[data-theme-preview="mono-grid"] { background: #cccccc; }
+.theme-swatch[data-theme-preview="openai-editorial"] { background: #10a37f; }
+.theme-swatch[data-theme-preview="nvidia-power"] { background: #76b900; }
+.theme-swatch[data-theme-preview="coinbase-institutional"] { background: #0052ff; }

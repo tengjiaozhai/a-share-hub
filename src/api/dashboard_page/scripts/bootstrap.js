@@ -1,5 +1,18 @@
 // 启动初始化（DOMContentLoaded 之前的 DOM 监听器）
 
+// 初始化主题（从 data-theme 属性读取，由服务端注入）
+(function initTheme() {
+  var themeId = document.documentElement.getAttribute('data-theme') || 'trading-terminal';
+  if (typeof initThemeFromServer === 'function') {
+    initThemeFromServer(themeId);
+  } else if (typeof applyTheme === 'function') {
+    applyTheme(themeId);
+  }
+  if (typeof bindThemeSwitcher === 'function') {
+    bindThemeSwitcher();
+  }
+})();
+
 // 初始化回测日期为最近3个月
 (function initBacktestDates() {
   var endEl = document.getElementById('cfg-bt-end');

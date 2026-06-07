@@ -7,7 +7,7 @@ def _read(relative: str) -> str:
     return (_ROOT / relative).read_text(encoding="utf-8")
 
 
-def render_dashboard_html() -> str:
+def render_dashboard_html(theme_id: str = "trading-terminal") -> str:
     html = _read("shell.html")
     replacements = {
         "{{INLINE_STYLES}}": _read("styles/dashboard.css"),
@@ -16,6 +16,7 @@ def render_dashboard_html() -> str:
         "{{VIEW_MARKET}}": _read("partials/view_market.html"),
         "{{VIEW_ALPHA}}": _read("partials/view_alpha.html"),
         "{{INLINE_UTILS_JS}}": _read("scripts/utils.js"),
+        "{{INLINE_THEME_JS}}": _read("scripts/theme.js"),
         "{{INLINE_DASHBOARD_JS}}": _read("scripts/dashboard.js"),
         "{{INLINE_MARKET_JS}}": _read("scripts/market.js"),
         "{{INLINE_ALPHA_JS}}": _read("scripts/alpha.js"),
@@ -25,4 +26,5 @@ def render_dashboard_html() -> str:
     }
     for marker, content in replacements.items():
         html = html.replace(marker, content)
+    html = html.replace("{{THEME_ID}}", theme_id)
     return html

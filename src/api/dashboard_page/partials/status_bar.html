@@ -16,5 +16,12 @@
   <span class="sep"></span>
   <span style="color:var(--dim)">交易日: <span id="trade-date">--</span></span>
   <span style="color:var(--dim)">上次运行: <span id="last-run">--</span></span>
+  <div class="theme-switcher" id="theme-switcher">
+    <button id="theme-switcher-btn" aria-haspopup="menu" aria-expanded="false">
+      <i class="bi bi-palette"></i>
+      <span id="theme-switcher-label">Trading Terminal</span>
+    </button>
+    <div class="theme-menu" id="theme-menu" role="menu" hidden></div>
+  </div>
   <button class="kill-btn" onclick="killSwitch()">KILL SWITCH</button>
 </div>

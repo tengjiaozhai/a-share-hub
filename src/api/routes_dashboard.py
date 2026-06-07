@@ -108,8 +108,10 @@ def _compute_order_pnl(action: str, quantity: int, fill_price: float, current_pr
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
-def get_dashboard():
-    return render_dashboard_html()
+def get_dashboard(store: RuntimeStore = Depends(get_runtime_store)):
+    prefs = store.get_preference("dashboard") or {}
+    theme_id = prefs.get("theme_id", "trading-terminal")
+    return render_dashboard_html(theme_id=theme_id)
 
 
 @router.get("/api/v1/dashboard/workbench")
@@ -1112,17 +1114,29 @@ def scan_us_stock_pool(config: dict | None = None) -> dict:
 def get_preferences(store: RuntimeStore = Depends(get_runtime_store)) -> dict:
     """获取用户偏好设置（watchlist 等）。"""
     prefs = store.get_preference("dashboard") or {}
+    if "theme_id" not in prefs:
+        prefs["theme_id"] = "trading-terminal"
     return prefs
+
+
+_THEME_IDS = {
+    "trading-terminal", "mission-control", "neutral-modern", "hud-signal",
+    "mono-grid", "openai-editorial", "nvidia-power", "coinbase-institutional",
+}
 
 
 @router.put("/api/v1/dashboard/preferences")
 def save_preferences(config: dict, store: RuntimeStore = Depends(get_runtime_store)) -> dict:
     """保存用户偏好设置。"""
-    # 只允许保存白名单字段
     allowed_keys = {"watchlist", "market", "capital_base", "max_position_ratio", "stop_loss_ratio",
-                    "max_daily_loss_ratio", "execution_mode"}
+                    "max_daily_loss_ratio", "execution_mode", "theme_id"}
     filtered = {k: v for k, v in config.items() if k in allowed_keys}
-    store.set_preference("dashboard", filtered)
+    if "theme_id" in filtered and filtered["theme_id"] not in _THEME_IDS:
+        raise HTTPException(status_code=400, detail="invalid theme_id")
+    # Merge with existing preferences
+    existing = store.get_preference("dashboard") or {}
+    merged = {**existing, **filtered}
+    store.set_preference("dashboard", merged)
     return {"status": "ok"}
 
 
