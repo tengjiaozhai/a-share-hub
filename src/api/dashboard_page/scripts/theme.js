@@ -11,14 +11,14 @@ const THEME_IDS = [
 ];
 
 const THEMES = {
-  'trading-terminal': { label: 'Trading Terminal', intent: 'dark control room' },
-  'mission-control': { label: 'Mission Control', intent: 'navy and amber telemetry' },
-  'neutral-modern': { label: 'Neutral Modern', intent: 'balanced light reading' },
-  'hud-signal': { label: 'HUD Signal', intent: 'high-contrast operational dark' },
-  'mono-grid': { label: 'Mono Grid', intent: 'terminal-like monochrome' },
-  'openai-editorial': { label: 'OpenAI Editorial', intent: 'calm dark editorial' },
-  'nvidia-power': { label: 'NVIDIA Power', intent: 'performance green on black' },
-  'coinbase-institutional': { label: 'Coinbase Institutional', intent: 'clean finance white' },
+  'trading-terminal': { label: 'Trading Terminal', labelCn: '交易终端', intent: 'dark control room', intentCn: '深色控制室' },
+  'mission-control': { label: 'Mission Control', labelCn: '任务控制', intent: 'navy and amber telemetry', intentCn: '海军蓝琥珀遥测' },
+  'neutral-modern': { label: 'Neutral Modern', labelCn: '现代中性', intent: 'balanced light reading', intentCn: '平衡浅色阅读' },
+  'hud-signal': { label: 'HUD Signal', labelCn: 'HUD信号', intent: 'high-contrast operational dark', intentCn: '高对比度深色' },
+  'mono-grid': { label: 'Mono Grid', labelCn: '单色网格', intent: 'terminal-like monochrome', intentCn: '终端单色' },
+  'openai-editorial': { label: 'OpenAI Editorial', labelCn: 'OpenAI编辑', intent: 'calm dark editorial', intentCn: '冷静深色编辑' },
+  'nvidia-power': { label: 'NVIDIA Power', labelCn: 'NVIDIA性能', intent: 'performance green on black', intentCn: '性能绿黑' },
+  'coinbase-institutional': { label: 'Coinbase Institutional', labelCn: 'Coinbase机构', intent: 'clean finance white', intentCn: '干净金融白' },
 };
 
 const DEFAULT_THEME = 'trading-terminal';
@@ -29,7 +29,8 @@ function applyTheme(themeId) {
   if (!THEME_IDS.includes(themeId)) themeId = DEFAULT_THEME;
   _currentTheme = themeId;
   document.documentElement.setAttribute('data-theme', themeId);
-  const label = THEMES[themeId]?.label || themeId;
+  const theme = THEMES[themeId];
+  const label = theme ? `${theme.labelCn} ${theme.label}` : themeId;
   const labelEl = document.getElementById('theme-switcher-label');
   if (labelEl) labelEl.textContent = label;
   // Update selected state in menu
@@ -80,8 +81,8 @@ function renderThemeMenu() {
     const active = id === _currentTheme ? ' active' : '';
     return `<div class="theme-menu-item${active}" data-theme="${id}" role="menuitem" tabindex="0">
       <span class="theme-swatch" data-theme-preview="${id}"></span>
-      <span class="theme-item-label">${t.label}</span>
-      <span class="theme-item-intent">${t.intent}</span>
+      <span class="theme-item-label">${t.labelCn} ${t.label}</span>
+      <span class="theme-item-intent">${t.intentCn} ${t.intent}</span>
     </div>`;
   }).join('');
   // Bind clicks

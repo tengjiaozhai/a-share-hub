@@ -69,7 +69,7 @@ def _probe_services() -> dict:
 
 router = APIRouter()
 
-_HISTORY_LIMIT = 20
+_HISTORY_LIMIT = 100
 
 
 def _build_alpha_panel_payload(store: RuntimeStore) -> dict:
