@@ -23,28 +23,34 @@ function refreshMarketQuotes() {
 
 // ── 初始化 ──
 
+var _marketInitialized = false;
+
 function marketInit() {
+  if (!_marketInitialized) {
+    _marketInitialized = true;
+
+    var quotesSearch = document.getElementById('a-quotes-search');
+    if (quotesSearch) {
+      quotesSearch.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') aQuotesSearchFull();
+      });
+    }
+
+    var searchInput = document.getElementById('a-search-input');
+    if (searchInput) {
+      searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') aSearch();
+      });
+    }
+
+    aRefreshTimer = setInterval(function() {
+      aLoadQuotes();
+    }, 60000);
+  }
+
   aLoadQuotes();
   aUpdateMarketStatus();
   aLoadWatchlistChips();
-
-  aRefreshTimer = setInterval(function() {
-    aLoadQuotes();
-  }, 60000);
-
-  var quotesSearch = document.getElementById('a-quotes-search');
-  if (quotesSearch) {
-    quotesSearch.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter') aQuotesSearchFull();
-    });
-  }
-
-  var searchInput = document.getElementById('a-search-input');
-  if (searchInput) {
-    searchInput.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter') aSearch();
-    });
-  }
 }
 
 // ── Tab 切换 ──
