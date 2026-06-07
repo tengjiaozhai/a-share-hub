@@ -10,7 +10,7 @@ let searchResults = [];
 let selectedSearchIndex = -1;
 let isSearchMode = false;
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 20;
 const pag = {
   decisions: { page: 0, data: [] },
   orders:    { page: 0, data: [] },

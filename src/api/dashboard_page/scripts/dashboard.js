@@ -612,9 +612,10 @@ function renderHistoryPanel(data) {
   const autoPane = document.getElementById('pane-auto');
   const manualPane = document.getElementById('pane-manual');
   if (autoPane) {
+    const timeline = document.getElementById('timeline');
     const runs = toList(data.auto_runs);
     if (runs.length) {
-      autoPane.innerHTML = runs.map(r => `
+      const runsHtml = runs.map(r => `
         <div class="tl-step done">
           <div class="step-head">
             <span class="step-tag execute">${escapeHtml(r.market || 'a')}</span>
@@ -623,6 +624,13 @@ function renderHistoryPanel(data) {
           <div class="step-body">${escapeHtml(r.status || '')} ${r.error_message ? '— ' + escapeHtml(r.error_message) : ''}</div>
         </div>
       `).join('');
+      if (timeline) {
+        timeline.innerHTML = runsHtml;
+      } else {
+        autoPane.innerHTML = runsHtml;
+      }
+    } else if (timeline) {
+      timeline.innerHTML = '<div class="timeline-empty">暂无自动运行记录</div>';
     } else {
       autoPane.innerHTML = '<div class="timeline-empty">暂无自动运行记录</div>';
     }

@@ -10,7 +10,7 @@ var usRefreshTimer = null;
 var usQuotesAllData = [];
 var usQuotesFilteredData = [];
 var usQuotesPage = 1;
-var usQuotesPageSize = 30;
+var usQuotesPageSize = 20;
 var usQuotesSearchQuery = '';
 
 // ── 全库搜索状态 ──
