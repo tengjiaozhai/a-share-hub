@@ -161,7 +161,7 @@ function savePreferences() {
 function renderConfig(config) {
   if (!config || configHydrated) return;
 
-  if (config.watchlist) {
+  if (config.watchlist && config.watchlist.length > 0) {
     document.getElementById('cfg-watchlist').value = Array.isArray(config.watchlist)
       ? config.watchlist.join(',') : config.watchlist;
   }
@@ -524,6 +524,13 @@ function renderWorkbench(data, killStatus) {
   renderStatus(data, killStatus || {});
   const config = { ...(data.config || {}), ...(data._serverPrefs || {}) };
   renderConfig(config);
+
+  // Apply server-side pagination metadata
+  const p = data.pagination || {};
+  if (p.decisions) { pag.decisions.total = p.decisions.total; pag.decisions.totalPages = p.decisions.total_pages; }
+  if (p.orders) { pag.orders.total = p.orders.total; pag.orders.totalPages = p.orders.total_pages; }
+  if (p.targets) { pag.targets.total = p.targets.total; pag.targets.totalPages = p.targets.total_pages; }
+
   renderDecisions(data.history?.decisions || []);
   renderOrders(data.history?.orders || []);
   renderTargets(data.history?.targets || []);

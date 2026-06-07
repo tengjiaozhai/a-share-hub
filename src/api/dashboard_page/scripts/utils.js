@@ -12,36 +12,52 @@ let isSearchMode = false;
 
 const PAGE_SIZE = 20;
 const pag = {
-  decisions: { page: 0, data: [] },
-  orders:    { page: 0, data: [] },
-  targets:   { page: 0, data: [] },
-  errors:    { page: 0, data: [] },
+  decisions: { page: 0, data: [], total: 0, totalPages: 1 },
+  orders:    { page: 0, data: [], total: 0, totalPages: 1 },
+  targets:   { page: 0, data: [], total: 0, totalPages: 1 },
+  errors:    { page: 0, data: [], total: 0, totalPages: 1 },
 };
 
 function pagSlice(key) {
-  const p = pag[key];
-  const start = p.page * PAGE_SIZE;
-  return p.data.slice(start, start + PAGE_SIZE);
+  return pag[key].data;
 }
 
 function pagTotal(key) {
-  return Math.max(1, Math.ceil(pag[key].data.length / PAGE_SIZE));
+  return Math.max(1, pag[key].totalPages);
 }
 
 function pagPrev(key) {
-  if (pag[key].page > 0) { pag[key].page--; renderPagTab(key); }
+  if (pag[key].page > 0) { pag[key].page--; loadPagPage(key); }
 }
 
 function pagNext(key) {
-  if (pag[key].page < pagTotal(key) - 1) { pag[key].page++; renderPagTab(key); }
+  if (pag[key].page < pagTotal(key) - 1) { pag[key].page++; loadPagPage(key); }
+}
+
+function loadPagPage(key) {
+  const page = pag[key].page + 1;
+  const market = document.getElementById('cfg-market')?.value || 'a';
+  fetch(`${WORKBENCH_API}?market=${market}&account_kind=auto&${key}_page=${page}&page_size=${PAGE_SIZE}`)
+    .then(r => r.json())
+    .then(data => {
+      const items = data.history?.[key] || [];
+      pag[key].data = items;
+      if (data.pagination?.[key]) {
+        pag[key].total = data.pagination[key].total;
+        pag[key].totalPages = data.pagination[key].total_pages;
+      }
+      renderPagTab(key);
+    })
+    .catch(() => {});
 }
 
 function renderPagControls(key) {
-  const total = pagTotal(key);
+  const total = pag[key].totalPages;
   const cur = pag[key].page + 1;
+  const totalItems = pag[key].total;
   return `<div class="pagination">
     <button onclick="pagPrev('${key}')" ${cur <= 1 ? 'disabled' : ''}>上一页</button>
-    <span class="page-info">${cur} / ${total}</span>
+    <span class="page-info">${cur} / ${total} (${totalItems}条)</span>
     <button onclick="pagNext('${key}')" ${cur >= total ? 'disabled' : ''}>下一页</button>
   </div>`;
 }
