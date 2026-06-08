@@ -9,7 +9,7 @@ var aRefreshTimer = null;
 var aWatchlistData = []; // 全部自选列表
 var aQuotesPageData = []; // 当前页行情数据
 var aQuotesPage = 1;
-var aQuotesPageSize = 30;
+var aQuotesPageSize = 20;
 var aQuotesSearchQuery = '';
 var aWatchlistTotal = 0;
 var aIsSearchMode = false;
@@ -23,28 +23,34 @@ function refreshMarketQuotes() {
 
 // ── 初始化 ──
 
+var _marketInitialized = false;
+
 function marketInit() {
+  if (!_marketInitialized) {
+    _marketInitialized = true;
+
+    var quotesSearch = document.getElementById('a-quotes-search');
+    if (quotesSearch) {
+      quotesSearch.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') aQuotesSearchFull();
+      });
+    }
+
+    var searchInput = document.getElementById('a-search-input');
+    if (searchInput) {
+      searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') aSearch();
+      });
+    }
+
+    aRefreshTimer = setInterval(function() {
+      aLoadQuotes();
+    }, 60000);
+  }
+
   aLoadQuotes();
   aUpdateMarketStatus();
   aLoadWatchlistChips();
-
-  aRefreshTimer = setInterval(function() {
-    aLoadQuotes();
-  }, 60000);
-
-  var quotesSearch = document.getElementById('a-quotes-search');
-  if (quotesSearch) {
-    quotesSearch.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter') aQuotesSearchFull();
-    });
-  }
-
-  var searchInput = document.getElementById('a-search-input');
-  if (searchInput) {
-    searchInput.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter') aSearch();
-    });
-  }
 }
 
 // ── Tab 切换 ──

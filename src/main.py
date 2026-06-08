@@ -107,7 +107,47 @@ def build_app() -> FastAPI:
     app.include_router(us_stock_router)
     app.include_router(a_stock_router)
 
+    _register_scheduler_lifecycle(app)
+
     return app
+
+
+def _register_scheduler_lifecycle(app: FastAPI) -> None:
+    """注册调度器生命周期钩子（启动/关闭）"""
+    from contextlib import asynccontextmanager
+
+    from src.scheduler.daily_scheduler import get_scheduler
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        scheduler = get_scheduler()
+        scheduler.start()
+        try:
+            _run_startup_backfill()
+            yield
+        finally:
+            scheduler.stop()
+
+    app.router.lifespan_context = lifespan
+
+
+def _run_startup_backfill() -> None:
+    """启动时检查 auto 账户是否需要 backfill"""
+    try:
+        from sqlalchemy.orm import Session
+        from src.paper_ledger.backfill import backfill_recent_days, needs_backfill
+        from src.paper_ledger.store import PaperLedgerStore
+        from src.storage.dependencies import get_runtime_store
+
+        engine = get_runtime_store().engine
+        with Session(engine) as session:
+            store = PaperLedgerStore(session)
+            for market in ("a", "us"):
+                if needs_backfill(store, market):
+                    backfill_recent_days(store, market, days=30)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"startup backfill failed: {e}")
 
 
 def build_cli_parser() -> argparse.ArgumentParser:

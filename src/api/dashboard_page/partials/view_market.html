@@ -1,93 +1,109 @@
 <div class="view" id="view-market">
-<div class="main">
+<div class="market-shell">
 
-  <!-- ── LEFT: 搜索 + 自选管理 ── -->
-  <div class="panel-left">
-    <h2>A 股工作台</h2>
-
-    <div class="field">
-      <label>搜索 A 股</label>
-      <div style="display:flex;gap:6px">
-        <input type="text" id="a-search-input" placeholder="输入代码或名称..." style="flex:1">
-        <button class="us-btn-primary" onclick="aSearch()">搜索</button>
-      </div>
-      <div id="a-search-results" style="display:none;margin-top:6px;max-height:150px;overflow-y:auto"></div>
-    </div>
-
-    <div class="field">
-      <label>自选管理</label>
-      <div style="display:flex;gap:6px;margin-bottom:6px">
-        <input type="text" id="a-add-symbol" placeholder="股票代码" style="flex:1">
-        <button class="us-btn-add" onclick="aAddManual()">+ 添加</button>
-      </div>
-      <div id="a-watchlist-chips" style="display:flex;flex-wrap:wrap;gap:4px;max-height:120px;overflow-y:auto"></div>
-    </div>
-
-    <div class="field">
-      <label>交易时间</label>
-      <div id="a-market-status" style="font-size:12px;color:var(--dim)">加载中...</div>
-    </div>
-
-    <div class="field">
-      <label>数据刷新</label>
-      <div style="display:flex;gap:6px;align-items:center">
-        <span id="a-last-refresh" style="font-size:11px;color:var(--dim)">--</span>
-        <button class="us-btn-refresh" onclick="aLoadQuotes()">刷新</button>
+  <!-- ═══ LEFT RAIL: Search + Watchlist ═══ -->
+  <aside class="mkt-rail-left" aria-label="A股搜索与自选">
+    <div class="mkt-card">
+      <div class="mkt-card-head">搜索 A 股</div>
+      <div class="mkt-card-body">
+        <div class="mkt-search-row">
+          <input type="text" id="a-search-input" class="mkt-input" placeholder="输入代码或名称...">
+          <button class="mkt-btn mkt-btn-accent" onclick="aSearch()">搜索</button>
+        </div>
+        <div id="a-search-results" class="mkt-search-results"></div>
       </div>
     </div>
-  </div>
 
-  <!-- ── CENTER: 行情列表 ── -->
-  <div class="panel-center">
-    <div class="tabs">
+    <div class="mkt-card">
+      <div class="mkt-card-head">自选管理</div>
+      <div class="mkt-card-body">
+        <div class="mkt-search-row">
+          <input type="text" id="a-add-symbol" class="mkt-input" placeholder="股票代码">
+          <button class="mkt-btn mkt-btn-green" onclick="aAddManual()">+ 添加</button>
+        </div>
+        <div id="a-watchlist-chips" class="mkt-chips"></div>
+      </div>
+    </div>
+
+    <div class="mkt-card">
+      <div class="mkt-card-head">市场状态</div>
+      <div class="mkt-card-body">
+        <div class="mkt-kpi-row">
+          <span class="mkt-kpi-label">交易时间</span>
+          <span class="mkt-kpi-val" id="a-market-status">加载中...</span>
+        </div>
+        <div class="mkt-kpi-row">
+          <span class="mkt-kpi-label">数据刷新</span>
+          <span class="mkt-kpi-val" id="a-last-refresh">--</span>
+        </div>
+        <button class="mkt-btn mkt-btn-outline" onclick="aLoadQuotes()" style="margin-top:8px;width:100%">刷新行情</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ═══ CENTER: Quotes + KLine + Fundamental ═══ -->
+  <main class="mkt-rail-center" aria-label="A股行情">
+    <div class="mkt-tabs">
       <button class="active" onclick="aSwitchCenterTab(this,'a-quotes-pane')">行情列表</button>
       <button onclick="aSwitchCenterTab(this,'a-kline-pane')">K线图</button>
       <button onclick="aSwitchCenterTab(this,'a-fundamental-pane')">基本面</button>
     </div>
 
     <div class="tab-pane active" id="a-quotes-pane">
-      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
-        <input type="text" id="a-quotes-search" placeholder="搜索代码或名称..." style="flex:1">
-        <span id="a-quotes-count" style="font-size:12px;color:var(--dim)"></span>
+      <div class="mkt-toolbar">
+        <input type="text" id="a-quotes-search" class="mkt-input" placeholder="搜索代码或名称...">
+        <span id="a-quotes-count" class="mkt-count"></span>
       </div>
-      <div id="a-quotes-loading" style="color:var(--dim);padding:20px;text-align:center">加载中...</div>
-      <table class="table" id="a-quotes-table" style="display:none">
-        <thead>
-          <tr>
-            <th>代码</th><th>名称</th><th>最新价</th><th>涨跌额</th><th>涨跌幅</th>
-            <th>开盘</th><th>最高</th><th>最低</th><th>成交量</th><th>换手率</th><th>操作</th>
-          </tr>
-        </thead>
-        <tbody id="a-quotes-body"></tbody>
-      </table>
-      <div id="a-quotes-pagination" style="display:flex;justify-content:center;align-items:center;gap:8px;margin-top:12px;font-size:12px"></div>
+      <div id="a-quotes-loading" class="mkt-empty">加载中...</div>
+      <div class="mkt-table-wrap">
+        <table class="mkt-table" id="a-quotes-table" style="display:none">
+          <thead>
+            <tr>
+              <th>代码</th><th>名称</th><th>最新价</th><th>涨跌额</th><th>涨跌幅</th>
+              <th>开盘</th><th>最高</th><th>最低</th><th>成交量</th><th>换手率</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="a-quotes-body"></tbody>
+        </table>
+      </div>
+      <div id="a-quotes-pagination" class="mkt-pagination"></div>
     </div>
 
     <div class="tab-pane" id="a-kline-pane">
-      <div style="display:flex;gap:6px;margin-bottom:8px;align-items:center">
-        <span style="font-size:12px;color:var(--dim)">周期:</span>
-        <button class="us-kline-btn active" onclick="aSetKlinePeriod(this,'daily')">日K</button>
-        <button class="us-kline-btn" onclick="aSetKlinePeriod(this,'weekly')">周K</button>
-        <button class="us-kline-btn" onclick="aSetKlinePeriod(this,'monthly')">月K</button>
-        <span id="a-kline-symbol" style="margin-left:auto;font-size:12px;color:var(--dim)">--</span>
+      <div class="mkt-toolbar">
+        <span class="mkt-kpi-label">周期</span>
+        <div class="mkt-pill-group">
+          <button class="mkt-pill active" onclick="aSetKlinePeriod(this,'daily')">日K</button>
+          <button class="mkt-pill" onclick="aSetKlinePeriod(this,'weekly')">周K</button>
+          <button class="mkt-pill" onclick="aSetKlinePeriod(this,'monthly')">月K</button>
+        </div>
+        <span id="a-kline-symbol" class="mkt-kpi-val" style="margin-left:auto">--</span>
       </div>
-      <div id="a-kline-chart" style="min-height:300px;color:var(--dim);text-align:center;padding:40px">点击股票代码查看K线</div>
+      <div id="a-kline-chart" class="mkt-chart-placeholder">点击股票代码查看K线</div>
     </div>
 
     <div class="tab-pane" id="a-fundamental-pane">
-      <div id="a-fundamental-content" style="padding:20px;color:var(--dim);text-align:center">点击股票代码查看基本面</div>
+      <div id="a-fundamental-content" class="mkt-empty">点击股票代码查看基本面</div>
     </div>
-  </div>
+  </main>
 
-  <!-- ── RIGHT: 股票详情 ── -->
-  <div class="panel-right">
-    <h3><i class="bi bi-info-circle"></i> 股票详情</h3>
-    <div id="a-detail-summary" style="font-size:12px;color:var(--dim)">点击股票代码查看详情</div>
-    <div id="a-detail-content" style="display:none"></div>
+  <!-- ═══ RIGHT RAIL: Details + Recent ═══ -->
+  <aside class="mkt-rail-right" aria-label="A股详情">
+    <div class="mkt-card">
+      <div class="mkt-card-head">股票详情</div>
+      <div class="mkt-card-body">
+        <div id="a-detail-summary" class="mkt-detail-placeholder">点击股票代码查看详情</div>
+        <div id="a-detail-content" style="display:none"></div>
+      </div>
+    </div>
 
-    <h3 style="margin-top:16px"><i class="bi bi-clock-history"></i> 最近搜索</h3>
-    <div id="a-recent-searches" style="font-size:12px;color:var(--dim)">暂无</div>
-  </div>
+    <div class="mkt-card">
+      <div class="mkt-card-head">最近搜索</div>
+      <div class="mkt-card-body">
+        <div id="a-recent-searches" class="mkt-detail-placeholder">暂无</div>
+      </div>
+    </div>
+  </aside>
 
 </div>
 </div>

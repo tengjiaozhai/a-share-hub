@@ -10,7 +10,7 @@ var usRefreshTimer = null;
 var usQuotesAllData = [];
 var usQuotesFilteredData = [];
 var usQuotesPage = 1;
-var usQuotesPageSize = 30;
+var usQuotesPageSize = 20;
 var usQuotesSearchQuery = '';
 
 // ── 全库搜索状态 ──
@@ -19,40 +19,44 @@ var usSearchResults = [];
 
 // ── 初始化 ──
 
+var _usInitialized = false;
+
 function usInit() {
+  if (!_usInitialized) {
+    _usInitialized = true;
+
+    var searchInput = document.getElementById('us-search-input');
+    if (searchInput) {
+      searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') usSearch();
+      });
+    }
+
+    var quotesSearch = document.getElementById('us-quotes-search');
+    if (quotesSearch) {
+      quotesSearch.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') usQuotesSearchFull();
+      });
+      quotesSearch.addEventListener('input', function() {
+        if (!this.value.trim()) {
+          usIsSearchMode = false;
+          usSearchResults = [];
+          usQuotesPage = 1;
+          usFilterAndRenderQuotes();
+        }
+      });
+    }
+
+    usRefreshTimer = setInterval(function() {
+      usLoadQuotes();
+      usLoadBinanceAssets();
+    }, 60000);
+  }
+
   usLoadQuotes();
   usLoadBinanceAssets();
   usUpdateMarketStatus();
   usLoadWatchlistChips();
-
-  usRefreshTimer = setInterval(function() {
-    usLoadQuotes();
-    usLoadBinanceAssets();
-  }, 60000);
-
-  var searchInput = document.getElementById('us-search-input');
-  if (searchInput) {
-    searchInput.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter') usSearch();
-    });
-  }
-
-  // 行情搜索框 - 支持回车全库搜索
-  var quotesSearch = document.getElementById('us-quotes-search');
-  if (quotesSearch) {
-    quotesSearch.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter') usQuotesSearchFull();
-    });
-    quotesSearch.addEventListener('input', function() {
-      if (!this.value.trim()) {
-        // 清空搜索，恢复正常模式
-        usIsSearchMode = false;
-        usSearchResults = [];
-        usQuotesPage = 1;
-        usFilterAndRenderQuotes();
-      }
-    });
-  }
 }
 
 // ── Tab 切换 ──

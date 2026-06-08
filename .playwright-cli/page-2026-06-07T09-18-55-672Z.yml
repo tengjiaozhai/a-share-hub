@@ -1,0 +1,175 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]: A股模拟工作台
+    - generic [ref=e5]:
+      - button "工作台" [ref=e6] [cursor=pointer]
+      - button " A股" [ref=e7] [cursor=pointer]:
+        - generic [ref=e8]: 
+        - text: A股
+      - button " Alpha" [ref=e9] [cursor=pointer]:
+        - generic [ref=e10]: 
+        - text: Alpha
+      - button " 美股" [ref=e11] [cursor=pointer]:
+        - generic [ref=e12]: 
+        - text: 美股
+    - generic [ref=e14]: 影子模式
+    - generic [ref=e16]: 数据库
+    - generic [ref=e18]: LLM
+    - generic [ref=e20]: 行情
+    - generic [ref=e23]: "交易日: --"
+    - generic [ref=e24]: "上次运行: --"
+    - button "KILL SWITCH" [ref=e25] [cursor=pointer]
+  - generic [ref=e27]:
+    - region "系统状态" [ref=e28]:
+      - generic [ref=e29]:
+        - generic [ref=e30]: 模式
+        - generic [ref=e31]: 影子模式
+      - generic [ref=e32]:
+        - generic [ref=e33]: 市场
+        - combobox [ref=e34]:
+          - option "A股" [selected]
+          - option "美股"
+      - generic [ref=e35]:
+        - generic [ref=e36]: 交易日
+        - generic [ref=e37]: "--"
+      - generic [ref=e38]:
+        - generic [ref=e39]: Kill Switch
+        - button "KILL SWITCH" [ref=e40] [cursor=pointer]
+      - generic [ref=e41]:
+        - generic [ref=e42]: 服务
+        - generic [ref=e43]: DB
+        - generic [ref=e44]: LLM
+        - generic [ref=e45]: 行情
+      - generic [ref=e46]:
+        - generic [ref=e47]: 上次运行
+        - generic [ref=e48]: "--"
+    - complementary "策略配置" [ref=e49]:
+      - heading "策略配置" [level=2] [ref=e50]
+      - generic [ref=e51]:
+        - generic [ref=e52]: 模拟总资金 (万元)
+        - spinbutton [ref=e53]: "100"
+      - generic [ref=e54]:
+        - generic [ref=e55]: 观察列表 (逗号分隔)
+        - textbox "600519.SH,000858.SZ,601318.SH" [ref=e56]
+      - generic [ref=e57]:
+        - generic [ref=e58]: 手动添加股票
+        - textbox "输入代码后按回车添加，如 600519.SH" [ref=e59]
+      - generic [ref=e60]:
+        - generic [ref=e61]:
+          - generic [ref=e62]: 单票最大仓位 (%)
+          - spinbutton [ref=e63]: "20"
+        - generic [ref=e64]:
+          - generic [ref=e65]: 止损阈值 (%)
+          - spinbutton [ref=e66]: "-5"
+      - generic [ref=e67]:
+        - generic [ref=e68]:
+          - generic [ref=e69]: 单日最大亏损 (%)
+          - spinbutton [ref=e70]: "-3"
+        - generic [ref=e71]:
+          - generic [ref=e72]: 决策模式
+          - combobox [ref=e73]:
+            - option "Mock (模拟)" [selected]
+            - option "Real (实盘决策)"
+      - generic [ref=e75]: 允许新开仓
+      - button "保存配置" [ref=e77] [cursor=pointer]
+      - button "运行一轮模拟交易" [ref=e79] [cursor=pointer]
+      - generic [ref=e80]: "快捷键: Ctrl+Enter 运行 | Ctrl+S 保存"
+      - heading "快速回测" [level=2] [ref=e82]
+      - generic [ref=e83]:
+        - generic [ref=e84]:
+          - generic [ref=e85]: 开始日期
+          - textbox [ref=e86]: 2026-03-07
+        - generic [ref=e87]:
+          - generic [ref=e88]: 结束日期
+          - textbox [ref=e89]: 2026-06-07
+      - button "运行回测" [ref=e90] [cursor=pointer]
+      - heading "全市场扫描" [level=2] [ref=e92]
+      - generic [ref=e93]:
+        - button "全市场扫描" [ref=e94] [cursor=pointer]
+        - generic [ref=e95]: 点击按钮开始全市场扫描
+    - main "绩效面板" [ref=e96]:
+      - generic [ref=e97]:
+        - generic [ref=e98]: 自动运行状态
+        - generic [ref=e99]:
+          - generic [ref=e100]:
+            - generic [ref=e101]: 今日状态
+            - generic [ref=e102]: ...
+          - generic [ref=e103]:
+            - generic [ref=e104]: 最后运行
+            - generic [ref=e105]: ...
+          - generic [ref=e106]:
+            - generic [ref=e107]: 下次运行
+            - generic [ref=e108]: ...
+      - generic [ref=e110]: 净值曲线
+      - generic [ref=e113]:
+        - generic [ref=e114]: 区间表现对比
+        - generic [ref=e115]:
+          - generic [ref=e116]:
+            - button "7天" [ref=e117] [cursor=pointer]
+            - button "30天" [ref=e118] [cursor=pointer]
+            - button "90天" [ref=e119] [cursor=pointer]
+            - button "YTD" [ref=e120] [cursor=pointer]
+          - generic [ref=e121]: 选择区间查看表现数据
+      - generic [ref=e122]:
+        - generic [ref=e123]: 最近运行记录
+        - generic [ref=e124]:
+          - generic [ref=e125]:
+            - button "自动" [ref=e126] [cursor=pointer]
+            - button "手动" [ref=e127] [cursor=pointer]
+          - generic [ref=e130]: 配置参数后点击「运行一轮模拟交易」开始
+    - complementary "自动化与风控" [ref=e131]:
+      - heading "区间表现" [level=2] [ref=e132]
+      - generic [ref=e133]:
+        - generic [ref=e134]: 今日收益
+        - generic [ref=e135]: "--"
+      - generic [ref=e136]:
+        - generic [ref=e137]: 月度收益
+        - generic [ref=e138]: "--"
+      - generic [ref=e139]:
+        - generic [ref=e140]: 最大回撤
+        - generic [ref=e141]: "--"
+      - heading "风控状态" [level=2] [ref=e142]
+      - generic [ref=e143]:
+        - generic [ref=e144]: 当日累计盈亏
+        - generic [ref=e145]: CNY 0
+      - generic [ref=e146]:
+        - generic [ref=e147]: 持仓集中度
+        - generic [ref=e148]: "--"
+      - generic [ref=e149]:
+        - generic [ref=e150]: 活跃目标仓位
+        - generic [ref=e151]: "0"
+      - generic [ref=e152]:
+        - generic [ref=e153]: 未完成订单
+        - generic [ref=e154]: "0"
+      - heading "执行模式" [level=2] [ref=e155]
+      - generic [ref=e156]:
+        - button "完整链路" [ref=e157] [cursor=pointer]
+        - button "仅决策" [ref=e158] [cursor=pointer]
+      - generic [ref=e159]:
+        - generic [ref=e160]:
+          - text: "决策:"
+          - strong [ref=e161]: Mock (模拟)
+          - text: "| 执行:"
+          - strong [ref=e162]: 完整链路
+          - text: "| 新开仓:"
+          - strong [ref=e163]: 是
+        - generic [ref=e164]: ▶️ 决策 → 目标仓位 → 执行 → 对账
+      - heading "异常提示" [level=2] [ref=e165]
+      - generic [ref=e167]: 系统就绪，等待运行
+    - region "历史记录" [ref=e168]:
+      - generic [ref=e169]:
+        - button "决策" [ref=e170] [cursor=pointer]
+        - button "订单" [ref=e171] [cursor=pointer]
+        - button "目标仓位" [ref=e172] [cursor=pointer]
+        - button "异常" [ref=e173] [cursor=pointer]
+      - table [ref=e176]:
+        - rowgroup [ref=e177]:
+          - row "时间 股票 动作 置信度 理由" [ref=e178]:
+            - columnheader "时间" [ref=e179]
+            - columnheader "股票" [ref=e180]
+            - columnheader "动作" [ref=e181]
+            - columnheader "置信度" [ref=e182]
+            - columnheader "理由" [ref=e183]
+        - rowgroup [ref=e184]:
+          - row "暂无数据" [ref=e185]:
+            - cell "暂无数据" [ref=e186]

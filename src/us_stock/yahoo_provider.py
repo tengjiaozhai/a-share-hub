@@ -18,8 +18,8 @@ class YahooProvider:
 
     def __init__(
         self,
-        cache_ttl_quote: int = 60,
-        cache_ttl_kline: int = 300,
+        cache_ttl_quote: int = 120,
+        cache_ttl_kline: int = 600,
         cache_ttl_fundamental: int = 3600,
         batch_size: int = 50,
         batch_delay: float = 0.5,
@@ -151,14 +151,24 @@ class YahooProvider:
         if cached is not None:
             return cached
 
-        try:
-            ticker = yf.Ticker(symbol)
-            df = ticker.history(period=range_str, interval=interval)
-        except Exception as e:
-            logger.warning(f"yfinance get_kline({symbol}) failed: {e}")
-            return []
+        # 重试逻辑，最多重试3次
+        df = None
+        for attempt in range(3):
+            try:
+                ticker = yf.Ticker(symbol)
+                df = ticker.history(period=range_str, interval=interval)
+                if not df.empty:
+                    break
+            except Exception as e:
+                error_msg = str(e)
+                if ("Rate limited" in error_msg or "Too Many Requests" in error_msg) and attempt < 2:
+                    logger.info(f"yfinance rate limited, retrying in {(attempt + 1) * 2} seconds...")
+                    time.sleep((attempt + 1) * 2)
+                    continue
+                logger.warning(f"yfinance get_kline({symbol}) failed: {e}")
+                return []
 
-        if df.empty:
+        if df is None or df.empty:
             return []
 
         klines = []

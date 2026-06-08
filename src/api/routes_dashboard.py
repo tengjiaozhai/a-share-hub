@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
 
 from src.agents.llm_client import LLMClient
@@ -21,8 +21,10 @@ def _now_cst() -> datetime:
 
 
 def _today_close_cst() -> datetime:
-    """返回今天 A 股收盘时间（北京时间 15:00:00）"""
+    """返回今天 A 股收盘时间（北京时间 15:00:00），若已过则推到次日"""
     today = _now_cst().replace(hour=15, minute=0, second=0, microsecond=0)
+    if today <= _now_cst():
+        today = today + timedelta(days=1)
     return today
 
 _llm_client: LLMClient | None = None
@@ -67,7 +69,7 @@ def _probe_services() -> dict:
 
 router = APIRouter()
 
-_HISTORY_LIMIT = 20
+_HISTORY_LIMIT = 100
 
 
 def _build_alpha_panel_payload(store: RuntimeStore) -> dict:
@@ -106,15 +108,122 @@ def _compute_order_pnl(action: str, quantity: int, fill_price: float, current_pr
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
-def get_dashboard():
-    return render_dashboard_html()
+def get_dashboard(store: RuntimeStore = Depends(get_runtime_store)):
+    prefs = store.get_preference("dashboard") or {}
+    theme_id = prefs.get("theme_id", "trading-terminal")
+    return render_dashboard_html(theme_id=theme_id)
 
 
 @router.get("/api/v1/dashboard/workbench")
-def get_workbench(store: RuntimeStore = Depends(get_runtime_store)) -> dict:
-    payload = _build_workbench_payload(store)
+def get_workbench(
+    market: str = Query(default="a", description="市场: a 或 us"),
+    account_kind: str = Query(default="auto", description="账户类型: auto 或 manual"),
+    decisions_page: int = Query(default=1, ge=1, description="决策页码"),
+    orders_page: int = Query(default=1, ge=1, description="订单页码"),
+    targets_page: int = Query(default=1, ge=1, description="目标仓位页码"),
+    page_size: int = Query(default=20, ge=1, le=100, description="每页条数"),
+    store: RuntimeStore = Depends(get_runtime_store),
+) -> dict:
+    payload = _build_workbench_payload(
+        store, market=market,
+        decisions_page=decisions_page, orders_page=orders_page,
+        targets_page=targets_page, page_size=page_size,
+    )
     payload["alpha"] = _build_alpha_panel_payload(store)
     return payload
+
+
+@router.get("/api/v1/dashboard/performance")
+def get_performance(
+    market: str = Query(default="a"),
+    account_kind: str = Query(default="auto"),
+    window: str = Query(default="30d"),
+) -> dict:
+    from sqlalchemy.orm import Session as OrmSession
+    from src.paper_ledger.store import PaperLedgerStore
+    from src.storage.dependencies import get_runtime_store
+
+    engine = get_runtime_store().engine
+    with OrmSession(engine) as session:
+        ledger = PaperLedgerStore(session)
+        account = ledger.get_or_create_account(market, account_kind)
+
+        days_map = {"7d": 7, "30d": 30, "90d": 90, "180d": 180, "365d": 365}
+        days = days_map.get(window, 30)
+        nav_rows = ledger.get_nav_history(account.account_id, days=days)
+        history = [
+            {"trade_date": row.trade_date.isoformat(), "nav": float(row.nav)}
+            for row in nav_rows
+        ]
+
+        perf = _build_performance_payload(history)
+
+        windows = ["7d", "30d", "90d", "ytd"]
+        comparison = ledger.get_comparison_windows(account.account_id, windows)
+        perf["comparison_cards"] = [
+            {"window": w, "return": comparison.get(w, 0.0)} for w in windows
+        ]
+
+        return perf
+
+
+@router.get("/api/v1/dashboard/automation")
+def get_automation(
+    market: str = Query(default="a"),
+    account_kind: str = Query(default="auto"),
+) -> dict:
+    return _load_automation_state(None, market=market)
+
+
+@router.get("/api/v1/dashboard/history")
+def get_history(
+    market: str = Query(default="a"),
+    account_kind: str = Query(default="auto"),
+    source: str = Query(default="all", description="auto, manual, backfill, or all"),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> dict:
+    from sqlalchemy.orm import Session as OrmSession
+    from src.paper_ledger.store import PaperLedgerStore
+    from src.storage.dependencies import get_runtime_store
+
+    engine = get_runtime_store().engine
+    with OrmSession(engine) as session:
+        ledger = PaperLedgerStore(session)
+        runs = ledger.get_run_history(market, source=source, limit=limit)
+
+        auto_runs = []
+        manual_runs = []
+        for run in runs:
+            entry = {
+                "run_id": run.run_id,
+                "trade_date": run.trade_date.isoformat(),
+                "status": run.status,
+                "source": run.run_source,
+                "created_at": run.created_at.isoformat() if run.created_at else None,
+            }
+            if run.run_source == "auto":
+                auto_runs.append(entry)
+            else:
+                manual_runs.append(entry)
+
+        account = ledger.get_or_create_account(market, account_kind)
+        nav_rows = ledger.get_nav_history(account.account_id, days=limit)
+        fills = [
+            {
+                "nav_id": row.nav_id,
+                "trade_date": row.trade_date.isoformat(),
+                "nav": float(row.nav),
+                "source": row.source,
+            }
+            for row in nav_rows
+        ]
+
+        return {
+            "auto_runs": auto_runs,
+            "manual_runs": manual_runs,
+            "fills": fills,
+            "decisions": [],
+        }
 
 
 @router.post("/api/v1/dashboard/run")
@@ -310,16 +419,145 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
     return payload
 
 
-def _build_workbench_payload(store, latest_run_override: dict | None = None) -> dict:
+def _build_performance_payload(history: list[dict]) -> dict:
+    """根据 nav 历史计算今日/月度收益、最大回撤、净值曲线"""
+    if not history:
+        return {"today_return": 0.0, "month_return": 0.0, "max_drawdown": 0.0, "nav_curve": []}
+
+    sorted_history = sorted(history, key=lambda row: row.get("trade_date") or "")
+    nav_values = [float(row.get("nav", 0.0)) for row in sorted_history]
+    today_return = 0.0
+    month_return = 0.0
+    max_drawdown = 0.0
+
+    if len(nav_values) >= 2:
+        today_return = round((nav_values[-1] - nav_values[-2]) / nav_values[-2], 6) if nav_values[-2] else 0.0
+        month_return = round((nav_values[-1] - nav_values[0]) / nav_values[0], 6) if nav_values[0] else 0.0
+
+        peak = nav_values[0]
+        for nav in nav_values:
+            if nav > peak:
+                peak = nav
+            if peak > 0:
+                drawdown = (peak - nav) / peak
+                if drawdown > max_drawdown:
+                    max_drawdown = drawdown
+        max_drawdown = round(max_drawdown, 6)
+
+    nav_curve = [
+        {"trade_date": row.get("trade_date"), "nav": float(row.get("nav", 0.0))}
+        for row in sorted_history
+    ]
+    return {
+        "today_return": today_return,
+        "month_return": month_return,
+        "max_drawdown": max_drawdown,
+        "nav_curve": nav_curve,
+    }
+
+
+def _build_automation_payload(
+    last_run_at: str | None = None,
+    last_status: str | None = None,
+    next_run_at: str | None = None,
+) -> dict:
+    """构建自动交易状态卡片数据"""
+    return {
+        "today_status": last_status or "pending",
+        "last_run_at": last_run_at,
+        "next_run_at": next_run_at,
+    }
+
+
+def _load_paper_nav_history(store, market: str = "a") -> list[dict]:
+    """从 paper_ledger 加载净值历史；如未初始化则返回空列表"""
+    try:
+        from sqlalchemy.orm import Session
+        from src.paper_ledger.store import PaperLedgerStore
+        from src.storage.dependencies import get_runtime_store
+
+        engine = get_runtime_store().engine
+        with Session(engine) as session:
+            ledger = PaperLedgerStore(session)
+            account = ledger.get_or_create_account(market, "auto")
+            nav_rows = ledger.get_nav_history(account.account_id, days=30)
+            return [
+                {"trade_date": row.trade_date.isoformat(), "nav": float(row.nav)}
+                for row in nav_rows
+            ]
+    except Exception:
+        return []
+
+
+def _load_automation_state(store, market: str = "a") -> dict:
+    """从 paper_ledger 加载最新 auto run + 调度器下次时间"""
+    last_run_at: str | None = None
+    last_status: str | None = None
+    try:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+        from src.paper_ledger.models import PaperRunRow
+        from src.storage.dependencies import get_runtime_store
+
+        engine = get_runtime_store().engine
+        with Session(engine) as session:
+            stmt = (
+                select(PaperRunRow)
+                .where(PaperRunRow.market == market)
+                .where(PaperRunRow.run_source == "auto")
+                .order_by(PaperRunRow.created_at.desc())
+                .limit(1)
+            )
+            row = session.execute(stmt).scalar_one_or_none()
+            if row is not None:
+                last_run_at = row.created_at.isoformat() if row.created_at else None
+                last_status = row.status
+    except Exception:
+        pass
+
+    next_run_at: str | None = None
+    try:
+        from src.scheduler.daily_scheduler import get_scheduler
+
+        scheduler = get_scheduler()
+        job_id = "a_share_daily" if market == "a" else "us_daily"
+        for job in scheduler._scheduler.get_jobs():
+            if job.id == job_id:
+                next_run_at = job.next_run_time.isoformat() if job.next_run_time else None
+                break
+    except Exception:
+        pass
+
+    return _build_automation_payload(
+        last_run_at=last_run_at,
+        last_status=last_status,
+        next_run_at=next_run_at,
+    )
+
+
+def _build_workbench_payload(store, latest_run_override: dict | None = None, market: str = "a",
+                              decisions_page: int = 1, orders_page: int = 1,
+                              targets_page: int = 1, page_size: int = 20) -> dict:
     reconciliation = store.get_reconciliation_status()
-    decision_rows = store.list_decision_runs(limit=_HISTORY_LIMIT)
-    target_rows = store.list_active_target_positions(limit=_HISTORY_LIMIT)
-    order_rows = store.list_execution_orders(limit=_HISTORY_LIMIT)
+
+    # Paginated queries
+    d_offset = (decisions_page - 1) * page_size
+    o_offset = (orders_page - 1) * page_size
+    t_offset = (targets_page - 1) * page_size
+
+    decision_rows = store.list_decision_runs(limit=page_size, offset=d_offset)
+    target_rows = store.list_active_target_positions(limit=page_size, offset=t_offset)
+    order_rows = store.list_execution_orders(limit=page_size, offset=o_offset)
 
     decisions = [_serialize_decision_row(row) for row in decision_rows]
     targets = [_serialize_target_row(row) for row in target_rows]
     orders = [_serialize_order_row(row) for row in order_rows]
     daily_pnl = store.sum_daily_pnl()
+
+    # Counts for pagination
+    decisions_total = store.count_decision_runs()
+    orders_total = store.count_execution_orders()
+    targets_total = store.count_active_target_positions()
 
     latest_run = latest_run_override or _build_latest_run(
         decisions=decisions,
@@ -334,6 +572,8 @@ def _build_workbench_payload(store, latest_run_override: dict | None = None) -> 
         "last_run_at": latest_run.get("finished_at") or latest_run.get("started_at"),
         "services": _probe_services(),
         "kill_switch": {"active": store.get_kill_switch()},
+        "performance": _build_performance_payload(_load_paper_nav_history(store, market)),
+        "automation": _load_automation_state(store, market),
         "risk": {
             "active_target_count": len(targets),
             "open_orders": reconciliation.get("open_orders", 0),
@@ -346,7 +586,12 @@ def _build_workbench_payload(store, latest_run_override: dict | None = None) -> 
             "decisions": decisions,
             "orders": orders,
             "targets": targets,
-            "events": _list_recent_events(store, limit=_HISTORY_LIMIT),
+            "events": _list_recent_events(store, limit=page_size),
+        },
+        "pagination": {
+            "decisions": {"page": decisions_page, "page_size": page_size, "total": decisions_total, "total_pages": max(1, -(-decisions_total // page_size))},
+            "orders": {"page": orders_page, "page_size": page_size, "total": orders_total, "total_pages": max(1, -(-orders_total // page_size))},
+            "targets": {"page": targets_page, "page_size": page_size, "total": targets_total, "total_pages": max(1, -(-targets_total // page_size))},
         },
     }
 
@@ -895,17 +1140,29 @@ def scan_us_stock_pool(config: dict | None = None) -> dict:
 def get_preferences(store: RuntimeStore = Depends(get_runtime_store)) -> dict:
     """获取用户偏好设置（watchlist 等）。"""
     prefs = store.get_preference("dashboard") or {}
+    if "theme_id" not in prefs:
+        prefs["theme_id"] = "trading-terminal"
     return prefs
+
+
+_THEME_IDS = {
+    "trading-terminal", "mission-control", "neutral-modern", "hud-signal",
+    "mono-grid", "openai-editorial", "nvidia-power", "coinbase-institutional",
+}
 
 
 @router.put("/api/v1/dashboard/preferences")
 def save_preferences(config: dict, store: RuntimeStore = Depends(get_runtime_store)) -> dict:
     """保存用户偏好设置。"""
-    # 只允许保存白名单字段
     allowed_keys = {"watchlist", "market", "capital_base", "max_position_ratio", "stop_loss_ratio",
-                    "max_daily_loss_ratio", "execution_mode"}
+                    "max_daily_loss_ratio", "execution_mode", "theme_id"}
     filtered = {k: v for k, v in config.items() if k in allowed_keys}
-    store.set_preference("dashboard", filtered)
+    if "theme_id" in filtered and filtered["theme_id"] not in _THEME_IDS:
+        raise HTTPException(status_code=400, detail="invalid theme_id")
+    # Merge with existing preferences
+    existing = store.get_preference("dashboard") or {}
+    merged = {**existing, **filtered}
+    store.set_preference("dashboard", merged)
     return {"status": "ok"}
 
 

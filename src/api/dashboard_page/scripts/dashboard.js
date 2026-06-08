@@ -5,6 +5,9 @@ const KILL_SWITCH_STATUS_API = '/api/v1/kill-switch/status';
 const KILL_SWITCH_ACTIVATE_API = '/api/v1/kill-switch/activate';
 const KILL_SWITCH_DEACTIVATE_API = '/api/v1/kill-switch/deactivate';
 const PREFS_API = '/api/v1/dashboard/preferences';
+const PERFORMANCE_API = '/api/v1/dashboard/performance';
+const AUTOMATION_API = '/api/v1/dashboard/automation';
+const HISTORY_API = '/api/v1/dashboard/history';
 
 function switchTab(btn, paneId) {
   btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
@@ -62,6 +65,11 @@ function renderStatus(workbench, killStatus) {
   document.getElementById('mode-pill').textContent = modeRaw === 'shadow' ? '影子模式' : modeRaw;
   document.getElementById('trade-date').textContent = formatDate(workbench.trade_date);
   document.getElementById('last-run').textContent = formatTime(workbench.last_run_at);
+
+  const innerTradeDate = document.getElementById('inner-trade-date');
+  const innerLastRun = document.getElementById('inner-last-run');
+  if (innerTradeDate) innerTradeDate.textContent = formatDate(workbench.trade_date);
+  if (innerLastRun) innerLastRun.textContent = formatTime(workbench.last_run_at);
 
   const services = workbench.services || {};
   document.getElementById('db-dot').className = serviceDotClass(services.database);
@@ -153,13 +161,15 @@ function savePreferences() {
 function renderConfig(config) {
   if (!config || configHydrated) return;
 
-  if (config.watchlist) {
+  if (config.watchlist && config.watchlist.length > 0) {
     document.getElementById('cfg-watchlist').value = Array.isArray(config.watchlist)
       ? config.watchlist.join(',') : config.watchlist;
   }
   if (config.market) {
     document.getElementById('cfg-market').value = config.market;
   }
+  // 根据市场过滤观察列表
+  filterWatchlistByMarket();
   if (config.capital_base !== undefined) {
     const capitalWan = Number(config.capital_base) / 10000;
     document.getElementById('cfg-capital').value = capitalWan;
@@ -275,6 +285,91 @@ function renderRisk(risk, targets) {
   const pnlEl = document.getElementById('risk-pnl');
   pnlEl.textContent = pnl !== 0 ? formatCurrency(pnl) : '今日无交易';
   pnlEl.className = `risk-value ${pnl > 0 ? 'green' : pnl < 0 ? 'red' : ''}`;
+}
+
+function formatPercent(value) {
+  const num = Number(value) || 0;
+  const sign = num > 0 ? '+' : '';
+  return `${sign}${(num * 100).toFixed(2)}%`;
+}
+
+function renderPerformance(performance) {
+  const perf = performance || {};
+  const todayEl = document.getElementById('perf-today');
+  const monthEl = document.getElementById('perf-month');
+  const drawdownEl = document.getElementById('perf-drawdown');
+
+  if (todayEl) {
+    todayEl.textContent = formatPercent(perf.today_return);
+    todayEl.style.color = (Number(perf.today_return) || 0) >= 0 ? 'var(--green)' : 'var(--red)';
+  }
+  if (monthEl) {
+    monthEl.textContent = formatPercent(perf.month_return);
+    monthEl.style.color = (Number(perf.month_return) || 0) >= 0 ? 'var(--green)' : 'var(--red)';
+  }
+  if (drawdownEl) {
+    drawdownEl.textContent = formatPercent(perf.max_drawdown);
+  }
+
+  const canvas = document.getElementById('perf-nav-canvas');
+  if (canvas && toList(perf.nav_curve).length > 0) {
+    drawNavCurve(canvas, toList(perf.nav_curve));
+  } else if (canvas) {
+    drawNavCurve(canvas, []);
+  }
+}
+
+function drawNavCurve(canvas, points) {
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  canvas.width = width * dpr;
+  canvas.height = height * dpr;
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, width, height);
+
+  if (!points || points.length < 2) {
+    ctx.fillStyle = 'rgba(120, 120, 120, 0.5)';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('暂无净值数据', width / 2, height / 2);
+    return;
+  }
+
+  const navs = points.map(p => Number(p.nav) || 0);
+  const min = Math.min(...navs);
+  const max = Math.max(...navs);
+  const range = max - min || 1;
+
+  ctx.strokeStyle = '#22c55e';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  points.forEach((p, i) => {
+    const x = (i / (points.length - 1)) * width;
+    const y = height - ((Number(p.nav) - min) / range) * (height - 4) - 2;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+}
+
+function renderAutomation(automation) {
+  const auto = automation || {};
+  const statusEl = document.getElementById('auto-status');
+  const lastEl = document.getElementById('auto-last');
+  const nextEl = document.getElementById('auto-next');
+  if (statusEl) {
+    statusEl.textContent = auto.today_status || 'pending';
+    const s = String(auto.today_status || 'pending');
+    statusEl.style.color = s === 'success' ? 'var(--green)' : s === 'failed' ? 'var(--red)' : 'var(--yellow)';
+  }
+  if (lastEl) {
+    lastEl.textContent = auto.last_run_at ? formatTime(auto.last_run_at) : '尚未运行';
+  }
+  if (nextEl) {
+    nextEl.textContent = auto.next_run_at ? formatTime(auto.next_run_at) : '等待调度';
+  }
 }
 
 function renderErrorEvents(events) {
@@ -429,19 +524,30 @@ function renderWorkbench(data, killStatus) {
   renderStatus(data, killStatus || {});
   const config = { ...(data.config || {}), ...(data._serverPrefs || {}) };
   renderConfig(config);
+
+  // Apply server-side pagination metadata
+  const p = data.pagination || {};
+  if (p.decisions) { pag.decisions.total = p.decisions.total; pag.decisions.totalPages = p.decisions.total_pages; }
+  if (p.orders) { pag.orders.total = p.orders.total; pag.orders.totalPages = p.orders.total_pages; }
+  if (p.targets) { pag.targets.total = p.targets.total; pag.targets.totalPages = p.targets.total_pages; }
+
   renderDecisions(data.history?.decisions || []);
   renderOrders(data.history?.orders || []);
   renderTargets(data.history?.targets || []);
   renderRisk(data.risk || {}, data.history?.targets || []);
+  renderPerformance(data.performance || {});
+  renderAutomation(data.automation || {});
   renderErrorEvents(data.history?.events || []);
   renderAlerts(data.risk?.alerts || []);
   renderTimeline(data.latest_run || { steps: [] });
 }
 
 async function loadDashboard() {
+  const market = document.getElementById('cfg-market')?.value || 'a';
   try {
+    setPanelLoading('all');
     const [workbenchRes, killStatusRes] = await Promise.all([
-      fetch(WORKBENCH_API),
+      fetch(`${WORKBENCH_API}?market=${market}&account_kind=auto`),
       fetch(KILL_SWITCH_STATUS_API),
     ]);
     const workbenchBody = await parseResponseBody(workbenchRes);
@@ -467,11 +573,107 @@ async function loadDashboard() {
     }
 
     renderWorkbench(workbenchBody, killStatusBody);
+
+    Promise.allSettled([
+      loadPerformancePanel(market),
+      loadAutomationPanel(market),
+      loadHistoryPanel(market),
+    ]).then(() => { clearPanelLoading(); });
+
     await refreshMarketQuotes();
   } catch (error) {
+    clearPanelLoading();
     addAlert('err', `数据加载失败: ${error.message}`);
   }
 }
+
+async function loadPerformancePanel(market, window) {
+  const win = window || '30d';
+  try {
+    const res = await fetch(`${PERFORMANCE_API}?market=${market}&account_kind=auto&window=${win}`);
+    if (!res.ok) return;
+    const data = await parseResponseBody(res);
+    renderPerformance(data);
+  } catch (_) {}
+}
+
+async function loadAutomationPanel(market) {
+  try {
+    const res = await fetch(`${AUTOMATION_API}?market=${market}&account_kind=auto`);
+    if (!res.ok) return;
+    const data = await parseResponseBody(res);
+    renderAutomation(data);
+  } catch (_) {}
+}
+
+async function loadHistoryPanel(market) {
+  try {
+    const res = await fetch(`${HISTORY_API}?market=${market}&account_kind=auto&source=all&limit=20`);
+    if (!res.ok) return;
+    const data = await parseResponseBody(res);
+    renderHistoryPanel(data);
+  } catch (_) {}
+}
+
+function renderHistoryPanel(data) {
+  const autoPane = document.getElementById('pane-auto');
+  const manualPane = document.getElementById('pane-manual');
+  if (autoPane) {
+    const timeline = document.getElementById('timeline');
+    const runs = toList(data.auto_runs);
+    if (runs.length) {
+      const runsHtml = runs.map(r => `
+        <div class="tl-step done">
+          <div class="step-head">
+            <span class="step-tag execute">${escapeHtml(r.market || 'a')}</span>
+            <span class="step-time">${escapeHtml(formatTime(r.created_at))}</span>
+          </div>
+          <div class="step-body">${escapeHtml(r.status || '')} ${r.error_message ? '— ' + escapeHtml(r.error_message) : ''}</div>
+        </div>
+      `).join('');
+      if (timeline) {
+        timeline.innerHTML = runsHtml;
+      } else {
+        autoPane.innerHTML = runsHtml;
+      }
+    } else if (timeline) {
+      timeline.innerHTML = '<div class="timeline-empty">暂无自动运行记录</div>';
+    } else {
+      autoPane.innerHTML = '<div class="timeline-empty">暂无自动运行记录</div>';
+    }
+  }
+  if (manualPane) {
+    const runs = toList(data.manual_runs);
+    if (runs.length) {
+      manualPane.innerHTML = runs.map(r => `
+        <div class="tl-step done">
+          <div class="step-head">
+            <span class="step-tag decision">${escapeHtml(r.market || 'a')}</span>
+            <span class="step-time">${escapeHtml(formatTime(r.created_at))}</span>
+          </div>
+          <div class="step-body">${escapeHtml(r.status || '')}</div>
+        </div>
+      `).join('');
+    } else {
+      manualPane.innerHTML = '<div class="timeline-empty">手动运行记录将在此显示</div>';
+    }
+  }
+}
+
+function setPanelLoading(panel) {
+  const loaders = {
+    'perf-today': '--', 'perf-month': '--', 'perf-drawdown': '--',
+    'auto-status': '...', 'auto-last': '...', 'auto-next': '...',
+  };
+  if (panel === 'all' || panel === 'perf') {
+    Object.entries(loaders).forEach(([id, val]) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val;
+    });
+  }
+}
+
+function clearPanelLoading() {}
 
 function buildRunPayload() {
   const watchlist = document.getElementById('cfg-watchlist').value
@@ -799,9 +1001,39 @@ function setButtonLoading(btn, loading, originalText) {
 
 // ── 观察列表同步 ──
 
+function isUSSymbol(symbol) {
+  return !symbol.endsWith('.SH') && !symbol.endsWith('.SZ');
+}
+
+function filterWatchlistByMarket() {
+  var market = document.getElementById('cfg-market').value;
+  var watchlistEl = document.getElementById('cfg-watchlist');
+  if (!watchlistEl) return;
+
+  var symbols = watchlistEl.value.split(',').map(s => s.trim()).filter(Boolean);
+  var filtered = symbols.filter(function(s) {
+    return market === 'us' ? isUSSymbol(s) : !isUSSymbol(s);
+  });
+
+  watchlistEl.value = filtered.join(',');
+}
+
 function addToWorkspaceWatchlist(symbol, name) {
   var watchlistEl = document.getElementById('cfg-watchlist');
   if (!watchlistEl) return false;
+
+  var market = document.getElementById('cfg-market').value;
+  var isUS = isUSSymbol(symbol);
+  
+  // 检查是否与当前市场匹配
+  if (market === 'us' && !isUS) {
+    showToast(symbol + ' 是A股股票，请切换到A股市场', 'info');
+    return false;
+  }
+  if (market === 'a' && isUS) {
+    showToast(symbol + ' 是美股股票，请切换到美股市场', 'info');
+    return false;
+  }
 
   var current = watchlistEl.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
   if (current.indexOf(symbol) !== -1) {

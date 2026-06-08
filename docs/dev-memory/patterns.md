@@ -310,3 +310,147 @@ SSH或数据库连接失败时：
 1. 检查SSH密钥是否添加到GitHub
 2. 检查GitHub主机密钥是否在known_hosts
 3. 检查仓库权限
+
+---
+
+## uvicorn 部署模式（2026-06-06 更新）
+
+### 旧模式（有问题）
+
+```bash
+nohup ~/miniconda3/envs/py311/bin/python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 > /tmp/uvicorn.log 2>&1 &
+```
+
+问题：CWD 继承父 shell（`/home/ec2-user`），导致相对路径和 .env 加载失败。
+
+### 新模式（推荐）
+
+```bash
+# 1. 确保端口干净
+pkill -9 -f 'uvicorn src.main' 2>/dev/null; sleep 2
+
+# 2. 用 setsid 脱离 shell 会话
+setsid ~/miniconda3/envs/py311/bin/python -m uvicorn src.main:app \
+  --host 0.0.0.0 --port 8000 \
+  --app-dir /home/ec2-user/a-share-hub \
+  > /tmp/uvicorn.log 2>&1 < /dev/null &
+```
+
+关键：
+- `setsid` 让进程脱离当前 shell 的进程组（PPID=1）
+- `--app-dir` 指定工作目录
+- `< /dev/null` 关闭 stdin
+
+### 验证
+
+```bash
+pgrep -af 'uvicorn src.main' | grep -v bash
+netstat -tlnp 2>/dev/null | grep 8000
+curl -s http://127.0.0.1:8000/health
+```
+
+---
+
+## 文件读取锚定模式
+
+**永远不要用相对路径读文件**。CWD 不可控。
+
+```python
+# 错误
+open("src/api/dashboard.html")
+
+# 正确
+from pathlib import Path
+html_path = Path(__file__).parent / "dashboard.html"
+open(html_path)
+```
+
+同样适用于配置文件：
+
+```python
+# 错误
+SettingsConfigDict(env_file=".env")
+
+# 正确
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SettingsConfigDict(env_file=str(_PROJECT_ROOT / ".env"))
+```
+
+---
+
+## SOCKS 代理模式
+
+### 启动 SSH 隧道
+
+```bash
+# 在 AWS 上执行（后台保活）
+ssh -f -N -o ServerAliveInterval=60 -o ServerAliveCountMax=3 \
+    -D 1080 root@121.43.231.155
+```
+
+### Python 中使用
+
+```python
+import requests
+
+session = requests.Session()
+session.proxies = {
+    "http": "socks5h://127.0.0.1:1080",
+    "https": "socks5h://127.0.0.1:1080",
+}
+resp = session.get("https://qt.gtimg.cn/q=sh600519")
+```
+
+### 注意
+
+- `socks5h`（带 h）表示 DNS 也走代理解析
+- `requests` 不会自动读 `ALL_PROXY` 环境变量，必须用 `session.proxies`
+- 阿里云 SSH 密码：`Lcx20001201`（仅首次配置用，之后用密钥免密）
+
+---
+
+## 缓存层失败不写入模式
+
+```python
+# 错误：失败也缓存
+frame = fetcher()
+self._frame = frame  # 空结果也被缓存
+self._expires_at = now + timedelta(seconds=86400)
+
+# 正确：失败不缓存
+frame = fetcher()
+if frame.empty:
+    return frame  # 不写缓存，下次重试
+self._frame = frame
+self._expires_at = now + timedelta(seconds=86400)
+```
+
+---
+
+## MCP 配置绝对路径模式
+
+非交互 shell 不加载 nvm/conda，MCP 配置必须用绝对路径：
+
+```json
+{
+  "mcp": {
+    "server-name": {
+      "command": [
+        "/Users/shenmingjie/.nvm/versions/node/v24.13.1/bin/node",
+        "/path/to/global/node_modules/server/index.js"
+      ],
+      "environment": {
+        "API_KEY": "..."
+      }
+    }
+  }
+}
+```
+
+安装全局工具：
+
+```bash
+export PATH="/Users/shenmingjie/.nvm/versions/node/v24.13.1/bin:$PATH"
+npm install -g package-name
+which package-name  # 获取绝对路径
+```
