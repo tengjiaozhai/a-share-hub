@@ -414,3 +414,125 @@ symbol 格式: "600519.SH" / "000858.SZ" / "920001.BJ"
 - 分页条件：`rows.length >= PAGE_SIZE`（等于也触发）
 - 客户端分页：数据全量加载到内存，前端按页切片渲染
 - 数据变化时重置到第 1 页，翻页时不重置
+
+---
+
+## 仪表盘前端模块化架构（2026-06-06 新增）
+
+**决策日期**: 2026-06-06  
+**状态**: 已确认
+
+### 架构变更
+
+从单文件 `dashboard.html`（2000+ 行）拆分为模块化结构：
+
+```
+src/api/dashboard_page/
+├── shell.html              # HTML 骨架（加载 CSS/JS）
+├── render.py               # 动态组装 partials
+├── partials/               # HTML 片段
+│   ├── status_bar.html
+│   ├── view_dashboard.html
+│   ├── view_market.html
+│   ├── view_us_stock.html
+│   └── view_alpha.html
+├── scripts/                # JS 模块
+│   ├── bootstrap.js        # 初始化 + 快捷键
+│   ├── utils.js            # 纯函数工具
+│   ├── dashboard.js        # 策略配置/回测/扫描
+│   ├── market.js           # A 股工作台
+│   ├── us_stock.js         # 美股工作台
+│   └── alpha.js            # Alpha 策略
+└── styles/
+    └── dashboard.css       # 所有样式
+```
+
+### 渲染方式
+
+`GET /dashboard` → `render.py` 读 `shell.html`，注入 partials 片段，返回完整 HTML。
+
+### 决策依据
+
+- 单文件 2000+ 行难以维护
+- 多个 tab（A股/美股/Alpha）独立开发不冲突
+- CSS 集中管理，避免样式冲突
+
+---
+
+## 双服务器代理架构（2026-06-06 新增）
+
+**决策日期**: 2026-06-06  
+**状态**: 已确认
+
+### 架构
+
+```
+AWS (新加坡, 13.214.201.113)  ← SOCKS5 1080 →  阿里云 (国内, 121.43.231.155)
+     uvicorn 服务                    SSH -D 1080        国内 IP 出口
+     AkShare 请求 ──────────────────────────────→ 腾讯/东方财富 API
+```
+
+### 关键配置
+
+- **SSH 隧道**：`ssh -f -N -D 1080 root@121.43.231.155`（保活 60s）
+- **SOCKS 代理**：`SOCKS_PROXY=socks5h://127.0.0.1:1080`（`.env`）
+- **AkShare 使用**：`session.proxies = {"http": settings.socks_proxy}`
+- **SSH 密钥**：AWS → 阿里云免密（公钥已写入 authorized_keys）
+
+### 决策依据
+
+- A 股数据源（腾讯/东方财富）从海外直连不稳定或被封
+- 阿里云有国内 IP，保证数据源可用性
+- SSH 隧道加密，安全且无需额外代理软件
+
+---
+
+## 回测市场自动检测（2026-06-06 新增）
+
+**决策日期**: 2026-06-06  
+**状态**: 已确认
+
+### 问题
+
+前端 `cfg-market` 默认值始终是 `"a"`（A股），当 watchlist 里是美股符号时 market 仍传 `"a"` → 后端用 A 股数据源拉美股 → 失败。
+
+### 决策
+
+后端从 watchlist 符号自动推断 market，忽略前端可能不准确的 market 参数：
+
+```python
+market = "us" if any(s.upper().endswith(".US") for s in watchlist) else config.get("market", "a")
+```
+
+### 决策依据
+
+- 前端 market 选择器与实际 watchlist 内容容易不同步
+- 后端推断比前端传参更可靠
+- `.US` 后缀是美股的标准格式
+
+---
+
+## 数据源自动切换（2026-06-06 新增）
+
+**决策日期**: 2026-06-06  
+**状态**: 已确认
+
+### 方案
+
+`MARKET_DATA_PROVIDER=auto` 时自动构建 provider chain：
+
+```
+本地: AkShare（走 SOCKS 代理）→ 失败 → mock
+服务器: Tushare Pro → 失败 → AkShare（走 SOCKS）→ mock
+```
+
+### 文件
+
+- `src/data/providers/provider_chain.py`：`build_provider_chain_from_settings()`
+- `src/data/providers/tushare_provider.py`：Tushare Pro 实现
+
+### 注意事项
+
+- Tushare Pro 需 2000+ 积分才能用 `stock_basic`/`daily` 接口
+- 当前 token 仅 120 积分，Tushare 实际不可用
+- 实际数据来源是 AkShare + SOCKS 代理

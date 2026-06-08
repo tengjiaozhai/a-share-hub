@@ -345,3 +345,162 @@ def _fetch_tencent_quotes(symbols: list[str]) -> pd.DataFrame:
 ### 解决方案
 
 在 `renderConfig` 函数开头添加 `config.watchlist` 判断和赋值。
+
+---
+
+## dashboard.html FileNotFoundError（CWD 问题）
+
+**解决时间**: 2026-06-01  
+**问题**: `GET /dashboard` 返回 500，日志 `FileNotFoundError: 'src/api/dashboard.html'`
+
+### 根本原因
+
+uvicorn 用 `--app-dir` 启动时，进程 CWD 是 `/home/ec2-user`（nohup 父 shell 目录），而非项目根目录。代码里 `open("src/api/dashboard.html")` 用相对路径找不到文件。
+
+### 解决方案
+
+```python
+# src/api/routes_dashboard.py
+from pathlib import Path
+
+@router.get("/dashboard", response_class=HTMLResponse)
+def get_dashboard():
+    html_path = Path(__file__).parent / "dashboard.html"
+    with open(html_path, "r", encoding="utf-8") as f:
+        return f.read()
+```
+
+### 规则
+
+**永远不要用相对路径读文件**。用 `Path(__file__).parent` 锚定到代码文件位置。
+
+---
+
+## StockCatalogCache 空结果缓存 24 小时
+
+**解决时间**: 2026-06-01  
+**问题**: 首次冷启动扫描返回 `no_catalog`，之后 24 小时内所有扫描一直返回 `no_catalog`
+
+### 根本原因
+
+`StockCatalogCache.load()` 中，fetcher 失败返回空 DataFrame 时，空结果仍被缓存 24 小时（`ttl_seconds=86400`）。后续 load 直接命中空缓存，永不重试。
+
+### 解决方案
+
+```python
+# src/data/providers/akshare_catalog.py
+def load(self, fetcher):
+    ...
+    frame = normalize_stock_list_frame(fetcher())
+    if frame.empty:
+        return frame  # 空结果不缓存，下次重试
+    self._frame = frame
+    self._expires_at = now + timedelta(seconds=self.ttl_seconds)
+    return frame
+```
+
+同时在 `_build_catalog_frame()` 加 3 次重试（2s/4s 退避），扛住 SOCKS 隧道偶发 reset。
+
+### 规则
+
+**缓存层：失败结果不写缓存**。成功结果才缓存，失败留给下次重试。
+
+---
+
+## uvicorn 启动后 CWD 导致 .env 加载失败
+
+**解决时间**: 2026-06-01  
+**问题**: `GET /api/v1/dashboard/workbench` 返回 500，日志 `password authentication failed for user "app_user"`
+
+### 根本原因
+
+`config.py` 用 `env_file=".env"`（相对 CWD）。uvicorn CWD 是 `/home/ec2-user`，找不到项目根的 `.env`，走默认值 `app_user:change_me`。
+
+### 解决方案
+
+```python
+# src/core/config.py
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=str(_PROJECT_ROOT / ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+```
+
+### 规则
+
+**pydantic-settings 的 env_file 必须用绝对路径**。用 `Path(__file__).resolve().parents[N]` 锚定到项目根。
+
+---
+
+## 回测报错 "watchlist is empty"
+
+**解决时间**: 2026-06-06  
+**问题**: 前端点击"运行回测"，返回 `{"detail":"watchlist is empty"}`
+
+### 根本原因
+
+前端 `cfg-market` 默认值是 `"a"`（A股），但 watchlist 里是美股符号（MRVL, NVDA.US, AAPL）。后端用 A 股数据源拉美股 → 失败。
+
+### 解决方案
+
+后端自动检测 market（从 watchlist 符号推断）：
+
+```python
+market = "us" if any(s.upper().endswith(".US") for s in watchlist) else config.get("market", "a")
+```
+
+### 规则
+
+**后端应对关键参数做 sanity check**。前端传的 market 参数不可靠，后端应从实际数据推断。
+
+---
+
+## MCP Tavily 连接失败（npx not found）
+
+**解决时间**: 2026-06-06  
+**问题**: opencode MCP Tavily 服务启动失败，`env: node: No such file or directory`
+
+### 根本原因
+
+opencode.json 中配置 `"command": ["npx", "-y", "tavily-mcp@0.1.4"]`。`npx` 依赖 nvm 的 PATH，但非交互 shell 不加载 nvm，导致 `npx` 找不到。
+
+### 解决方案
+
+1. 全局安装 tavily-mcp：`npm install -g tavily-mcp@0.1.4`
+2. 用绝对路径替换 npx：
+
+```json
+"command": [
+  "/Users/shenmingjie/.nvm/versions/node/v24.13.1/bin/node",
+  "/Users/shenmingjie/.nvm/versions/node/v24.13.1/bin/tavily-mcp"
+]
+```
+
+### 规则
+
+**MCP 配置中不要用 `npx`/`uvx`/`python` 裸命令**。非交互 shell 不加载 nvm/conda，必须用绝对路径。
+
+---
+
+## AWS 新功能部署缺依赖（yfinance）
+
+**解决时间**: 2026-06-06  
+**问题**: 合并 feature 分支后 uvicorn 启动失败，`ModuleNotFoundError: No module named 'yfinance'`
+
+### 根本原因
+
+feature 分支新增了美股模块（`src/us_stock/yahoo_provider.py`），依赖 `yfinance` 和 `cachetools`，但 AWS 环境未安装。
+
+### 解决方案
+
+```bash
+~/miniconda3/envs/py311/bin/pip install yfinance cachetools
+```
+
+### 规则
+
+**合并新功能分支到 master 前，检查 pyproject.toml 是否新增了依赖**。部署时必须在 AWS 上安装新依赖。

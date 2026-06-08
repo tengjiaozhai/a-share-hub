@@ -10,9 +10,9 @@
   <span class="sep"></span>
   <span class="pill mode" id="mode-pill">影子模式</span>
   <span class="sep"></span>
-  <span><span class="dot g" id="db-dot"></span> 数据库</span>
-  <span><span class="dot g" id="llm-dot"></span> LLM</span>
-  <span><span class="dot g" id="mkt-dot"></span> 行情</span>
+  <span><span class="dot g" id="db-dot" role="status" aria-label="数据库状态"></span> 数据库</span>
+  <span><span class="dot g" id="llm-dot" role="status" aria-label="LLM状态"></span> LLM</span>
+  <span><span class="dot g" id="mkt-dot" role="status" aria-label="行情状态"></span> 行情</span>
   <span class="sep"></span>
   <span style="color:var(--dim)">交易日: <span id="trade-date">--</span></span>
   <span style="color:var(--dim)">上次运行: <span id="last-run">--</span></span>
@@ -23,5 +23,5 @@
     </button>
     <div class="theme-menu" id="theme-menu" role="menu" hidden></div>
   </div>
-  <button class="kill-btn" onclick="killSwitch()">KILL SWITCH</button>
+  <button class="kill-btn" onclick="killSwitch()" aria-label="紧急停止所有交易">KILL SWITCH</button>
 </div>
