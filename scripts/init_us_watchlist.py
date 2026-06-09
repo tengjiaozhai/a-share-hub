@@ -5,7 +5,21 @@
 """
 
 import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from pathlib import Path
+env_path = Path(__file__).resolve().parents[1] / ".env"
+if env_path.exists():
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip())
+
 import psycopg
+from src.storage.connection_url import build_psycopg_dsn
 
 HOT_STOCKS = [
     # 科技巨头
@@ -61,7 +75,7 @@ def main():
         print("ERROR: DATABASE_URL not set")
         return
 
-    conn = psycopg.connect(database_url, row_factory=psycopg.rows.dict_row)
+    conn = psycopg.connect(build_psycopg_dsn(database_url), row_factory=psycopg.rows.dict_row)
     inserted = 0
     skipped = 0
 

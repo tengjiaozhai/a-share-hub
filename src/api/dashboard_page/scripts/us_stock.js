@@ -236,7 +236,7 @@ function usSearch() {
   if (!q) return;
   var resultsDiv = document.getElementById('us-search-results');
   if (resultsDiv) {
-    resultsDiv.style.display = '';
+    resultsDiv.style.display = 'block';
     resultsDiv.innerHTML = '<span style="color:var(--dim)">搜索中...</span>';
   }
 

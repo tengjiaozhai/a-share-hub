@@ -33,6 +33,53 @@
 - **区间表现**: 今日收益 / 月度收益 / 最大回撤 / 累计净值曲线（来自 auto 账户）
 - **自动交易状态**: 今日状态 / 最后运行时间 / 下次运行时间（A 股 9:15、美股 21:15 北京时间）
 
+### 中间绩效面板
+
+#### 自动运行状态
+显示自动交易系统的运行状态：
+- **今日状态**: `pending`（待运行）/ `success`（成功）/ `failed`（失败）
+- **最后运行**: 最近一次自动运行的时间
+- **下次运行**: 下一次自动运行的时间（A 股 09:15、美股 21:15 北京时间）
+
+#### 净值曲线
+展示 auto 账户的累计净值走势图：
+- 数据来源：`paper_nav_daily` 表（累计曲线唯一来源）
+- 显示范围：最近 30 个交易日
+- 用途：直观查看策略的整体表现趋势
+
+#### 区间表现对比
+支持多个时间窗口的业绩对比：
+- **7天**: 最近 7 个交易日的表现
+- **30天**: 最近 30 个交易日的表现
+- **90天**: 最近 90 个交易日的表现
+- **YTD**: 年初至今的表现
+- 点击切换不同时间窗口，查看对应区间的数据
+
+#### 最近运行记录
+显示最近的交易运行记录，支持两种模式切换：
+- **自动**: 显示自动调度器运行的记录（按时间倒序）
+- **手动**: 显示手动点击「运行一轮模拟交易」的记录
+- 每条记录显示：运行阶段（决策/目标仓位/执行/对账）、状态、时间、详细信息
+
+### 右侧栏：区间表现与风控
+
+#### 区间表现（KPI 卡片）
+- **今日收益**: 当日的收益率（百分比）
+- **月度收益**: 当月的收益率（百分比）
+- **最大回撤**: 历史最大回撤幅度（百分比）
+- 数据来源：auto 账户的 `paper_nav_daily` 表
+
+#### 风控状态
+实时监控风控指标：
+- **当日累计盈亏**: 当日的盈亏金额（CNY）
+- **持仓集中度**: 最大持仓占总资金的比例
+- **活跃目标仓位**: 当前有效的目标仓位数量
+- **未完成订单**: 待执行或执行中的订单数量
+
+#### 执行模式
+- **完整链路**: 决策 → 目标仓位 → 执行 → 对账（完整流程）
+- **仅决策**: 只生成交易建议，不执行订单（用于验证策略）
+
 ### A股/美股工作台
 - **实时行情**: 查看股票实时价格和涨跌幅
 - **自选管理**: 添加/删除自选股票
@@ -51,6 +98,91 @@
 - **账本隔离**: auto 账户与 manual（手动沙盒）账户完全隔离，互不影响
 - **业绩权威**: `paper_nav_daily` 为累计曲线唯一来源
 - **启动补算**: 启动时若 auto 账户无近 30 个交易日净值，自动触发受控 backfill
+
+### 每日模拟交易结果报告
+
+#### 数据存储
+每次模拟交易运行结果保存在以下表中：
+
+| 表名 | 说明 | 关键字段 |
+|------|------|----------|
+| `paper_runs` | 运行记录 | `run_id`, `trade_date`, `run_source` (auto/manual/backfill), `status` (running/success/failed) |
+| `paper_fills` | 成交明细 | `fill_id`, `run_id`, `symbol`, `action` (BUY/SELL), `quantity`, `price` |
+| `paper_positions` | 当前持仓 | `position_id`, `symbol`, `quantity`, `avg_cost` |
+| `paper_nav_daily` | 每日净值 | `nav_id`, `trade_date`, `nav`, `cash`, `positions_value` |
+
+#### 查看运行结果
+
+**仪表盘查看：**
+1. **最近运行记录**（中间面板底部）：
+   - 点击「自动」标签查看自动运行记录
+   - 点击「手动」标签查看手动运行记录
+   - 每条记录显示：市场、状态、时间、错误信息（如有）
+
+2. **净值曲线**（中间面板）：
+   - 展示 `paper_nav_daily` 表中的累计净值走势
+   - 数据来源：auto 账户的每日净值快照
+
+3. **区间表现**（右侧面板）：
+   - 今日收益、月度收益、最大回撤
+   - 支持 7天/30天/90天/YTD 时间窗口切换
+
+**API 查看：**
+```bash
+# 获取运行历史
+curl "http://localhost:8000/api/v1/dashboard/history?market=a&source=all&limit=20"
+
+# 返回结构
+{
+  "auto_runs": [...],      // 自动运行记录
+  "manual_runs": [...],    // 手动运行记录
+  "fills": [...]           // 净值历史
+}
+```
+
+#### 一日一保存机制
+
+**自动运行（auto）：**
+- 每个交易日自动运行一次
+- 运行时间：A股 09:15 / 美股 21:15（北京时间）
+- 保存内容：
+  1. `paper_runs`：插入一条 `run_source="auto"` 的记录
+  2. `paper_fills`：插入当日所有成交记录
+  3. `paper_positions`：更新当前持仓
+  4. `paper_nav_daily`：插入当日净值快照（nav, cash, positions_value）
+
+**手动运行（manual）：**
+- 用户点击「运行一轮模拟交易」触发
+- 保存内容与自动运行相同，但 `run_source="manual"`
+
+**净值计算公式：**
+```
+nav = cash + positions_value
+positions_value = Σ(quantity × current_price)  // 按最新价计算
+```
+
+#### 数据查看示例
+
+```sql
+-- 查看最近 7 天的自动运行记录
+SELECT run_id, trade_date, status, created_at 
+FROM paper_runs 
+WHERE market = 'a' AND run_source = 'auto'
+ORDER BY trade_date DESC 
+LIMIT 7;
+
+-- 查看某日的成交明细
+SELECT symbol, action, quantity, price, notional
+FROM paper_fills 
+WHERE run_id = 'run-xxx';
+
+-- 查看净值走势
+SELECT trade_date, nav, cash, positions_value
+FROM paper_nav_daily
+WHERE account_id = 'acct-a-auto'
+ORDER BY trade_date DESC
+LIMIT 30;
+```
 
 ## 策略说明
 
@@ -118,16 +250,30 @@
 ## 运行时存储
 
 运行时控制平面使用 PostgreSQL（通过 `DATABASE_URL`）。
+
+**真实运行节点推荐配置**：`DATABASE_URL` 指向本机 loopback，由 SSH 隧道转发到 AWS PostgreSQL：
+
+```
+DATABASE_URL=postgresql+psycopg://douya:change_me@127.0.0.1:15432/douya
+```
+
+- AWS PostgreSQL 是唯一权威库
+- SSH 隧道由 systemd 托管，应用进程不感知 AWS 主机地址
+- 验证命令：`/opt/anaconda3/envs/py311/bin/python3 scripts/check_runtime_db.py`
+- Readiness 接口：`GET /health/ready`（数据库不可达时返回 `503`）
+- 详细运维见 `docs/runbooks/aws-pg-ssh-tunnel.md`
+
 Redis 是可选的，必须保持禁用直到负载门控运行手册另有说明。
 
 ## 引导
 
 1. 从 `.env.example` 配置 `.env`。
-2. 通过 `DATABASE_URL` 验证 PostgreSQL 连接。
-3. 运行 `/opt/anaconda3/envs/py311/bin/python3 -m alembic upgrade head`。
+2. **真实运行节点**：确认 `DATABASE_URL` 指向 `127.0.0.1:<port>`，启动 SSH 隧道（见 runbook）。
+3. 验证数据库连通性：`/opt/anaconda3/envs/py311/bin/python3 scripts/check_runtime_db.py`
+4. 运行 `/opt/anaconda3/envs/py311/bin/python3 -m alembic upgrade head`。
    若数据库中只有 `alembic_version` 或没有业务表，应用在首次初始化 `RuntimeStore` 时会自动补齐运行时表。
-4. 运行 `/opt/anaconda3/envs/py311/bin/python3 -m pytest -q`。
-5. 运行 `bash scripts/run_shadow_cycle.sh`。
+5. 运行 `/opt/anaconda3/envs/py311/bin/python3 -m pytest -q`。
+6. 运行 `bash scripts/run_shadow_cycle.sh`。
 
 ## API 接口
 

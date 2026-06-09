@@ -1,0 +1,266 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-06-08T10:00:00Z",
+  "title": "Design System: A股/美股自动交易系统",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "青色主色调",
+        "canonical": "#4dd4c6",
+        "tonalRamp": ["#0b1117", "#0e1520", "#101922", "#162231", "#1e293b", "#334155", "#475569", "#64748b", "#94a3b8", "#cbd5e1", "#e2e8f0", "#f1f5f9"]
+      },
+      "bg": {
+        "role": "neutral",
+        "displayName": "深黑背景",
+        "canonical": "#0b1117",
+        "tonalRamp": ["#000000", "#030712", "#0b1117", "#111827", "#1f2937", "#374151", "#4b5563", "#6b7280", "#9ca3af", "#d1d5db", "#e5e7eb", "#f3f4f6"]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "面板背景",
+        "canonical": "#101922",
+        "tonalRamp": ["#030712", "#0b1117", "#101922", "#1e293b", "#334155", "#475569", "#64748b", "#94a3b8", "#cbd5e1", "#e2e8f0", "#f1f5f9", "#f8fafc"]
+      },
+      "green": {
+        "role": "semantic",
+        "displayName": "绿色",
+        "canonical": "#22c55e",
+        "tonalRamp": ["#052e16", "#14532d", "#166534", "#15803d", "#16a34a", "#22c55e", "#4ade80", "#86efac", "#bbf7d0", "#dcfce7", "#f0fdf4", "#f7fee7"]
+      },
+      "red": {
+        "role": "semantic",
+        "displayName": "红色",
+        "canonical": "#ef4444",
+        "tonalRamp": ["#450a0a", "#7f1d1d", "#991b1b", "#b91c1c", "#dc2626", "#ef4444", "#f87171", "#fca5a5", "#fecaca", "#fee2e2", "#fef2f2", "#fff1f2"]
+      },
+      "yellow": {
+        "role": "semantic",
+        "displayName": "黄色",
+        "canonical": "#eab308",
+        "tonalRamp": ["#422006", "#713f12", "#854d0e", "#a16207", "#ca8a04", "#eab308", "#facc15", "#fde047", "#fef08a", "#fef9c3", "#fefce8", "#fefce8"]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "主要标题和关键指标，用于页面标题和重要数据展示"
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "正文内容和描述文本，用于大部分界面文字"
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "标签和分类文本，使用大写和字母间距增强可读性"
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "数值、代码和等宽显示，确保数字对齐"
+      }
+    },
+    "themes": [
+      {
+        "id": "trading-terminal",
+        "name": "交易终端",
+        "description": "默认深色主题，青色主色调，专业交易环境",
+        "accent": "#4dd4c6",
+        "bg": "#0b1117",
+        "panel": "#101922",
+        "fg": "#e7edf5",
+        "category": "dark"
+      },
+      {
+        "id": "mission-control",
+        "name": "任务控制",
+        "description": "海军蓝+琥珀色遥测风格",
+        "accent": "#f59e0b",
+        "bg": "#0a0e1a",
+        "panel": "#111827",
+        "fg": "#e2e8f0",
+        "category": "dark"
+      },
+      {
+        "id": "neutral-modern",
+        "name": "中性现代",
+        "description": "平衡的浅色阅读主题",
+        "accent": "#2563eb",
+        "bg": "#f8fafc",
+        "panel": "#ffffff",
+        "fg": "#1e293b",
+        "category": "light"
+      },
+      {
+        "id": "hud-signal",
+        "name": "HUD信号",
+        "description": "高对比度操作深色主题",
+        "accent": "#00ff88",
+        "bg": "#000000",
+        "panel": "#0a0a0a",
+        "fg": "#00ff88",
+        "category": "dark"
+      },
+      {
+        "id": "mono-grid",
+        "name": "单色网格",
+        "description": "终端风格单色主题",
+        "accent": "#ffffff",
+        "bg": "#111111",
+        "panel": "#1a1a1a",
+        "fg": "#cccccc",
+        "category": "dark"
+      },
+      {
+        "id": "openai-editorial",
+        "name": "OpenAI编辑",
+        "description": "平静的深色编辑风格",
+        "accent": "#10a37f",
+        "bg": "#1a1a2e",
+        "panel": "#222240",
+        "fg": "#e8e8f0",
+        "category": "dark"
+      },
+      {
+        "id": "nvidia-power",
+        "name": "NVIDIA性能",
+        "description": "性能绿黑主题",
+        "accent": "#76b900",
+        "bg": "#000000",
+        "panel": "#111111",
+        "fg": "#ffffff",
+        "category": "dark"
+      },
+      {
+        "id": "coinbase-institutional",
+        "name": "Coinbase机构",
+        "description": "简洁金融白色主题",
+        "accent": "#0052ff",
+        "bg": "#f5f5f7",
+        "panel": "#ffffff",
+        "fg": "#0a0a0a",
+        "category": "light"
+      }
+    ],
+    "shadows": [],
+    "motion": [
+      {
+        "name": "pulse",
+        "value": "pulse 1s infinite",
+        "purpose": "运行中状态指示器动画"
+      },
+      {
+        "name": "spin",
+        "value": "spin 0.8s linear infinite",
+        "purpose": "加载中旋转动画"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "tablet",
+        "value": "1023px"
+      },
+      {
+        "name": "mobile",
+        "value": "767px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "主要操作按钮，用于保存、运行等关键操作",
+      "html": "<button class=\"ds-btn-primary\">保存配置</button>",
+      "css": ".ds-btn-primary { background: var(--accent, #4dd4c6); color: var(--bg, #0b1117); border: none; padding: 9px 16px; border-radius: 4px; font-size: 12px; font-weight: 700; cursor: pointer; transition: opacity 0.15s, transform 0.1s; } .ds-btn-primary:hover { opacity: 0.85; } .ds-btn-primary:active { transform: scale(0.97); }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "次要操作按钮，用于回测、扫描等辅助操作",
+      "html": "<button class=\"ds-btn-secondary\">运行回测</button>",
+      "css": ".ds-btn-secondary { background: var(--surface2, #162231); color: var(--fg, #e7edf5); border: 1px solid var(--stroke, rgba(255,255,255,0.08)); padding: 7px 14px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; transition: background 0.15s; } .ds-btn-secondary:hover { background: var(--stroke, rgba(255,255,255,0.08)); }"
+    },
+    {
+      "name": "Input Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "文本输入框，用于配置参数",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"输入股票代码\">",
+      "css": ".ds-input { background: var(--panel-2, #0e1520); border: 1px solid var(--stroke, rgba(255,255,255,0.08)); color: var(--fg, #e7edf5); padding: 6px 8px; border-radius: 4px; font-size: 12px; font-family: inherit; transition: border-color 0.15s; } .ds-input:focus { outline: none; border-color: var(--accent, #4dd4c6); } .ds-input::placeholder { color: var(--dim, #64748b); }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "信息卡片，用于分组展示数据",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-head\">净值曲线</div><div class=\"ds-card-body\">内容区域</div></div>",
+      "css": ".ds-card { background: var(--panel, #101922); border: 1px solid var(--stroke, rgba(255,255,255,0.08)); border-radius: 8px; overflow: hidden; } .ds-card-head { padding: 6px 12px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--dim, #64748b); border-bottom: 1px solid var(--stroke, rgba(255,255,255,0.08)); background: var(--panel-2, #0e1520); } .ds-card-body { padding: 10px 12px; }"
+    },
+    {
+      "name": "Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "标签芯片，用于状态指示和筛选",
+      "html": "<span class=\"ds-chip\">影子模式</span>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; background: rgba(77,212,198,0.15); color: var(--accent, #4dd4c6); }"
+    },
+    {
+      "name": "KPI Card",
+      "kind": "custom",
+      "refersTo": "kpi-card",
+      "description": "关键绩效指标卡片，用于展示重要数据",
+      "html": "<div class=\"ds-kpi-card\"><span class=\"ds-kpi-label\">今日收益</span><span class=\"ds-kpi-val\">+2.5%</span></div>",
+      "css": ".ds-kpi-card { background: var(--panel-2, #0e1520); border: 1px solid var(--stroke, rgba(255,255,255,0.08)); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; } .ds-kpi-label { font-size: 10px; color: var(--dim, #64748b); text-transform: uppercase; letter-spacing: 0.3px; } .ds-kpi-val { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; font-family: var(--font-mono, 'SF Mono', 'Cascadia Code', monospace); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "专业交易控制台",
+    "overview": "这是一个为个人量化交易者设计的专业工作台，强调信息密度和操作效率。系统提供8种精心设计的主题，满足不同场景和个人偏好，从深色交易终端到浅色现代风格，从高对比度HUD到极简单色。\n\n设计哲学：在合理范围内展示足够的信息来支持快速决策，同时保持界面的清晰和可读性。系统状态、执行状态、风险状态一目了然。主题系统允许用户根据环境光线、使用场景和个人喜好自定义界面，同时保持一致的交互逻辑和信息架构。",
+    "keyCharacteristics": [
+      "8种主题切换，适应不同场景和偏好",
+      "信息密度优先，支持快速决策",
+      "状态清晰可见，操作反馈明确",
+      "专业可靠，体现量化交易的技术深度",
+      "主题间保持一致的交互逻辑和信息层次"
+    ],
+    "rules": [
+      {
+        "name": "The Information Density Rule",
+        "body": "在合理范围内展示足够的信息来支持快速决策，但避免信息过载。每个数据点都应该有明确的用途。",
+        "section": "overview"
+      },
+      {
+        "name": "The Tabular Numbers Rule",
+        "body": "所有数值显示使用等宽字体和tabular-nums特性，确保数字对齐，便于快速比较。",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "元素默认扁平，通过背景色变化和边框创建层次，而不是阴影。这保持了界面的清晰和专业感。",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "使用深色主题，减少长时间使用的视觉疲劳",
+      "保持信息密度，支持快速决策",
+      "使用等宽字体显示数值，确保对齐",
+      "使用语义化颜色（绿色=正面，红色=负面，黄色=警告）",
+      "保持状态清晰可见，操作反馈明确",
+      "保留8种主题切换功能，满足不同场景需求",
+      "确保所有主题都保持一致的交互逻辑和信息层次",
+      "为每个主题提供完整的色彩系统，包括背景、面板、文字、强调色、语义色"
+    ],
+    "donts": [
+      "使用极简主义，牺牲功能完整性",
+      "使用过多动画，分散注意力",
+      "使用浅色主题，不适合长时间交易",
+      "使用过于花哨的装饰，保持专业感",
+      "使用阴影，保持扁平化设计",
+      "移除主题切换功能，这是用户个性化的重要特性",
+      "在不同主题间改变交互逻辑或信息架构",
+      "为主题添加不一致的色彩角色或命名"
+    ]
+  }
+}

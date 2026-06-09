@@ -1,0 +1,19 @@
+[Unit]
+Description=a-share-hub runtime DB SSH tunnel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/a-share-hub
+ExecStart=/usr/bin/env bash /opt/a-share-hub/scripts/start_runtime_db_tunnel.sh
+Restart=always
+RestartSec=5
+
+# 安全加固
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/a-share-hub
+
+[Install]
+WantedBy=multi-user.target

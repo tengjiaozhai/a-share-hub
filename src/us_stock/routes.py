@@ -27,13 +27,12 @@ def _get_watchlist_store() -> WatchlistStore:
         import psycopg
 
         from src.core.config import Settings
+        from src.storage.connection_url import build_psycopg_dsn
         settings = Settings()
         database_url = settings.database_url
         if not database_url:
             raise HTTPException(status_code=503, detail="DATABASE_URL not configured")
-        # psycopg 需要 psycopg:// 而非 postgresql+psycopg://
-        conn_url = database_url.replace("postgresql+psycopg://", "postgresql://")
-        conn = psycopg.connect(conn_url, row_factory=psycopg.rows.dict_row)
+        conn = psycopg.connect(build_psycopg_dsn(database_url), row_factory=psycopg.rows.dict_row)
         _watchlist_store = WatchlistStore(conn)
     return _watchlist_store
 

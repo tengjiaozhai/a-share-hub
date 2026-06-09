@@ -401,7 +401,14 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
         )
         order_items.extend(execution_result["orders"])
 
-    daily_pnl = store.sum_daily_pnl()
+    # 基于 NAV 差值计算当日盈亏（包含未实现盈亏），而非仅统计已实现盈亏
+    previous_nav = float(current_snapshot["nav"]) if current_snapshot else float(capital_base)
+    if not decision_only and executable_targets:
+        current_nav = float(execution_result["nav"])
+    else:
+        latest_snap = store.get_latest_account_snapshot()
+        current_nav = float(latest_snap["nav"]) if latest_snap else previous_nav
+    daily_pnl = round(current_nav - previous_nav, 2)
     latest_run = _build_run_timeline(
         run_context_id=run_context_id,
         watchlist=watchlist,
@@ -1100,8 +1107,8 @@ def scan_us_stock_pool(config: dict | None = None) -> dict:
     if not database_url:
         return {"status": "no_database", "buy": [], "sell": [], "hold": [], "total_scanned": 0}
 
-    conn_url = database_url.replace("postgresql+psycopg://", "postgresql://")
-    conn = psycopg.connect(conn_url, row_factory=psycopg.rows.dict_row)
+    from src.storage.connection_url import build_psycopg_dsn
+    conn = psycopg.connect(build_psycopg_dsn(database_url), row_factory=psycopg.rows.dict_row)
     store = WatchlistStore(conn)
     stock_list_items = store.list_items()
     conn.close()
