@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from src.storage.dependencies import get_decision_run_repository
 from src.domain.interfaces.decision_run_repository import DecisionRunRepository
-from src.use_cases.create_decision_run import CreateDecisionRunUseCase, CreateDecisionRunRequest
 from src.domain.value_objects.symbol import Symbol
+from src.storage.dependencies import get_decision_run_repository
+from src.use_cases.create_decision_run import CreateDecisionRunRequest, CreateDecisionRunUseCase
 
 router = APIRouter(prefix="/api/v1")
 
@@ -36,28 +36,28 @@ def create_decision_run(
     try:
         # 验证股票代码
         symbol_obj = Symbol(symbol)
-        
+
         # 创建用例
         use_case = CreateDecisionRunUseCase(
             decision_run_repository=repository,
         )
-        
+
         # 执行用例
         request = CreateDecisionRunRequest(
             symbol=symbol_obj,
             mock_llm=mock_llm,
         )
-        
+
         response = use_case.execute(request)
-        
+
         if not response.success:
             raise HTTPException(status_code=400, detail=response.error)
-        
+
         return {
             "decision_run_id": response.decision_run_id,
             "symbol": symbol,
             "status": "created",
         }
-        
+
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
