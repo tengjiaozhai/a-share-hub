@@ -650,6 +650,10 @@ def _build_latest_run(decisions: list[dict], targets: list[dict], orders: list[d
             "symbol": row.get("symbol"),
             "action": row.get("action"),
             "quantity": row.get("quantity"),
+            "limit_price": row.get("limit_price"),
+            "fill_price": row.get("fill_price"),
+            "fee": row.get("fee"),
+            "pnl_delta": row.get("pnl_delta"),
             "status": row.get("status"),
         }
         for row in run_orders[:5]
@@ -718,6 +722,9 @@ def _serialize_order_row(row: dict) -> dict:
         "action": row.get("action"),
         "quantity": row.get("quantity"),
         "limit_price": row.get("limit_price"),
+        "fill_price": row.get("fill_price"),
+        "fee": row.get("fee"),
+        "pnl_delta": row.get("pnl_delta"),
         "status": row.get("status"),
         "created_at": row.get("created_at"),
     }

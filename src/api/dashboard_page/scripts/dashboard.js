@@ -228,7 +228,7 @@ function renderOrders(list) {
   if (dataChanged && rows.length >= PAGE_SIZE) pag.orders.page = 0;
   const tb = document.getElementById('tb-orders');
   if (!rows.length) {
-    tb.innerHTML = '<tr><td colspan="6" style="color:var(--dim)">暂无数据</td></tr>';
+    tb.innerHTML = '<tr><td colspan="8" style="color:var(--dim)">暂无数据</td></tr>';
     document.getElementById('pag-orders').innerHTML = '';
     return;
   }
@@ -239,10 +239,14 @@ function renderOrders(list) {
     const side = normalizeText(pickFirst(item, ['side', 'action', 'parsed_action'])).toUpperCase();
     const badge = side === 'BUY' ? 'badge-buy' : side === 'SELL' ? 'badge-sell' : 'badge-hold';
     const quantity = normalizeText(pickFirst(item, ['quantity', 'qty', 'target_quantity', 'target_value']));
-    const price = formatCurrency(pickFirst(item, ['price', 'limit_price'], null));
+    const price = formatCurrency(pickFirst(item, ['fill_price', 'price', 'limit_price'], null));
+    const fee = formatCurrency(pickFirst(item, ['fee'], 0));
+    const pnl = Number(pickFirst(item, ['pnl_delta', 'pnl'], 0)) || 0;
+    const pnlClass = pnl > 0 ? 'green' : pnl < 0 ? 'red' : '';
+    const pnlText = pnl !== 0 ? formatCurrency(pnl) : '-';
     const status = normalizeText(item.status).toUpperCase();
     const statusBadge = status === 'FILLED' ? 'badge-filled' : status === 'PENDING' ? 'badge-pending' : status === 'ERROR' ? 'badge-error' : 'badge-hold';
-    return `<tr><td>${escapeHtml(time)}</td><td>${escapeHtml(symbol)}</td><td><span class="badge ${badge}">${escapeHtml(side)}</span></td><td>${escapeHtml(quantity)}</td><td>${escapeHtml(price)}</td><td><span class="badge ${statusBadge}">${escapeHtml(status)}</span></td></tr>`;
+    return `<tr><td>${escapeHtml(time)}</td><td>${escapeHtml(symbol)}</td><td><span class="badge ${badge}">${escapeHtml(side)}</span></td><td>${escapeHtml(quantity)}</td><td>${escapeHtml(price)}</td><td>${escapeHtml(fee)}</td><td class="${pnlClass}">${escapeHtml(pnlText)}</td><td><span class="badge ${statusBadge}">${escapeHtml(status)}</span></td></tr>`;
   }).join('');
   document.getElementById('pag-orders').innerHTML = rows.length >= PAGE_SIZE ? renderPagControls('orders') : '';
 }
