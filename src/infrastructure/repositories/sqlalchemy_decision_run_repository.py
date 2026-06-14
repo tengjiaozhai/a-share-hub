@@ -102,3 +102,19 @@ class SQLAlchemyDecisionRunRepository(DecisionRunRepository):
             }
             for row in rows
         ]
+
+    def delete_decision_run(self, decision_run_id: str) -> bool:
+        with self.engine.begin() as conn:
+            # 先删除快照
+            conn.execute(
+                DecisionInputSnapshotRow.__table__.delete().where(
+                    DecisionInputSnapshotRow.decision_run_id == decision_run_id
+                )
+            )
+            # 再删除决策运行记录
+            result = conn.execute(
+                DecisionRunRow.__table__.delete().where(
+                    DecisionRunRow.decision_run_id == decision_run_id
+                )
+            )
+            return result.rowcount > 0

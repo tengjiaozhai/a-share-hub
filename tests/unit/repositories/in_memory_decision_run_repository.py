@@ -46,3 +46,10 @@ class InMemoryDecisionRunRepository(DecisionRunRepository):
     def list_decision_runs(self) -> list[Dict[str, Any]]:
         """列出所有决策运行记录"""
         return list(self._decision_runs.values())
+
+    def delete_decision_run(self, decision_run_id: str) -> bool:
+        """删除决策运行记录"""
+        if decision_run_id in self._decision_runs:
+            del self._decision_runs[decision_run_id]
+            return True
+        return False

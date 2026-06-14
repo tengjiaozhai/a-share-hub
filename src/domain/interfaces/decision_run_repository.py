@@ -31,3 +31,8 @@ class DecisionRunRepository(ABC):
     def list_decision_runs(self) -> list[Dict[str, Any]]:
         """列出所有决策运行记录"""
         pass
+    
+    @abstractmethod
+    def delete_decision_run(self, decision_run_id: str) -> bool:
+        """删除决策运行记录"""
+        pass
