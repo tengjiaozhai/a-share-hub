@@ -12,13 +12,18 @@ class WatchlistStore:
     def __init__(self, conn: Any):
         self._conn = conn
 
-    def list_items(self) -> list[USWatchlistItem]:
+    def list_items(self, page: int = 1, page_size: int = 20) -> tuple[list[USWatchlistItem], int]:
+        offset = (page - 1) * page_size
         with self._conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM us_watchlist")
+            total = cur.fetchone()["count"]
             cur.execute(
-                "SELECT id, symbol, name, sort_order, created_at FROM us_watchlist ORDER BY sort_order, id"
+                "SELECT id, symbol, name, sort_order, created_at FROM us_watchlist "
+                "ORDER BY sort_order, id LIMIT %s OFFSET %s",
+                (page_size, offset),
             )
             rows = cur.fetchall()
-        return [
+        items = [
             USWatchlistItem(
                 id=row["id"],
                 symbol=row["symbol"],
@@ -28,6 +33,7 @@ class WatchlistStore:
             )
             for row in rows
         ]
+        return items, total
 
     def add(self, symbol: str, name: str, sort_order: int = 0) -> USWatchlistItem:
         try:

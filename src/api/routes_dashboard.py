@@ -1176,7 +1176,7 @@ def scan_us_stock_pool(config: dict | None = None) -> dict:
     from src.storage.connection_url import build_psycopg_dsn
     conn = psycopg.connect(build_psycopg_dsn(database_url), row_factory=psycopg.rows.dict_row)
     store = WatchlistStore(conn)
-    stock_list_items = store.list_items()
+    stock_list_items, _ = store.list_items(page=1, page_size=1000)
     conn.close()
 
     if not stock_list_items:

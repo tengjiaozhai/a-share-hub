@@ -28,10 +28,19 @@ def _get_watchlist_store() -> AShareWatchlistStore:
 
 
 @router.get("/watchlist")
-def list_watchlist() -> list[dict]:
+def list_watchlist(
+    page: int = Query(default=1, ge=1, description="页码"),
+    page_size: int = Query(default=20, ge=1, le=100, description="每页条数"),
+) -> dict:
     store = _get_watchlist_store()
-    items = store.list_items()
-    return [item.model_dump() for item in items]
+    items, total = store.list_items(page=page, page_size=page_size)
+    return {
+        "items": [item.model_dump() for item in items],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": max(1, -(-total // page_size)),
+    }
 
 
 @router.post("/watchlist")
