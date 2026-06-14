@@ -8,6 +8,7 @@ from src.agents.llm_client import LLMClient
 from src.alpha.execution_service import AlphaExecutionService
 from src.api.dashboard_page.render import render_dashboard_html
 from src.core.config import Settings
+from src.core.market_rules import resolve_lot_size
 from src.data.providers.akshare_provider import AkshareProvider
 from src.storage.dependencies import get_runtime_store
 from src.storage.runtime_store import RuntimeStore
@@ -340,7 +341,8 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
         prices=price_by_symbol,
         capital_base=capital_base,
         max_position_ratio=max_position_ratio,
-        lot_size=settings.strategy_lot_size,
+        lot_size_a=settings.strategy_lot_size_a,
+        lot_size_us=settings.strategy_lot_size_us,
         current_positions=current_positions,
         expires_at=_today_close_cst().isoformat(),
     )
@@ -383,7 +385,7 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
             nav=float(account_state.get("nav", capital_base)),
             max_position_ratio=max_position_ratio,
             quantity=int(target["quantity"]),
-            lot_size=settings.strategy_lot_size,
+            lot_size=int(target["lot_size"]),
         )
         if risk["approved"]:
             executable_targets.append(target)
@@ -793,6 +795,32 @@ def _format_pnl_label(daily_pnl: float) -> str:
     return f"{sign}¥{amount:,.0f}"
 
 
+def _build_empty_execution_messages(decision_items: list[dict], target_items: list[dict]) -> dict[str, str]:
+    if target_items:
+        return {}
+
+    buy_decisions = [row for row in decision_items if row.get("action") == "BUY"]
+    sell_decisions = [row for row in decision_items if row.get("action") == "SELL"]
+
+    if buy_decisions:
+        return {
+            "target": "资金不足或最小交易单位限制，未生成可执行订单",
+            "execute": "无可执行订单，已跳过模拟执行",
+            "reconcile": "未发生模拟成交，账户净值未变化。模拟盈亏: +¥0",
+        }
+    if sell_decisions:
+        return {
+            "target": "当前无可卖持仓，未生成可执行订单",
+            "execute": "无可执行订单，已跳过模拟执行",
+            "reconcile": "未发生模拟成交，账户净值未变化。模拟盈亏: +¥0",
+        }
+    return {
+        "target": "本轮无买卖信号，未生成目标仓位",
+        "execute": "无可执行订单，已跳过模拟执行",
+        "reconcile": "未发生模拟成交，账户净值未变化。模拟盈亏: +¥0",
+    }
+
+
 def _build_run_timeline(
     run_context_id: str | None,
     watchlist: list[str],
@@ -805,6 +833,20 @@ def _build_run_timeline(
     daily_pnl: float,
 ) -> dict:
     now = _now_cst().isoformat()
+    empty_messages = _build_empty_execution_messages(decision_items, target_items)
+
+    target_done_step = {
+        "stage": "target",
+        "status": "done",
+        "timestamp": now,
+        "items": target_items,
+    } if target_items else {
+        "stage": "target",
+        "status": "done",
+        "timestamp": now,
+        "message": empty_messages["target"],
+    }
+
     steps = [
         {
             "stage": "decision",
@@ -824,12 +866,7 @@ def _build_run_timeline(
             "timestamp": now,
             "message": "计算中...",
         },
-        {
-            "stage": "target",
-            "status": "done",
-            "timestamp": now,
-            "items": target_items,
-        },
+        target_done_step,
     ]
 
     if decision_only:
@@ -841,7 +878,7 @@ def _build_run_timeline(
                 "message": "仅决策模式，跳过执行",
             }
         )
-    else:
+    elif order_items:
         steps.extend(
             [
                 {
@@ -867,6 +904,23 @@ def _build_run_timeline(
                     "status": "done",
                     "timestamp": now,
                     "message": f"所有订单已确认，持仓已更新。模拟盈亏: {_format_pnl_label(daily_pnl)}",
+                },
+            ]
+        )
+    else:
+        steps.extend(
+            [
+                {
+                    "stage": "execute",
+                    "status": "done",
+                    "timestamp": now,
+                    "message": empty_messages["execute"],
+                },
+                {
+                    "stage": "reconcile",
+                    "status": "done",
+                    "timestamp": now,
+                    "message": empty_messages["reconcile"],
                 },
             ]
         )
@@ -980,7 +1034,12 @@ def run_backtest(config: dict) -> dict:
                 bars=bars,
                 initial_cash=float(capital_base),
                 signals=signals,
-                lot_size=settings.strategy_lot_size,
+                lot_size=resolve_lot_size(
+                    symbol=symbol,
+                    lot_size_a=settings.strategy_lot_size_a,
+                    lot_size_us=settings.strategy_lot_size_us,
+                    market="US" if market == "us" else "CN_A",
+                ),
                 fee_bps=settings.strategy_fee_bps,
                 slippage_bps=settings.strategy_slippage_bps,
             )

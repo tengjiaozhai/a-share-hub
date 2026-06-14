@@ -19,6 +19,27 @@ def is_tradable(status: str) -> bool:
     return status in {"正常交易", "trading"}
 
 
+def infer_market_from_symbol(symbol: str) -> str:
+    normalized = str(symbol or "").strip().upper()
+    if normalized.endswith(".SH") or normalized.endswith(".SZ"):
+        return "CN_A"
+    return "US"
+
+
+def resolve_lot_size(
+    symbol: str,
+    lot_size_a: int = 100,
+    lot_size_us: int = 1,
+    market: str | None = None,
+) -> int:
+    market_code = (market or infer_market_from_symbol(symbol)).upper()
+    if market_code in {"A", "CN_A"}:
+        return lot_size_a
+    if market_code in {"US", "NASDAQ", "NYSE"}:
+        return lot_size_us
+    return lot_size_a
+
+
 def calculate_lot_quantity(target_value: float, price: float, lot_size: int = 100) -> int:
     if target_value <= 0 or price <= 0 or lot_size <= 0:
         return 0
