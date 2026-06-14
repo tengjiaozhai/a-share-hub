@@ -341,7 +341,8 @@ def test_run_endpoint_explains_zero_executable_orders(test_app, monkeypatch):
     execute_done = next(step for step in steps if step["stage"] == "execute" and step["status"] == "done")
     reconcile_done = next(step for step in steps if step["stage"] == "reconcile" and step["status"] == "done")
 
-    assert "资金不足或最小交易单位限制，未生成可执行订单" in (target_done.get("message") or "")
+    assert len(target_done["items"]) == 2
+    assert target_done["items"][0]["target_quantity"] == 0
     assert "无可执行订单，已跳过模拟执行" in (execute_done.get("message") or "")
     assert "未发生模拟成交" in (reconcile_done.get("message") or "")
     assert payload["latest_run"]["order_items"] == []

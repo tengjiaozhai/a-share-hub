@@ -921,13 +921,13 @@ def _build_run_timeline(
                     "stage": "execute",
                     "status": "done",
                     "timestamp": now,
-                    "message": empty_messages["execute"],
+                    "message": empty_messages.get("execute", "无可执行订单，已跳过模拟执行"),
                 },
                 {
                     "stage": "reconcile",
                     "status": "done",
                     "timestamp": now,
-                    "message": empty_messages["reconcile"],
+                    "message": empty_messages.get("reconcile", "未发生模拟成交，账户净值未变化。模拟盈亏: +¥0"),
                 },
             ]
         )

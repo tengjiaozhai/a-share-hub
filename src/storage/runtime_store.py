@@ -33,6 +33,7 @@ from src.storage.models import (
     ExecutionPlanRow,
     KillSwitchEventRow,
     KillSwitchRow,
+    RiskGateEventRow,
     TargetPositionRow,
     UserPreferenceRow,
 )
@@ -117,15 +118,18 @@ class RuntimeStore:
         target_position_ratio: float,
         reason: str,
         input_snapshot: dict,
+        run_context_id: str | None = None,
     ) -> str:
         decision_run_id = f"dr-{uuid.uuid4().hex[:12]}"
         snapshot_id = f"snap-{uuid.uuid4().hex[:12]}"
+        effective_run_context_id = run_context_id or decision_run_id
         with self.engine.begin() as conn:
             conn.execute(
                 DecisionRunRow.__table__.insert().values(
                     decision_run_id=decision_run_id,
                     symbol=symbol,
                     prompt_hash=prompt_hash,
+                    run_context_id=effective_run_context_id,
                     model_name=model_name,
                     raw_output=raw_output,
                     parsed_action=parsed_action,
@@ -208,19 +212,37 @@ class RuntimeStore:
         target_value: int,
         target_position_ratio: float,
         expires_at: str,
+        run_context_id: str | None = None,
+        status: str = "ACTIVE",
+        status_reason: str = "ready",
+        price: float = 0.0,
+        lot_size: int = 0,
+        requested_quantity: float = 0.0,
+        notional: int = 0,
+        diagnostics: dict | None = None,
     ) -> str:
         target_position_id = f"tp-{uuid.uuid4().hex[:12]}"
         with self.engine.begin() as conn:
+            effective_run_context_id = run_context_id or conn.execute(
+                select(DecisionRunRow.run_context_id).where(DecisionRunRow.decision_run_id == decision_run_id)
+            ).scalar_one()
             conn.execute(
                 TargetPositionRow.__table__.insert().values(
                     target_position_id=target_position_id,
                     decision_run_id=decision_run_id,
+                    run_context_id=effective_run_context_id,
                     symbol=symbol,
                     action=action,
                     target_value=target_value,
                     target_position_ratio=target_position_ratio,
+                    status=status,
+                    status_reason=status_reason,
+                    price=price,
+                    lot_size=lot_size,
+                    requested_quantity=requested_quantity,
+                    notional=notional,
+                    diagnostics_json=json.dumps(diagnostics or {}, ensure_ascii=True, sort_keys=True),
                     expires_at=datetime.fromisoformat(expires_at),
-                    status="ACTIVE",
                 )
             )
         return target_position_id
@@ -241,11 +263,53 @@ class RuntimeStore:
                 {
                     "target_position_id": row.target_position_id,
                     "decision_run_id": row.decision_run_id,
+                    "run_context_id": row.run_context_id,
                     "symbol": row.symbol,
                     "action": row.action,
                     "target_value": row.target_value,
                     "target_position_ratio": row.target_position_ratio,
                     "status": row.status,
+                    "status_reason": row.status_reason,
+                    "price": row.price,
+                    "lot_size": row.lot_size,
+                    "requested_quantity": row.requested_quantity,
+                    "notional": row.notional,
+                    "diagnostics": json.loads(row.diagnostics_json or "{}"),
+                    "expires_at": _cst_iso(row.expires_at),
+                    "created_at": _cst_iso(row.created_at),
+                }
+                for row in rows
+            ]
+
+    def list_target_positions(
+        self,
+        limit: int | None = None,
+        offset: int = 0,
+        run_context_id: str | None = None,
+    ) -> list[dict]:
+        with self.engine.begin() as conn:
+            stmt = select(TargetPositionRow).order_by(TargetPositionRow.created_at.desc())
+            if run_context_id is not None:
+                stmt = stmt.where(TargetPositionRow.run_context_id == run_context_id)
+            if limit is not None:
+                stmt = stmt.offset(offset).limit(limit)
+            rows = conn.execute(stmt).fetchall()
+            return [
+                {
+                    "target_position_id": row.target_position_id,
+                    "decision_run_id": row.decision_run_id,
+                    "run_context_id": row.run_context_id,
+                    "symbol": row.symbol,
+                    "action": row.action,
+                    "target_value": row.target_value,
+                    "target_position_ratio": row.target_position_ratio,
+                    "status": row.status,
+                    "status_reason": row.status_reason,
+                    "price": row.price,
+                    "lot_size": row.lot_size,
+                    "requested_quantity": row.requested_quantity,
+                    "notional": row.notional,
+                    "diagnostics": json.loads(row.diagnostics_json or "{}"),
                     "expires_at": _cst_iso(row.expires_at),
                     "created_at": _cst_iso(row.created_at),
                 }
@@ -283,18 +347,33 @@ class RuntimeStore:
         action: str,
         quantity: int,
         limit_price: float,
+        run_context_id: str | None = None,
+        status: str = "READY",
+        status_code: str = "READY",
+        status_reason: str = "ready",
+        submitted_at: str | None = None,
+        slippage_bps: float = 0.0,
     ) -> str:
         execution_order_id = f"eo-{uuid.uuid4().hex[:12]}"
         with self.engine.begin() as conn:
+            effective_run_context_id = run_context_id or conn.execute(
+                select(TargetPositionRow.run_context_id).where(TargetPositionRow.target_position_id == target_position_id)
+            ).scalar_one()
             conn.execute(
                 ExecutionOrderRow.__table__.insert().values(
                     execution_order_id=execution_order_id,
                     target_position_id=target_position_id,
+                    run_context_id=effective_run_context_id,
                     symbol=symbol,
                     action=action,
                     quantity=quantity,
+                    filled_quantity=0,
                     limit_price=limit_price,
-                    status="READY",
+                    status=status,
+                    status_code=status_code,
+                    status_reason=status_reason,
+                    slippage_bps=slippage_bps,
+                    submitted_at=datetime.fromisoformat(submitted_at) if submitted_at else None,
                 )
             )
         return execution_order_id
@@ -305,12 +384,17 @@ class RuntimeStore:
         event_id: str,
         event_type: str,
         payload: dict,
+        run_context_id: str | None = None,
     ) -> None:
         with self.engine.begin() as conn:
+            effective_run_context_id = run_context_id or conn.execute(
+                select(ExecutionOrderRow.run_context_id).where(ExecutionOrderRow.execution_order_id == execution_order_id)
+            ).scalar_one()
             conn.execute(
                 BrokerEventRow.__table__.insert().values(
                     event_id=event_id,
                     order_id=execution_order_id,
+                    run_context_id=effective_run_context_id,
                     event_type=event_type,
                     payload_json=json.dumps(payload, ensure_ascii=True, sort_keys=True),
                 )
@@ -320,11 +404,36 @@ class RuntimeStore:
         self,
         execution_order_id: str,
         status: str,
+        *,
         broker_order_id: str | None = None,
+        status_code: str | None = None,
+        status_reason: str | None = None,
+        filled_quantity: int | None = None,
+        fill_price: float | None = None,
+        fee: float | None = None,
+        pnl_delta: float | None = None,
+        filled_at: str | None = None,
+        last_event_at: str | None = None,
     ) -> None:
-        values: dict[str, str] = {"status": status}
+        values: dict[str, object] = {"status": status}
         if broker_order_id is not None:
             values["broker_order_id"] = broker_order_id
+        if status_code is not None:
+            values["status_code"] = status_code
+        if status_reason is not None:
+            values["status_reason"] = status_reason
+        if filled_quantity is not None:
+            values["filled_quantity"] = filled_quantity
+        if fill_price is not None:
+            values["fill_price"] = fill_price
+        if fee is not None:
+            values["fee"] = fee
+        if pnl_delta is not None:
+            values["pnl_delta"] = pnl_delta
+        if filled_at is not None:
+            values["filled_at"] = datetime.fromisoformat(filled_at)
+        if last_event_at is not None:
+            values["last_event_at"] = datetime.fromisoformat(last_event_at)
         with self.engine.begin() as conn:
             conn.execute(
                 ExecutionOrderRow.__table__.update()
@@ -332,9 +441,16 @@ class RuntimeStore:
                 .values(**values)
             )
 
-    def list_execution_orders(self, limit: int | None = None, offset: int = 0) -> list[dict]:
+    def list_execution_orders(
+        self,
+        limit: int | None = None,
+        offset: int = 0,
+        run_context_id: str | None = None,
+    ) -> list[dict]:
         with self.engine.begin() as conn:
             stmt = select(ExecutionOrderRow).order_by(ExecutionOrderRow.created_at.desc())
+            if run_context_id is not None:
+                stmt = stmt.where(ExecutionOrderRow.run_context_id == run_context_id)
             if limit is not None:
                 stmt = stmt.offset(offset).limit(limit)
             rows = conn.execute(stmt).fetchall()
@@ -342,13 +458,24 @@ class RuntimeStore:
                 {
                     "execution_order_id": row.execution_order_id,
                     "target_position_id": row.target_position_id,
+                    "run_context_id": row.run_context_id,
                     "symbol": row.symbol,
                     "action": row.action,
                     "quantity": row.quantity,
+                    "filled_quantity": row.filled_quantity,
                     "limit_price": row.limit_price,
+                    "fill_price": row.fill_price,
+                    "fee": row.fee,
+                    "pnl_delta": row.pnl_delta,
                     "status": row.status,
-                     "broker_order_id": row.broker_order_id,
-                     "created_at": _cst_iso(row.created_at),
+                    "status_code": row.status_code,
+                    "status_reason": row.status_reason,
+                    "slippage_bps": row.slippage_bps,
+                    "broker_order_id": row.broker_order_id,
+                    "submitted_at": _cst_iso(row.submitted_at) if row.submitted_at else None,
+                    "filled_at": _cst_iso(row.filled_at) if row.filled_at else None,
+                    "last_event_at": _cst_iso(row.last_event_at) if row.last_event_at else None,
+                    "created_at": _cst_iso(row.created_at),
                 }
                 for row in rows
             ]
@@ -369,12 +496,39 @@ class RuntimeStore:
                 {
                     "event_id": row.event_id,
                     "order_id": row.order_id,
+                    "run_context_id": row.run_context_id,
                     "event_type": row.event_type,
                      "payload": json.loads(row.payload_json),
                      "created_at": _cst_iso(row.created_at),
                 }
                 for row in rows
             ]
+
+    def insert_risk_gate_event(
+        self,
+        run_context_id: str,
+        target_position_id: str | None,
+        symbol: str,
+        approved: bool,
+        rule_name: str,
+        reason: str,
+        details: dict | None = None,
+    ) -> str:
+        risk_gate_event_id = f"rge-{uuid.uuid4().hex[:12]}"
+        with self.engine.begin() as conn:
+            conn.execute(
+                RiskGateEventRow.__table__.insert().values(
+                    risk_gate_event_id=risk_gate_event_id,
+                    run_context_id=run_context_id,
+                    target_position_id=target_position_id,
+                    symbol=symbol,
+                    approved=approved,
+                    rule_name=rule_name,
+                    reason=reason,
+                    details_json=json.dumps(details or {}, ensure_ascii=True, sort_keys=True),
+                )
+            )
+        return risk_gate_event_id
 
     def list_kill_switch_events(self, limit: int | None = None) -> list[dict]:
         with self.engine.begin() as conn:
@@ -392,18 +546,48 @@ class RuntimeStore:
                 for row in rows
             ]
 
-    def get_reconciliation_status(self) -> dict:
+    def get_reconciliation_status(self, run_context_id: str | None = None) -> dict:
         with self.engine.begin() as conn:
-            open_orders = conn.execute(
-                select(func.count()).select_from(ExecutionOrderRow).where(ExecutionOrderRow.status != "FILLED")
-            ).scalar_one()
-            broker_event_count = conn.execute(
-                select(func.count()).select_from(BrokerEventRow)
-            ).scalar_one()
+            open_orders_stmt = select(func.count()).select_from(ExecutionOrderRow).where(ExecutionOrderRow.status != "FILLED")
+            broker_events_stmt = select(func.count()).select_from(BrokerEventRow)
+            if run_context_id is not None:
+                open_orders_stmt = open_orders_stmt.where(ExecutionOrderRow.run_context_id == run_context_id)
+                broker_events_stmt = broker_events_stmt.where(BrokerEventRow.run_context_id == run_context_id)
+            open_orders = conn.execute(open_orders_stmt).scalar_one()
+            broker_event_count = conn.execute(broker_events_stmt).scalar_one()
+
+        snapshot = self.get_latest_account_snapshot(run_context_id=run_context_id)
+        orders = self.list_execution_orders(limit=500, run_context_id=run_context_id)
+        fee_by_symbol: dict[str, float] = {}
+        order_ids_by_symbol: dict[str, list[str]] = {}
+        for order in orders:
+            symbol = order["symbol"]
+            fee_by_symbol[symbol] = round(fee_by_symbol.get(symbol, 0.0) + float(order.get("fee", 0.0) or 0.0), 2)
+            order_ids_by_symbol.setdefault(symbol, []).append(order["execution_order_id"])
+        items = []
+        if snapshot:
+            for symbol, pos in (snapshot.get("positions") or {}).items():
+                items.append(
+                    {
+                        "symbol": symbol,
+                        "quantity": int(pos.get("quantity", 0)),
+                        "avg_cost": float(pos.get("avg_cost", 0.0)),
+                        "mark_price": float(pos.get("mark_price", 0.0)),
+                        "market_value": float(pos.get("market_value", 0.0)),
+                        "unrealized_pnl": float(pos.get("unrealized_pnl", 0.0)),
+                        "change_pct": float(pos.get("change_pct", 0.0)),
+                        "fee_total": fee_by_symbol.get(symbol, 0.0),
+                        "mark_time": pos.get("mark_time"),
+                        "quote_status": pos.get("quote_status", "ok"),
+                        "execution_order_ids": order_ids_by_symbol.get(symbol, []),
+                    }
+                )
         return {
             "open_orders": open_orders,
             "broker_event_count": broker_event_count,
             "healthy": open_orders == 0 or broker_event_count > 0,
+            "run_context_id": run_context_id,
+            "items": sorted(items, key=lambda item: item["symbol"]),
         }
 
     def sum_daily_pnl(self, trade_date: str | None = None) -> float:
@@ -454,30 +638,34 @@ class RuntimeStore:
             else:
                 conn.execute(KillSwitchRow.__table__.update().where(KillSwitchRow.id == 1).values(active=active))
 
-    def insert_account_snapshot(self, cash: float, nav: float, positions: dict) -> str:
+    def insert_account_snapshot(self, cash: float, nav: float, positions: dict, run_context_id: str | None = None) -> str:
         snapshot_id = f"acct-{uuid.uuid4().hex[:12]}"
+        effective_run_context_id = run_context_id or snapshot_id
         with self.engine.begin() as conn:
             conn.execute(
                 AccountSnapshotRow.__table__.insert().values(
                     snapshot_id=snapshot_id,
                     cash=cash,
                     nav=nav,
+                    run_context_id=effective_run_context_id,
                     positions_json=json.dumps(positions, ensure_ascii=True),
                 )
             )
         return snapshot_id
 
-    def get_latest_account_snapshot(self) -> dict | None:
+    def get_latest_account_snapshot(self, run_context_id: str | None = None) -> dict | None:
         with self.engine.begin() as conn:
-            row = conn.execute(
-                select(AccountSnapshotRow).order_by(AccountSnapshotRow.created_at.desc()).limit(1)
-            ).fetchone()
+            stmt = select(AccountSnapshotRow).order_by(AccountSnapshotRow.created_at.desc()).limit(1)
+            if run_context_id is not None:
+                stmt = stmt.where(AccountSnapshotRow.run_context_id == run_context_id)
+            row = conn.execute(stmt).fetchone()
         if row is None:
             return None
         return {
             "snapshot_id": row.snapshot_id,
             "cash": row.cash,
             "nav": row.nav,
+            "run_context_id": row.run_context_id,
             "positions": json.loads(row.positions_json),
             "created_at": row.created_at.isoformat(),
         }

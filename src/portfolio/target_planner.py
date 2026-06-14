@@ -32,17 +32,23 @@ def build_target_position(
     if action == "BUY":
         target_position_ratio = max_position_ratio / watchlist_size
         target_value = int(capital_base * target_position_ratio)
+        raw_quantity = round(target_value / price, 4) if price > 0 else 0.0
         quantity = calculate_lot_quantity(target_value, price, resolved_lot_size)
+        rounding_loss_quantity = round(max(raw_quantity - quantity, 0.0), 4)
         notional = int(quantity * price)
     elif action == "SELL":
         target_position_ratio = 0.0
         target_value = 0
+        raw_quantity = float(max(int(current_quantity), 0))
         quantity = max(int(current_quantity), 0)
+        rounding_loss_quantity = 0.0
         notional = int(quantity * price)
     else:
         target_position_ratio = 0.0
         target_value = 0
+        raw_quantity = 0.0
         quantity = 0
+        rounding_loss_quantity = 0.0
         notional = 0
 
     return {
@@ -50,6 +56,8 @@ def build_target_position(
         "action": action,
         "target_value": target_value,
         "target_position_ratio": target_position_ratio,
+        "raw_quantity": raw_quantity,
+        "rounding_loss_quantity": rounding_loss_quantity,
         "quantity": quantity,
         "notional": notional,
         "price": price,
@@ -90,6 +98,5 @@ def build_target_positions(
             expires_at=expires_at,
             market=market,
         )
-        if target["quantity"] > 0:
-            targets.append(target)
+        targets.append(target)
     return targets
