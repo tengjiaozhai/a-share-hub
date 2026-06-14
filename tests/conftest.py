@@ -4,9 +4,11 @@ import pytest
 from sqlalchemy import create_engine
 
 from src.main import build_app
-from src.storage.dependencies import get_runtime_store
+from src.storage.dependencies import get_runtime_store, get_decision_run_repository
 from src.storage.models import Base
 from src.storage.runtime_store import RuntimeStore
+from src.infrastructure.event_bus.in_memory_event_bus import InMemoryEventBus
+from tests.unit.repositories.in_memory_decision_run_repository import InMemoryDecisionRunRepository
 
 
 @pytest.fixture
@@ -27,7 +29,19 @@ def pg_store(pg_engine):
 
 
 @pytest.fixture
-def test_app(pg_store):
+def in_memory_decision_run_repository():
+    return InMemoryDecisionRunRepository()
+
+
+@pytest.fixture
+def event_bus():
+    return InMemoryEventBus()
+
+
+@pytest.fixture
+def test_app(pg_store, in_memory_decision_run_repository, event_bus):
     app = build_app()
     app.dependency_overrides[get_runtime_store] = lambda: pg_store
+    app.dependency_overrides[get_decision_run_repository] = lambda: in_memory_decision_run_repository
+    # 注意：这里需要添加事件总线的依赖注入
     return app

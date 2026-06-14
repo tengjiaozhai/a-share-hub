@@ -1,18 +1,19 @@
-from typing import Dict, Any, Optional
+import json
+import uuid
+from typing import Any
+
 from sqlalchemy import select
 
 from src.domain.interfaces.decision_run_repository import DecisionRunRepository
-from src.storage.models import DecisionRunRow, DecisionInputSnapshotRow
-import json
-import uuid
+from src.storage.models import DecisionInputSnapshotRow, DecisionRunRow
 
 
 class SQLAlchemyDecisionRunRepository(DecisionRunRepository):
     """SQLAlchemy决策运行仓储实现"""
-    
+
     def __init__(self, engine):
         self.engine = engine
-    
+
     def insert_decision_run(
         self,
         symbol: str,
@@ -52,8 +53,8 @@ class SQLAlchemyDecisionRunRepository(DecisionRunRepository):
                 )
             )
         return decision_run_id
-    
-    def get_decision_run(self, decision_run_id: str) -> Optional[Dict[str, Any]]:
+
+    def get_decision_run(self, decision_run_id: str) -> dict[str, Any] | None:
         with self.engine.begin() as conn:
             run_result = conn.execute(
                 select(DecisionRunRow).where(DecisionRunRow.decision_run_id == decision_run_id)
@@ -63,10 +64,10 @@ class SQLAlchemyDecisionRunRepository(DecisionRunRepository):
                 select(DecisionInputSnapshotRow).where(DecisionInputSnapshotRow.decision_run_id == decision_run_id)
             )
             snapshot_row = snapshot_result.fetchone()
-        
+
         if run_row is None:
             return None
-        
+
         return {
             "decision_run_id": run_row.decision_run_id,
             "symbol": run_row.symbol,
@@ -80,12 +81,12 @@ class SQLAlchemyDecisionRunRepository(DecisionRunRepository):
             "reason": run_row.reason,
             "input_snapshot": json.loads(snapshot_row.payload_json) if snapshot_row else {},
         }
-    
-    def list_decision_runs(self) -> list[Dict[str, Any]]:
+
+    def list_decision_runs(self) -> list[dict[str, Any]]:
         with self.engine.begin() as conn:
             result = conn.execute(select(DecisionRunRow))
             rows = result.fetchall()
-        
+
         return [
             {
                 "decision_run_id": row.decision_run_id,
