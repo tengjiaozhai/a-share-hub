@@ -160,10 +160,10 @@ class RuntimeStore:
             return {
                 "decision_run_id": run_row[0],
                 "symbol": run_row[1],
-                "parsed_action": run_row[5],
-                "confidence": run_row[6],
-                "target_position_ratio": run_row[7],
-                "reason": run_row[8],
+                "parsed_action": run_row[6],
+                "confidence": run_row[7],
+                "target_position_ratio": run_row[8],
+                "reason": run_row[9],
                 "snapshot": json.loads(snapshot_row[2]),
             }
 
