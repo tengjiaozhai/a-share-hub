@@ -8,6 +8,7 @@ from src.agents.llm_client import LLMClient
 from src.alpha.execution_service import AlphaExecutionService
 from src.api.dashboard_page.render import render_dashboard_html
 from src.core.config import Settings
+from src.core.market_rules import resolve_lot_size
 from src.data.providers.akshare_provider import AkshareProvider
 from src.storage.dependencies import get_runtime_store
 from src.storage.runtime_store import RuntimeStore
@@ -340,7 +341,8 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
         prices=price_by_symbol,
         capital_base=capital_base,
         max_position_ratio=max_position_ratio,
-        lot_size=settings.strategy_lot_size,
+        lot_size_a=settings.strategy_lot_size_a,
+        lot_size_us=settings.strategy_lot_size_us,
         current_positions=current_positions,
         expires_at=_today_close_cst().isoformat(),
     )
@@ -383,7 +385,7 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
             nav=float(account_state.get("nav", capital_base)),
             max_position_ratio=max_position_ratio,
             quantity=int(target["quantity"]),
-            lot_size=settings.strategy_lot_size,
+            lot_size=int(target["lot_size"]),
         )
         if risk["approved"]:
             executable_targets.append(target)
@@ -401,7 +403,14 @@ def run_shadow_once(config: dict | None = None, store=Depends(get_runtime_store)
         )
         order_items.extend(execution_result["orders"])
 
-    daily_pnl = store.sum_daily_pnl()
+    # 基于 NAV 差值计算当日盈亏（包含未实现盈亏），而非仅统计已实现盈亏
+    previous_nav = float(current_snapshot["nav"]) if current_snapshot else float(capital_base)
+    if not decision_only and executable_targets:
+        current_nav = float(execution_result["nav"])
+    else:
+        latest_snap = store.get_latest_account_snapshot()
+        current_nav = float(latest_snap["nav"]) if latest_snap else previous_nav
+    daily_pnl = round(current_nav - previous_nav, 2)
     latest_run = _build_run_timeline(
         run_context_id=run_context_id,
         watchlist=watchlist,
@@ -641,6 +650,10 @@ def _build_latest_run(decisions: list[dict], targets: list[dict], orders: list[d
             "symbol": row.get("symbol"),
             "action": row.get("action"),
             "quantity": row.get("quantity"),
+            "limit_price": row.get("limit_price"),
+            "fill_price": row.get("fill_price"),
+            "fee": row.get("fee"),
+            "pnl_delta": row.get("pnl_delta"),
             "status": row.get("status"),
         }
         for row in run_orders[:5]
@@ -709,6 +722,9 @@ def _serialize_order_row(row: dict) -> dict:
         "action": row.get("action"),
         "quantity": row.get("quantity"),
         "limit_price": row.get("limit_price"),
+        "fill_price": row.get("fill_price"),
+        "fee": row.get("fee"),
+        "pnl_delta": row.get("pnl_delta"),
         "status": row.get("status"),
         "created_at": row.get("created_at"),
     }
@@ -786,6 +802,32 @@ def _format_pnl_label(daily_pnl: float) -> str:
     return f"{sign}¥{amount:,.0f}"
 
 
+def _build_empty_execution_messages(decision_items: list[dict], target_items: list[dict]) -> dict[str, str]:
+    if target_items:
+        return {}
+
+    buy_decisions = [row for row in decision_items if row.get("action") == "BUY"]
+    sell_decisions = [row for row in decision_items if row.get("action") == "SELL"]
+
+    if buy_decisions:
+        return {
+            "target": "资金不足或最小交易单位限制，未生成可执行订单",
+            "execute": "无可执行订单，已跳过模拟执行",
+            "reconcile": "未发生模拟成交，账户净值未变化。模拟盈亏: +¥0",
+        }
+    if sell_decisions:
+        return {
+            "target": "当前无可卖持仓，未生成可执行订单",
+            "execute": "无可执行订单，已跳过模拟执行",
+            "reconcile": "未发生模拟成交，账户净值未变化。模拟盈亏: +¥0",
+        }
+    return {
+        "target": "本轮无买卖信号，未生成目标仓位",
+        "execute": "无可执行订单，已跳过模拟执行",
+        "reconcile": "未发生模拟成交，账户净值未变化。模拟盈亏: +¥0",
+    }
+
+
 def _build_run_timeline(
     run_context_id: str | None,
     watchlist: list[str],
@@ -798,6 +840,20 @@ def _build_run_timeline(
     daily_pnl: float,
 ) -> dict:
     now = _now_cst().isoformat()
+    empty_messages = _build_empty_execution_messages(decision_items, target_items)
+
+    target_done_step = {
+        "stage": "target",
+        "status": "done",
+        "timestamp": now,
+        "items": target_items,
+    } if target_items else {
+        "stage": "target",
+        "status": "done",
+        "timestamp": now,
+        "message": empty_messages["target"],
+    }
+
     steps = [
         {
             "stage": "decision",
@@ -817,12 +873,7 @@ def _build_run_timeline(
             "timestamp": now,
             "message": "计算中...",
         },
-        {
-            "stage": "target",
-            "status": "done",
-            "timestamp": now,
-            "items": target_items,
-        },
+        target_done_step,
     ]
 
     if decision_only:
@@ -834,7 +885,7 @@ def _build_run_timeline(
                 "message": "仅决策模式，跳过执行",
             }
         )
-    else:
+    elif order_items:
         steps.extend(
             [
                 {
@@ -860,6 +911,23 @@ def _build_run_timeline(
                     "status": "done",
                     "timestamp": now,
                     "message": f"所有订单已确认，持仓已更新。模拟盈亏: {_format_pnl_label(daily_pnl)}",
+                },
+            ]
+        )
+    else:
+        steps.extend(
+            [
+                {
+                    "stage": "execute",
+                    "status": "done",
+                    "timestamp": now,
+                    "message": empty_messages.get("execute", "无可执行订单，已跳过模拟执行"),
+                },
+                {
+                    "stage": "reconcile",
+                    "status": "done",
+                    "timestamp": now,
+                    "message": empty_messages.get("reconcile", "未发生模拟成交，账户净值未变化。模拟盈亏: +¥0"),
                 },
             ]
         )
@@ -973,7 +1041,12 @@ def run_backtest(config: dict) -> dict:
                 bars=bars,
                 initial_cash=float(capital_base),
                 signals=signals,
-                lot_size=settings.strategy_lot_size,
+                lot_size=resolve_lot_size(
+                    symbol=symbol,
+                    lot_size_a=settings.strategy_lot_size_a,
+                    lot_size_us=settings.strategy_lot_size_us,
+                    market="US" if market == "us" else "CN_A",
+                ),
                 fee_bps=settings.strategy_fee_bps,
                 slippage_bps=settings.strategy_slippage_bps,
             )
@@ -1100,10 +1173,10 @@ def scan_us_stock_pool(config: dict | None = None) -> dict:
     if not database_url:
         return {"status": "no_database", "buy": [], "sell": [], "hold": [], "total_scanned": 0}
 
-    conn_url = database_url.replace("postgresql+psycopg://", "postgresql://")
-    conn = psycopg.connect(conn_url, row_factory=psycopg.rows.dict_row)
+    from src.storage.connection_url import build_psycopg_dsn
+    conn = psycopg.connect(build_psycopg_dsn(database_url), row_factory=psycopg.rows.dict_row)
     store = WatchlistStore(conn)
-    stock_list_items = store.list_items()
+    stock_list_items, _ = store.list_items(page=1, page_size=1000)
     conn.close()
 
     if not stock_list_items:

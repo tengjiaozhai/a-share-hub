@@ -87,7 +87,9 @@ def main():
     ordered_stocks = hot_list + other_list
     print(f"热门股票: {len(hot_list)} 只, 其他: {len(other_list)} 只")
 
-    conn_url = database_url.replace("postgresql+psycopg://", "postgresql://")
+    from src.storage.connection_url import build_psycopg_dsn
+
+    conn_url = build_psycopg_dsn(database_url)
     conn = psycopg.connect(conn_url, row_factory=psycopg.rows.dict_row)
 
     # 清空旧数据

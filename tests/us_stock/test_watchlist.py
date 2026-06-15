@@ -17,11 +17,13 @@ def mock_db():
 
 def test_list_items(mock_db):
     conn, cursor = mock_db
+    cursor.fetchone.return_value = {"count": 1}
     cursor.fetchall.return_value = [
         {"id": 1, "symbol": "AAPL", "name": "Apple", "sort_order": 0, "created_at": "2026-01-01"},
     ]
     store = WatchlistStore(conn)
-    items = store.list_items()
+    items, total = store.list_items()
+    assert total == 1
     assert len(items) == 1
     assert items[0].symbol == "AAPL"
 

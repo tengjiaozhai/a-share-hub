@@ -173,10 +173,10 @@ def test_run_endpoint_contains_reconcile_stage_and_daily_pnl(test_app):
     assert isinstance(payload["risk"]["daily_pnl"], (int, float))
 
     steps = payload["latest_run"]["steps"]
-    assert len(steps) >= 8
-    assert [step["stage"] for step in steps[-2:]] == ["reconcile", "reconcile"]
-    assert [step["status"] for step in steps[-2:]] == ["running", "done"]
-    assert "模拟盈亏" in (steps[-1].get("message") or "")
+    assert len(steps) >= 6
+    assert steps[-1]["stage"] == "reconcile"
+    assert steps[-1]["status"] == "done"
+    assert "模拟盈亏" in (steps[-1].get("message") or "") or "未发生模拟成交" in (steps[-1].get("message") or "")
 
 
 def test_decision_mode_marks_reconcile_as_skipped(test_app):
@@ -300,3 +300,49 @@ def test_run_endpoint_uses_watchlist_allocation_for_order_quantity(test_app, mon
         if item["action"] == "BUY"
     ]
     assert buy_orders[0]["quantity"] == 1000
+
+
+def test_run_endpoint_explains_zero_executable_orders(test_app, monkeypatch):
+    from src.api import routes_dashboard
+
+    class ExpensiveSnap:
+        close = 2000.0
+
+    class FakeUSLLM:
+        model = "deepseek-v4-pro"
+
+        def generate(self, prompt: str, temperature: float = 0.7) -> str:
+            symbol = "AAPL" if "AAPL" in prompt else "MRVL"
+            return (
+                f'{{"symbol":"{symbol}","action":"BUY","confidence":80,'
+                f'"target_position_ratio":0.2,"reason":"real-mode"}}'
+            )
+
+    monkeypatch.setattr(routes_dashboard.AkshareProvider, "get_realtime_quote", lambda self, symbol: ExpensiveSnap())
+    monkeypatch.setattr(routes_dashboard, "_get_llm", lambda: FakeUSLLM())
+
+    client = TestClient(test_app)
+    response = client.post(
+        "/api/v1/dashboard/run",
+        json={
+            "watchlist": ["MRVL", "AAPL"],
+            "capital_base": 10_000,
+            "max_position_ratio": 0.2,
+            "execution_mode": "full",
+            "decision_mode": "real",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    steps = payload["latest_run"]["steps"]
+
+    target_done = next(step for step in steps if step["stage"] == "target" and step["status"] == "done")
+    execute_done = next(step for step in steps if step["stage"] == "execute" and step["status"] == "done")
+    reconcile_done = next(step for step in steps if step["stage"] == "reconcile" and step["status"] == "done")
+
+    assert len(target_done["items"]) == 2
+    assert target_done["items"][0]["target_quantity"] == 0
+    assert "无可执行订单，已跳过模拟执行" in (execute_done.get("message") or "")
+    assert "未发生模拟成交" in (reconcile_done.get("message") or "")
+    assert payload["latest_run"]["order_items"] == []

@@ -27,13 +27,12 @@ def _get_watchlist_store() -> WatchlistStore:
         import psycopg
 
         from src.core.config import Settings
+        from src.storage.connection_url import build_psycopg_dsn
         settings = Settings()
         database_url = settings.database_url
         if not database_url:
             raise HTTPException(status_code=503, detail="DATABASE_URL not configured")
-        # psycopg 需要 psycopg:// 而非 postgresql+psycopg://
-        conn_url = database_url.replace("postgresql+psycopg://", "postgresql://")
-        conn = psycopg.connect(conn_url, row_factory=psycopg.rows.dict_row)
+        conn = psycopg.connect(build_psycopg_dsn(database_url), row_factory=psycopg.rows.dict_row)
         _watchlist_store = WatchlistStore(conn)
     return _watchlist_store
 
@@ -41,7 +40,7 @@ def _get_watchlist_store() -> WatchlistStore:
 @router.get("/quotes")
 def get_quotes() -> list[dict]:
     store = _get_watchlist_store()
-    items = store.list_items()
+    items, _ = store.list_items(page=1, page_size=1000)
     if not items:
         return []
     symbols = [item.symbol for item in items]
@@ -84,10 +83,19 @@ def search(q: str = Query("", max_length=50)) -> list[dict]:
 
 
 @router.get("/watchlist")
-def list_watchlist() -> list[dict]:
+def list_watchlist(
+    page: int = Query(default=1, ge=1, description="页码"),
+    page_size: int = Query(default=20, ge=1, le=100, description="每页条数"),
+) -> dict:
     store = _get_watchlist_store()
-    items = store.list_items()
-    return [item.model_dump() for item in items]
+    items, total = store.list_items(page=page, page_size=page_size)
+    return {
+        "items": [item.model_dump() for item in items],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": max(1, -(-total // page_size)),
+    }
 
 
 @router.post("/watchlist")

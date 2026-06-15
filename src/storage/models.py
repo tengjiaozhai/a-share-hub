@@ -25,6 +25,7 @@ class BrokerEventRow(Base):
 
     event_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     order_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    run_context_id: Mapped[str] = mapped_column(String(64), nullable=False)
     event_type: Mapped[str] = mapped_column(String(32), nullable=False)
     payload_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
@@ -43,6 +44,7 @@ class DecisionRunRow(Base):
     decision_run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     prompt_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    run_context_id: Mapped[str] = mapped_column(String(64), nullable=False)
     model_name: Mapped[str] = mapped_column(String(64), nullable=False)
     raw_output: Mapped[str] = mapped_column(Text, nullable=False)
     parsed_action: Mapped[str] = mapped_column(String(16), nullable=False)
@@ -66,11 +68,18 @@ class TargetPositionRow(Base):
 
     target_position_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     decision_run_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    run_context_id: Mapped[str] = mapped_column(String(64), nullable=False)
     symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     action: Mapped[str] = mapped_column(String(16), nullable=False)
     target_value: Mapped[int] = mapped_column(Integer, nullable=False)
     target_position_ratio: Mapped[float] = mapped_column(Float, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE")
+    status_reason: Mapped[str] = mapped_column(String(64), nullable=False, default="ready")
+    price: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    lot_size: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    requested_quantity: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    notional: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    diagnostics_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -80,12 +89,23 @@ class ExecutionOrderRow(Base):
 
     execution_order_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     target_position_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    run_context_id: Mapped[str] = mapped_column(String(64), nullable=False)
     symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     action: Mapped[str] = mapped_column(String(16), nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    filled_quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     limit_price: Mapped[float] = mapped_column(Float, nullable=False)
+    fill_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fee: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    pnl_delta: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="READY")
-    broker_order_id: Mapped[str] = mapped_column(String(64), nullable=True)
+    status_code: Mapped[str] = mapped_column(String(32), nullable=False, default="READY")
+    status_reason: Mapped[str] = mapped_column(String(128), nullable=False, default="ready")
+    slippage_bps: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    broker_order_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    filled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_event_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -93,10 +113,13 @@ class RiskGateEventRow(Base):
     __tablename__ = "risk_gate_events"
 
     risk_gate_event_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    run_context_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_position_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     approved: Mapped[bool] = mapped_column(Boolean, nullable=False)
     rule_name: Mapped[str] = mapped_column(String(64), nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+    details_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -115,6 +138,7 @@ class AccountSnapshotRow(Base):
     snapshot_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     cash: Mapped[float] = mapped_column(Float, nullable=False)
     nav: Mapped[float] = mapped_column(Float, nullable=False)
+    run_context_id: Mapped[str] = mapped_column(String(64), nullable=False)
     positions_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 

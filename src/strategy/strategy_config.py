@@ -15,7 +15,8 @@ class StrategyConfig:
     scan_buy_threshold_us: float
     min_confirm_bars: int
     confirm_lookback_days: int
-    lot_size: int
+    lot_size_a: int
+    lot_size_us: int
     fee_bps: float
     slippage_bps: float
     max_daily_loss_ratio: float
@@ -31,7 +32,8 @@ class StrategyConfig:
             scan_buy_threshold_us=settings.strategy_scan_buy_threshold_us,
             min_confirm_bars=settings.strategy_min_confirm_bars,
             confirm_lookback_days=settings.strategy_confirm_lookback_days,
-            lot_size=settings.strategy_lot_size,
+            lot_size_a=settings.strategy_lot_size_a,
+            lot_size_us=settings.strategy_lot_size_us,
             fee_bps=settings.strategy_fee_bps,
             slippage_bps=settings.strategy_slippage_bps,
             max_daily_loss_ratio=settings.strategy_max_daily_loss_ratio,
