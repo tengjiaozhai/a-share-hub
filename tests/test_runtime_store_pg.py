@@ -94,3 +94,48 @@ def test_runtime_store_lists_run_scoped_target_order_and_snapshot_details(tmp_pa
     assert orders[0]["status_code"] == "PARTIALLY_FILLED"
     assert orders[0]["filled_quantity"] == 400
     assert reconcile["items"][0]["mark_price"] == 103.10
+
+
+def test_runtime_store_persists_dashboard_run_summary_and_event_log(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path}/runtime_store.db", future=True)
+    Base.metadata.create_all(engine)
+    store = RuntimeStore(engine)
+
+    store.upsert_dashboard_run_summary(
+        run_context_id="wrk-001",
+        trade_date="2026-06-15",
+        decision_mode="real",
+        execution_mode="full",
+        capital_base=10_000,
+        status="running",
+        execution_fee_total=0.12,
+        realized_pnl=0.0,
+        unrealized_pnl=-0.48,
+        net_pnl=-0.60,
+        started_at="2026-06-15T20:15:06+08:00",
+        finished_at=None,
+        latest_workbench={"latest_run": {"run_context_id": "wrk-001"}},
+    )
+    first_seq = store.append_dashboard_run_event(
+        run_context_id="wrk-001",
+        event_type="run.accepted",
+        stage="decision",
+        status="running",
+        payload={"message": "请求已受理"},
+    )
+    second_seq = store.append_dashboard_run_event(
+        run_context_id="wrk-001",
+        event_type="stage.updated",
+        stage="decision",
+        status="done",
+        payload={"items": [{"symbol": "NVDA", "action": "BUY"}]},
+    )
+
+    summary = store.get_dashboard_run_summary("wrk-001")
+    events = store.list_dashboard_run_events("wrk-001")
+
+    assert summary["execution_fee_total"] == 0.12
+    assert summary["net_pnl"] == -0.60
+    assert summary["latest_workbench"]["latest_run"]["run_context_id"] == "wrk-001"
+    assert [event["seq"] for event in events] == [first_seq, second_seq]
+    assert events[1]["payload"]["items"][0]["symbol"] == "NVDA"

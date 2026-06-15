@@ -27,6 +27,8 @@ from src.storage.models import (
     AlphaTicketRow,
     AlphaWatchlistItemRow,
     BrokerEventRow,
+    DashboardRunEventRow,
+    DashboardRunSummaryRow,
     DecisionInputSnapshotRow,
     DecisionRunRow,
     ExecutionOrderRow,
@@ -1004,3 +1006,127 @@ class RuntimeStore:
                 }
                 for row in rows
             ]
+
+    def upsert_dashboard_run_summary(
+        self,
+        run_context_id: str,
+        trade_date: str,
+        decision_mode: str,
+        execution_mode: str,
+        capital_base: int,
+        status: str,
+        execution_fee_total: float,
+        realized_pnl: float,
+        unrealized_pnl: float,
+        net_pnl: float,
+        started_at: str,
+        finished_at: str | None,
+        latest_workbench: dict,
+    ) -> None:
+        values = {
+            "run_context_id": run_context_id,
+            "trade_date": trade_date,
+            "decision_mode": decision_mode,
+            "execution_mode": execution_mode,
+            "capital_base": capital_base,
+            "status": status,
+            "execution_fee_total": execution_fee_total,
+            "realized_pnl": realized_pnl,
+            "unrealized_pnl": unrealized_pnl,
+            "net_pnl": net_pnl,
+            "started_at": datetime.fromisoformat(started_at),
+            "finished_at": datetime.fromisoformat(finished_at) if finished_at else None,
+            "latest_workbench_json": json.dumps(latest_workbench, ensure_ascii=True, sort_keys=True),
+            "updated_at": datetime.utcnow(),
+        }
+        with self.engine.begin() as conn:
+            existing = conn.execute(
+                select(DashboardRunSummaryRow).where(DashboardRunSummaryRow.run_context_id == run_context_id)
+            ).fetchone()
+            if existing is None:
+                conn.execute(
+                    DashboardRunSummaryRow.__table__.insert().values(
+                        created_at=datetime.utcnow(), **values
+                    )
+                )
+            else:
+                conn.execute(
+                    DashboardRunSummaryRow.__table__.update()
+                    .where(DashboardRunSummaryRow.run_context_id == run_context_id)
+                    .values(**values)
+                )
+
+    def get_dashboard_run_summary(self, run_context_id: str) -> dict | None:
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                select(DashboardRunSummaryRow).where(
+                    DashboardRunSummaryRow.run_context_id == run_context_id
+                )
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "run_context_id": row.run_context_id,
+            "trade_date": row.trade_date,
+            "decision_mode": row.decision_mode,
+            "execution_mode": row.execution_mode,
+            "capital_base": row.capital_base,
+            "status": row.status,
+            "execution_fee_total": row.execution_fee_total,
+            "realized_pnl": row.realized_pnl,
+            "unrealized_pnl": row.unrealized_pnl,
+            "net_pnl": row.net_pnl,
+            "started_at": _cst_iso(row.started_at),
+            "finished_at": _cst_iso(row.finished_at) if row.finished_at else None,
+            "latest_workbench": json.loads(row.latest_workbench_json or "{}"),
+        }
+
+    def append_dashboard_run_event(
+        self,
+        run_context_id: str,
+        event_type: str,
+        stage: str,
+        status: str,
+        payload: dict,
+    ) -> int:
+        event_id = f"dre-{uuid.uuid4().hex[:12]}"
+        with self.engine.begin() as conn:
+            current_seq = conn.execute(
+                select(func.max(DashboardRunEventRow.seq)).where(
+                    DashboardRunEventRow.run_context_id == run_context_id
+                )
+            ).scalar_one()
+            next_seq = int(current_seq or 0) + 1
+            conn.execute(
+                DashboardRunEventRow.__table__.insert().values(
+                    event_id=event_id,
+                    run_context_id=run_context_id,
+                    seq=next_seq,
+                    event_type=event_type,
+                    stage=stage,
+                    status=status,
+                    payload_json=json.dumps(payload, ensure_ascii=True, sort_keys=True),
+                )
+            )
+        return next_seq
+
+    def list_dashboard_run_events(self, run_context_id: str, after_seq: int = 0) -> list[dict]:
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                select(DashboardRunEventRow)
+                .where(DashboardRunEventRow.run_context_id == run_context_id)
+                .where(DashboardRunEventRow.seq > after_seq)
+                .order_by(DashboardRunEventRow.seq.asc())
+            ).fetchall()
+        return [
+            {
+                "run_context_id": row.run_context_id,
+                "seq": row.seq,
+                "event_type": row.event_type,
+                "stage": row.stage,
+                "status": row.status,
+                "payload": json.loads(row.payload_json or "{}"),
+                "created_at": _cst_iso(row.created_at),
+            }
+            for row in rows
+        ]

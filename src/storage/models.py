@@ -235,3 +235,41 @@ class AlphaApiOrderAttemptRow(Base):
     remote_order_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     response_payload_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class DashboardRunSummaryRow(Base):
+    __tablename__ = "dashboard_run_summaries"
+
+    run_context_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    trade_date: Mapped[str] = mapped_column(String(10), nullable=False)
+    decision_mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    execution_mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    capital_base: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    execution_fee_total: Mapped[float] = mapped_column(Float, nullable=False)
+    realized_pnl: Mapped[float] = mapped_column(Float, nullable=False)
+    unrealized_pnl: Mapped[float] = mapped_column(Float, nullable=False)
+    net_pnl: Mapped[float] = mapped_column(Float, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    latest_workbench_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+
+class DashboardRunEventRow(Base):
+    __tablename__ = "dashboard_run_events"
+
+    event_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    run_context_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    stage: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
