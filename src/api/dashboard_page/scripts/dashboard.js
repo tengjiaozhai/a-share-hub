@@ -1,6 +1,5 @@
 // 工作台相关 API 常量
 const WORKBENCH_API = '/api/v1/dashboard/workbench';
-const RUN_API = '/api/v1/dashboard/run';
 const KILL_SWITCH_STATUS_API = '/api/v1/kill-switch/status';
 const KILL_SWITCH_ACTIVATE_API = '/api/v1/kill-switch/activate';
 const KILL_SWITCH_DEACTIVATE_API = '/api/v1/kill-switch/deactivate';
@@ -995,40 +994,6 @@ function renderBacktestResult(data) {
   html += '</div>';
 
   area.innerHTML = html;
-}
-
-async function triggerRun() {
-  if (simRunning) return;
-  simRunning = true;
-  const button = document.getElementById('run-btn');
-  setButtonLoading(button, true, '运行中...');
-  renderTimeline({
-    steps: [{
-      stage: 'decision',
-      status: 'running',
-      timestamp: new Date().toISOString(),
-      message: '请求已提交，等待后端返回结果...',
-    }],
-  });
-
-  try {
-    const res = await fetch(RUN_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(buildRunPayload()),
-    });
-    const body = await parseResponseBody(res);
-    if (!res.ok) {
-      throw new Error(extractErrorMessage(body, `运行失败 (${res.status})`));
-    }
-    renderWorkbench(body, { active: killSwitchActive });
-    addAlert('info', '本轮运行完成');
-  } catch (error) {
-    addAlert('err', `运行失败: ${error.message}`);
-    await loadDashboard();
-  } finally {
-    finishRun();
-  }
 }
 
 async function killSwitch() {

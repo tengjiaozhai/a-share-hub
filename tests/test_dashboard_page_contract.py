@@ -229,3 +229,25 @@ def test_render_dashboard_html_contains_sse_timeout_handler():
 def test_render_dashboard_html_contains_inline_favicon_link():
     html = render_dashboard_html()
     assert 'rel="icon"' in html, "favicon link missing"
+
+
+def test_render_dashboard_html_does_not_contain_legacy_run_api():
+    """旧 /api/v1/dashboard/run endpoint 必须已删除（No Legacy By Default）"""
+    import re
+
+    html = render_dashboard_html()
+    legacy_match = re.search(r"/api/v1/dashboard/run(?!s)", html)
+    assert not legacy_match, (
+        f"Legacy /api/v1/dashboard/run reference still in page (matches: {legacy_match.group(0) if legacy_match else None!r})"
+    )
+
+
+def test_render_dashboard_html_contains_resilient_sse_onerror():
+    """SSE onerror 必须有重连容忍，不直接 close 流"""
+    html = render_dashboard_html()
+    assert ("重试中" in html) or ("reconnect" in html.lower()) or ("reconnectAttempts" in html), (
+        "SSE onerror must be resilient (allow auto-reconnect)"
+    )
+    assert ("RECONNECT" in html) or ("reconnect" in html), (
+        "Reconnect constants missing"
+    )

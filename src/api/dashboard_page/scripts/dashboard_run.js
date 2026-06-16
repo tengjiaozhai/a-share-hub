@@ -5,8 +5,10 @@ let runEventSource = null;
 let currentRunContextId = null;
 let runStreamHeartbeatTimer = null;
 let runStreamHardTimeoutTimer = null;
+let runStreamReconnectAttempts = 0;
 const RUN_STREAM_HEARTBEAT_MS = 30000;
 const RUN_STREAM_HARD_TIMEOUT_MS = 60000;
+const RUN_STREAM_RECONNECT_MAX = 3;
 
 function clearRunStreamTimers() {
   if (runStreamHeartbeatTimer) {
@@ -19,13 +21,15 @@ function clearRunStreamTimers() {
   }
 }
 
-function forceCloseRunStream(reason) {
+function endRunStream(reason, kind) {
   clearRunStreamTimers();
   if (!runEventSource) return;
   try { runEventSource.close(); } catch (_) { /* 关闭失败也不影响后续清理 */ }
   runEventSource = null;
-  setStreamStatus('error', '运行超时');
-  addAlert('err', reason || '运行超时，连接已断开');
+  setStreamStatus(kind || 'error', reason || '运行超时');
+  if (kind === 'error' && reason) {
+    addAlert('err', reason);
+  }
   finishRun();
 }
 
@@ -68,16 +72,19 @@ function connectRunStream(runContextId) {
   const resetHeartbeat = () => {
     if (runStreamHeartbeatTimer) clearTimeout(runStreamHeartbeatTimer);
     runStreamHeartbeatTimer = setTimeout(() => {
-      forceCloseRunStream('运行超时，30 秒内未收到任何事件，连接已断开');
+      endRunStream('运行超时，30 秒内未收到任何事件，连接已断开', 'error');
     }, RUN_STREAM_HEARTBEAT_MS);
   };
   resetHeartbeat();
 
   runStreamHardTimeoutTimer = setTimeout(() => {
-    forceCloseRunStream('运行超时，已达到 60 秒硬性上限，强制关闭');
+    endRunStream('运行超时，已达到 60 秒硬性上限，强制关闭', 'error');
   }, RUN_STREAM_HARD_TIMEOUT_MS);
 
+  runStreamReconnectAttempts = 0;
+
   runEventSource.onmessage = (event) => {
+    runStreamReconnectAttempts = 0;
     try {
       const payload = JSON.parse(event.data);
       applyRunStreamEvent(payload);
@@ -87,26 +94,26 @@ function connectRunStream(runContextId) {
     }
   };
   runEventSource.addEventListener('run.completed', async (event) => {
-    clearRunStreamTimers();
     const payload = JSON.parse(event.data);
-    await loadRunSnapshot(payload.run_context_id);
-    setStreamStatus('success', '本轮完成');
-    runEventSource.close();
-    runEventSource = null;
-    finishRun();
+    try { await loadRunSnapshot(payload.run_context_id); } catch (_) { /* 快照加载失败也不影响结束 */ }
+    endRunStream('本轮完成', 'success');
   });
   runEventSource.addEventListener('run.failed', async (event) => {
-    clearRunStreamTimers();
     const payload = JSON.parse(event.data);
-    await loadRunSnapshot(payload.run_context_id);
-    setStreamStatus('error', '运行失败');
-    addAlert('err', payload.payload?.message || '运行失败');
-    runEventSource.close();
-    runEventSource = null;
-    finishRun();
+    try { await loadRunSnapshot(payload.run_context_id); } catch (_) { /* 快照加载失败也不影响结束 */ }
+    endRunStream(payload.payload?.message || '运行失败', 'error');
   });
   runEventSource.onerror = () => {
-    clearRunStreamTimers();
+    if (runStreamHeartbeatTimer) {
+      clearTimeout(runStreamHeartbeatTimer);
+      runStreamHeartbeatTimer = null;
+    }
+    runStreamReconnectAttempts += 1;
+    if (runStreamReconnectAttempts > RUN_STREAM_RECONNECT_MAX) {
+      endRunStream(`重连失败 ${runStreamReconnectAttempts} 次`, 'error');
+      return;
+    }
+    setStreamStatus('pending', `连接中断，重试中 (${runStreamReconnectAttempts}/${RUN_STREAM_RECONNECT_MAX})…`);
   };
 }
 
