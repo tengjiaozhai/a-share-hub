@@ -318,5 +318,28 @@ AWS_SSH_KEY_PATH=/home/ec2-user/xingxing.pem
 | 启动服务 | `python -m src.main serve` |
 | 运行测试 | `python -m pytest -q` |
 | 重启所有服务 | 见"重启AWS服务"章节 |
-| 检查服务状态 | `ps aux | grep -E 'uvicorn|postgres|redis' \| grep -v grep` |
+| 检查服务状态 | `ps aux \| grep -E 'uvicorn\|postgres\|redis' \| grep -v grep` |
 | 查看API日志 | `tail -f /tmp/uvicorn.log` |
+
+## Dashboard stream release order
+
+1. 运行数据库迁移：
+
+```bash
+/opt/anaconda3/envs/py311/bin/python3 -m alembic upgrade head
+```
+
+2. 部署后端代码，确认以下接口返回正常：
+   - `POST /api/v1/dashboard/runs`
+   - `GET /api/v1/dashboard/runs/{run_context_id}/events`
+   - `GET /api/v1/dashboard/workbench?run_context_id={run_context_id}`
+
+3. 部署前端代码。
+
+4. 先部署后端，再部署前端，并在同一发布窗口切换到 `/api/v1/dashboard/runs`，不要长期同时保留旧的阻塞式页面交互路径。
+
+5. 运行 smoke：
+
+```bash
+bash scripts/run_dashboard_stream_smoke.sh http://13.214.201.113:8000
+```
