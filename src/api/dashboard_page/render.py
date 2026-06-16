@@ -18,6 +18,7 @@ def render_dashboard_html(theme_id: str = "trading-terminal") -> str:
         "{{INLINE_UTILS_JS}}": _read("scripts/utils.js"),
         "{{INLINE_THEME_JS}}": _read("scripts/theme.js"),
         "{{INLINE_DASHBOARD_JS}}": _read("scripts/dashboard.js"),
+        "{{INLINE_DASHBOARD_RUN_JS}}": _read("scripts/dashboard_run.js"),
         "{{INLINE_MARKET_JS}}": _read("scripts/market.js"),
         "{{INLINE_ALPHA_JS}}": _read("scripts/alpha.js"),
         "{{VIEW_US_STOCK}}": _read("partials/view_us_stock.html"),

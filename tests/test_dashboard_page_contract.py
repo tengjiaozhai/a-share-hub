@@ -78,6 +78,14 @@ def test_render_dashboard_html_contains_streaming_run_markers():
         assert marker in html
 
 
+def test_render_dashboard_html_contains_streaming_run_javascript_contract():
+    html = render_dashboard_html()
+    assert "const RUNS_API = '/api/v1/dashboard/runs';" in html
+    assert "const RUN_EVENTS_API = (runContextId) =>" in html
+    assert "new EventSource" in html
+    assert "connectRunStream" in html
+
+
 def test_dashboard_route_uses_rendered_split_html():
     client = TestClient(build_app())
     response = client.get("/dashboard")
