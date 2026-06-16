@@ -100,105 +100,6 @@ def test_workbench_payload_has_stable_contract(test_app, pg_store):
     assert {"symbol", "action", "quantity", "limit_price", "status", "created_at"}.issubset(order.keys())
 
 
-def test_run_endpoint_returns_full_workbench_payload(test_app, monkeypatch):
-    from src.api import routes_dashboard
-
-    monkeypatch.setattr(routes_dashboard, "_get_llm", lambda: FakeLLM())
-
-    client = TestClient(test_app)
-
-    response = client.post(
-        "/api/v1/dashboard/run",
-        json={
-            "capital_base": 1_000_000,
-            "watchlist": ["600519.SH"],
-            "max_position_ratio": 0.2,
-            "execution_mode": "full",
-        },
-    )
-    payload = response.json()
-    assert response.status_code == 200
-    assert {"mode", "trade_date", "last_run_at", "services", "kill_switch", "risk", "latest_run", "history"}.issubset(
-        payload.keys()
-    )
-    assert len(payload["history"]["decisions"]) >= 1
-    assert len(payload["history"]["targets"]) >= 1
-    assert len(payload["history"]["orders"]) >= 1
-    assert {"symbol", "action", "quantity", "limit_price", "status", "created_at"}.issubset(
-        payload["history"]["orders"][0].keys()
-    )
-    assert payload["history"]["decisions"][0]["action"] in {"BUY", "SELL", "HOLD"}
-
-
-def test_workbench_refresh_preserves_real_decision_mode(test_app, monkeypatch):
-    from src.api import routes_dashboard
-
-    monkeypatch.setattr(routes_dashboard, "_get_llm", lambda: FakeLLM())
-
-    client = TestClient(test_app)
-    response = client.post(
-        "/api/v1/dashboard/run",
-        json={
-            "capital_base": 1_000_000,
-            "watchlist": ["600519.SH", "000858.SZ", "601318.SH"],
-            "max_position_ratio": 0.2,
-            "execution_mode": "full",
-            "decision_mode": "real",
-        },
-    )
-    assert response.status_code == 200
-
-    refresh = client.get("/api/v1/dashboard/workbench")
-    payload = refresh.json()
-    assert refresh.status_code == 200
-    assert "模式: real" in payload["latest_run"]["steps"][0]["message"]
-
-
-def test_run_endpoint_contains_reconcile_stage_and_daily_pnl(test_app):
-    client = TestClient(test_app)
-
-    response = client.post(
-        "/api/v1/dashboard/run",
-        json={
-            "capital_base": 1_000_000,
-            "watchlist": ["600519.SH", "000858.SZ", "601318.SH"],
-            "max_position_ratio": 0.2,
-            "execution_mode": "full",
-        },
-    )
-    assert response.status_code == 200
-    payload = response.json()
-
-    assert "daily_pnl" in payload["risk"]
-    assert isinstance(payload["risk"]["daily_pnl"], (int, float))
-
-    steps = payload["latest_run"]["steps"]
-    assert len(steps) >= 6
-    assert steps[-1]["stage"] == "reconcile"
-    assert steps[-1]["status"] == "done"
-    assert "模拟盈亏" in (steps[-1].get("message") or "") or "未发生模拟成交" in (steps[-1].get("message") or "")
-
-
-def test_decision_mode_marks_reconcile_as_skipped(test_app):
-    client = TestClient(test_app)
-
-    response = client.post(
-        "/api/v1/dashboard/run",
-        json={
-            "capital_base": 1_000_000,
-            "watchlist": ["600519.SH"],
-            "max_position_ratio": 0.2,
-            "execution_mode": "decision",
-        },
-    )
-    assert response.status_code == 200
-    payload = response.json()
-    steps = payload["latest_run"]["steps"]
-    assert steps[-1]["stage"] == "reconcile"
-    assert steps[-1]["status"] == "done"
-    assert "仅决策模式，跳过执行" in (steps[-1].get("message") or "")
-
-
 def test_kill_switch_events_are_visible_in_workbench_history(test_app):
     client = TestClient(test_app)
 
@@ -270,84 +171,6 @@ def test_workbench_payload_includes_alpha_portfolio_and_exceptions(test_app, pg_
     assert payload["alpha"]["exceptions"]["latest_status"] == "MISMATCH"
 
 
-def test_run_endpoint_uses_watchlist_allocation_for_order_quantity(test_app, monkeypatch):
-    from src.api import routes_dashboard
-
-    class FakeSnap:
-        close = 100.0
-
-    def fake_quote(self, symbol):
-        return FakeSnap()
-
-    monkeypatch.setattr(routes_dashboard.AkshareProvider, "get_realtime_quote", fake_quote)
-    monkeypatch.setattr(routes_dashboard, "_get_llm", lambda: FakeLLM())
-
-    client = TestClient(test_app)
-    response = client.post(
-        "/api/v1/dashboard/run",
-        json={
-            "watchlist": ["600519.SH", "000001.SZ"],
-            "capital_base": 1_000_000,
-            "max_position_ratio": 0.2,
-            "execution_mode": "full",
-        },
-    )
-
-    assert response.status_code == 200
-    payload = response.json()
-    buy_orders = [
-        item for item in payload["latest_run"]["order_items"]
-        if item["action"] == "BUY"
-    ]
-    assert buy_orders[0]["quantity"] == 1000
-
-
-def test_run_endpoint_explains_zero_executable_orders(test_app, monkeypatch):
-    from src.api import routes_dashboard
-
-    class ExpensiveSnap:
-        close = 2000.0
-
-    class FakeUSLLM:
-        model = "deepseek-v4-pro"
-
-        def generate(self, prompt: str, temperature: float = 0.7) -> str:
-            symbol = "AAPL" if "AAPL" in prompt else "MRVL"
-            return (
-                f'{{"symbol":"{symbol}","action":"BUY","confidence":80,'
-                f'"target_position_ratio":0.2,"reason":"real-mode"}}'
-            )
-
-    monkeypatch.setattr(routes_dashboard.AkshareProvider, "get_realtime_quote", lambda self, symbol: ExpensiveSnap())
-    monkeypatch.setattr(routes_dashboard, "_get_llm", lambda: FakeUSLLM())
-
-    client = TestClient(test_app)
-    response = client.post(
-        "/api/v1/dashboard/run",
-        json={
-            "watchlist": ["MRVL", "AAPL"],
-            "capital_base": 10_000,
-            "max_position_ratio": 0.2,
-            "execution_mode": "full",
-            "decision_mode": "real",
-        },
-    )
-
-    assert response.status_code == 200
-    payload = response.json()
-    steps = payload["latest_run"]["steps"]
-
-    target_done = next(step for step in steps if step["stage"] == "target" and step["status"] == "done")
-    execute_done = next(step for step in steps if step["stage"] == "execute" and step["status"] == "done")
-    reconcile_done = next(step for step in steps if step["stage"] == "reconcile" and step["status"] == "done")
-
-    assert len(target_done["items"]) == 2
-    assert target_done["items"][0]["target_quantity"] == 0
-    assert "无可执行订单，已跳过模拟执行" in (execute_done.get("message") or "")
-    assert "未发生模拟成交" in (reconcile_done.get("message") or "")
-    assert payload["latest_run"]["order_items"] == []
-
-
 def test_workbench_uses_authoritative_target_quantity_and_reconcile_items(test_app, pg_store):
     pg_store.upsert_dashboard_run_summary(
         run_context_id="wrk-001",
@@ -380,3 +203,45 @@ def test_workbench_uses_authoritative_target_quantity_and_reconcile_items(test_a
     assert payload["latest_run"]["target_items"][0]["target_quantity"] == 4
     assert payload["latest_run"]["reconcile_items"][0]["mark_price"] == 99.90
     assert payload["latest_run"]["run_pnl_summary"]["net_pnl"] == -0.96
+
+
+def test_old_run_endpoint_is_removed(test_app, monkeypatch):
+    """旧阻塞式 /api/v1/dashboard/run 必须删除（No Legacy By Default）。
+
+    ShadowRunService.run() + POST /api/v1/dashboard/runs 是统一权威入口。
+    """
+    from src.api import routes_dashboard
+
+    monkeypatch.setattr(routes_dashboard, "_launch_dashboard_run", lambda run_context_id, config: None)
+
+    client = TestClient(test_app)
+    res = client.post(
+        "/api/v1/dashboard/run",
+        json={"watchlist": ["NVDA"], "capital_base": 1_000_000},
+    )
+    assert res.status_code == 404, (
+        f"legacy /api/v1/dashboard/run must be gone, got {res.status_code}: {res.text}"
+    )
+
+
+def test_new_runs_endpoint_remains(test_app, monkeypatch):
+    """新流式 endpoint /api/v1/dashboard/runs 必须保留为唯一入口。"""
+    from src.api import routes_dashboard
+
+    monkeypatch.setattr(routes_dashboard, "_launch_dashboard_run", lambda run_context_id, config: None)
+
+    client = TestClient(test_app)
+    res = client.post(
+        "/api/v1/dashboard/runs",
+        json={
+            "watchlist": ["NVDA"],
+            "capital_base": 1_000_000,
+            "max_position_ratio": 0.2,
+            "execution_mode": "full",
+            "decision_mode": "mock",
+        },
+    )
+    assert res.status_code == 202, f"new /api/v1/dashboard/runs must remain, got {res.status_code}: {res.text}"
+    body = res.json()
+    assert body["run_context_id"].startswith("wrk-")
+    assert body["stream_url"] == f"/api/v1/dashboard/runs/{body['run_context_id']}/events"

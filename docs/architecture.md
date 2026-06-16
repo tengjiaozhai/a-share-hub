@@ -166,7 +166,7 @@ Dashboard 页面由 `src/api/dashboard_page/render.py` 拼装。它读取 `shell
 |---|---|---|---|---|
 | 顶部状态条 | `partials/status_bar.html` | `scripts/dashboard.js` | `GET /api/v1/dashboard/workbench`, `GET /api/v1/kill-switch/status` | `kill_switch_state`, `kill_switch_events` |
 | 工作台顶部状态栏 | `partials/view_dashboard.html` | `scripts/dashboard.js` | `GET /api/v1/dashboard/workbench?market=a&account_kind=auto` | `user_preferences`, `kill_switch_state` |
-| 工作台左侧命令面板 | `partials/view_dashboard.html` | `scripts/bootstrap.js` | `PUT /api/v1/dashboard/preferences`, `POST /api/v1/dashboard/run` | `user_preferences`, `decision_runs`, `target_positions`, `execution_orders` |
+| 工作台左侧命令面板 | `partials/view_dashboard.html` | `scripts/bootstrap.js` + `scripts/dashboard_run.js` | `PUT /api/v1/dashboard/preferences`, `POST /api/v1/dashboard/runs`, `GET /api/v1/dashboard/runs/{run_context_id}/events` | `user_preferences`, `decision_runs`, `target_positions`, `execution_orders` |
 | 工作台中央性能面板 | `partials/view_dashboard.html` | `scripts/dashboard.js` | `GET /api/v1/dashboard/performance?market=a&window=30d`, `GET /api/v1/dashboard/history?market=a&source=all` | `paper_nav_daily`, `paper_runs` |
 | 工作台右侧风控面板 | `partials/view_dashboard.html` | `scripts/dashboard.js` | `GET /api/v1/dashboard/automation?market=a`, `GET /api/v1/dashboard/workbench` | `paper_runs`, `paper_nav_daily`, `target_positions` |
 | 工作台底部历史台账 | `partials/view_dashboard.html` | `scripts/dashboard.js` | `GET /api/v1/dashboard/history?market=a&source=all&limit=20` | `decision_runs`, `execution_orders`, `kill_switch_events` |
@@ -181,7 +181,7 @@ Dashboard 页面由 `src/api/dashboard_page/render.py` 拼装。它读取 `shell
 - `GET /api/v1/dashboard/performance?market=a&window=30d` 返回净值曲线和区间表现对比卡片。
 - `GET /api/v1/dashboard/automation?market=a` 返回自动交易状态（今日状态、最后运行、下次运行）。
 - `GET /api/v1/dashboard/history?market=a&source=all&limit=20` 返回运行历史，`source` 支持 `auto`/`manual`/`backfill`/`all`。
-- `POST /api/v1/dashboard/run` 是手动沙盒触发，结果只写 `manual` 账户，不影响 `auto` 业绩曲线。
+- `POST /api/v1/dashboard/runs` 是手动沙盒触发入口（202 Accepted 后由后台异步执行），结果只写 `manual` 账户，不影响 `auto` 业绩曲线；前端通过 `GET /api/v1/dashboard/runs/{run_context_id}/events` 订阅 stage 事件流。
 - 响应模型定义在 `src/api/dashboard_contracts.py`。
 - A 股和美股行情页面主要读取实时 provider，行情本身不持久化；持久化的是自选列表。
 
@@ -190,7 +190,7 @@ Dashboard 页面由 `src/api/dashboard_page/render.py` 拼装。它读取 `shell
 ### 5.1 一次模拟交易
 
 1. 用户在工作台填写资金、观察列表、单票仓位、止损阈值、决策模式和执行模式。
-2. `scripts/dashboard.js` 调用 `POST /api/v1/dashboard/run`。
+2. `scripts/dashboard_run.js` 调用 `POST /api/v1/dashboard/runs` 启动后台任务，并通过 `EventSource('/api/v1/dashboard/runs/{run_context_id}/events')` 订阅 stage 事件。
 3. 后端先检查 `kill_switch_state`。如果 Kill Switch 激活，直接返回当前工作台 payload，不继续产生交易动作。
 4. 后端为每个 symbol 拉取实时价格。A 股路径使用 `AkshareProvider`，失败时用 `100.0` 作为兜底价格。
 5. 后端生成决策。真实模式调用 `LLMClient`，mock 模式生成固定 BUY、HOLD、SELL 模式。每个决策写入 `decision_runs`，同时写入一条 `decision_input_snapshots`。

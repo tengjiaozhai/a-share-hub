@@ -291,7 +291,8 @@ Redis 是可选的，必须保持禁用直到负载门控运行手册另有说�
 - `DELETE /api/v1/us-stock/watchlist/{symbol}` - 删除美股自选
 
 ### 仪表盘
-- `POST /api/v1/dashboard/run` - 运行一轮模拟交易
+- `POST /api/v1/dashboard/runs` - 启动一轮模拟交易（流式，202 Accepted）
+- `GET /api/v1/dashboard/runs/{run_context_id}/events` - SSE 事件流（stage 推进 + reconcile 快照）
 - `POST /api/v1/dashboard/backtest` - 运行回测
 - `GET /api/v1/dashboard/workbench` - 获取工作台数据
 - `GET /api/v1/dashboard/preferences` - 获取配置

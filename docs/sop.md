@@ -133,9 +133,15 @@ LLM_MODEL=deepseek-v4-pro
 同一轮也可以用 API 触发：
 
 ```bash
-curl -s -X POST http://localhost:8000/api/v1/dashboard/run \
+curl -s -X POST http://localhost:8000/api/v1/dashboard/runs \
   -H 'Content-Type: application/json' \
   -d '{"watchlist":["600519.SH","000858.SZ"],"capital_base":1000000,"max_position_ratio":0.2,"execution_mode":"full"}'
+```
+
+后台执行后，再用 `run_context_id` 订阅事件流：
+
+```bash
+curl -sN "http://localhost:8000/api/v1/dashboard/runs/${RUN_CONTEXT_ID}/events"
 ```
 
 ## 切到 Real：只验证真实模型，不代表真实下单
