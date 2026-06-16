@@ -214,8 +214,16 @@ async def stream_dashboard_run_events(
                     "event": event["event_type"],
                     "data": json.dumps(event, ensure_ascii=True),
                 }
+                # Pace each yield so the browser EventSource can dispatch the
+                # event before the next one arrives; without this pause the
+                # 6 events flush in <1s and the connection closes before
+                # onmessage fires, forcing a 47s reconnect via Last-Event-ID.
+                await asyncio.sleep(0.05)
             summary = store.get_dashboard_run_summary(run_context_id)
             if summary and summary["status"] in {"completed", "failed"}:
+                # Final flush window: give the browser ~500ms to dispatch the
+                # last batch of events before sse-starlette closes the stream.
+                await asyncio.sleep(0.5)
                 return
             await asyncio.sleep(0.2)
 
