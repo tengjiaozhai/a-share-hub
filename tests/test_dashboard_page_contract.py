@@ -86,6 +86,13 @@ def test_render_dashboard_html_contains_streaming_run_javascript_contract():
     assert "connectRunStream" in html
 
 
+def test_render_dashboard_html_contains_reconcile_renderer_hooks():
+    html = render_dashboard_html()
+    assert "renderReconcile(" in html
+    assert "renderRunPnlSummary(" in html
+    assert "duration_ms" in html
+
+
 def test_dashboard_route_uses_rendered_split_html():
     client = TestClient(build_app())
     response = client.get("/dashboard")

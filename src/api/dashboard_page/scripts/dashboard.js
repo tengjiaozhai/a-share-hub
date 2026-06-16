@@ -435,7 +435,65 @@ function stageLabel(stage) {
   return tag;
 }
 
+function renderRunPnlSummary(summary) {
+  const pnl = summary || {};
+  const net = Number(pnl.net_pnl || 0);
+  const fee = Number(pnl.execution_fee_total || 0);
+  const unrealized = Number(pnl.unrealized_pnl || 0);
+
+  const netEl = document.getElementById('run-pnl-net');
+  const feeEl = document.getElementById('run-pnl-fee');
+  const unrealizedEl = document.getElementById('run-pnl-unrealized');
+
+  if (netEl) {
+    netEl.textContent = formatCurrency(net);
+    netEl.className = `run-pnl-value ${net > 0 ? 'green' : net < 0 ? 'red' : ''}`;
+  }
+  if (feeEl) {
+    feeEl.textContent = formatCurrency(fee);
+    feeEl.className = 'run-pnl-value red';
+  }
+  if (unrealizedEl) {
+    unrealizedEl.textContent = formatCurrency(unrealized);
+    unrealizedEl.className = `run-pnl-value ${unrealized > 0 ? 'green' : unrealized < 0 ? 'red' : ''}`;
+  }
+}
+
+function renderReconcile(list) {
+  const rows = toList(list);
+  const tb = document.getElementById('tb-reconcile');
+  if (!tb) return;
+  if (!rows.length) {
+    tb.innerHTML = '<tr><td colspan="8" style="color:var(--dim)">暂无数据</td></tr>';
+    return;
+  }
+  tb.innerHTML = rows.map(item => {
+    const symbol = normalizeText(item.symbol);
+    const quantity = normalizeText(item.quantity);
+    const avgCost = formatCurrency(item.avg_cost);
+    const markPrice = formatCurrency(item.mark_price);
+    const change = formatPercent(item.change_pct);
+    const pnl = formatCurrency(item.unrealized_pnl);
+    const fee = formatCurrency(item.fee_total);
+    const markTime = formatTime(item.mark_time);
+    const pnlClass = Number(item.unrealized_pnl) > 0 ? 'green' : Number(item.unrealized_pnl) < 0 ? 'red' : '';
+    return `<tr><td>${escapeHtml(symbol)}</td><td>${escapeHtml(quantity)}</td><td>${escapeHtml(avgCost)}</td><td>${escapeHtml(markPrice)}</td><td>${escapeHtml(change)}</td><td class="${pnlClass}">${escapeHtml(pnl)}</td><td>${escapeHtml(fee)}</td><td>${escapeHtml(markTime)}</td></tr>`;
+  }).join('');
+}
+
 function stageBodyHtml(step) {
+  const stage = normalizeText(step.stage || step.name, '').toLowerCase();
+  const items = toList(step.items);
+  if (stage === 'reconcile' && items.length) {
+    const rows = items.map(item => {
+      return `<tr><td>${escapeHtml(normalizeText(item.symbol))}</td><td>${escapeHtml(formatCurrency(item.avg_cost))}</td><td>${escapeHtml(formatCurrency(item.mark_price))}</td><td>${escapeHtml(formatPercent(item.change_pct))}</td><td>${escapeHtml(formatCurrency(item.unrealized_pnl))}</td></tr>`;
+    }).join('');
+    return `<table><tr><th>股票</th><th>成本价</th><th>现价</th><th>涨跌幅</th><th>未实现盈亏</th></tr>${rows}</table>`;
+  }
+  return legacyStageBodyHtml(step);
+}
+
+const legacyStageBodyHtml = function(step) {
   const stage = normalizeText(step.stage || step.name, '').toLowerCase();
   const items = toList(step.items);
   if (items.length) {
@@ -489,11 +547,13 @@ function renderTimeline(latestRun) {
     return;
   }
   timeline.innerHTML = '';
+  document.getElementById('run-trace-id').textContent = latestRun?.run_context_id || '--';
   steps.forEach(step => {
     const stage = normalizeText(step.stage || step.name, 'stage').toLowerCase();
     const statusRaw = normalizeText(step.status, 'done').toLowerCase();
     const status = statusRaw === 'error' || statusRaw === 'failed' ? 'error' : statusRaw === 'running' || statusRaw === 'in_progress' ? 'running' : 'done';
     const time = formatTime(pickFirst(step, ['created_at', 'timestamp', 'time']));
+    const duration = step.duration_ms != null ? ` · ${step.duration_ms}ms` : '';
     const div = document.createElement('div');
     div.className = `tl-step ${status}`;
     div.dataset.tag = stage;
@@ -506,7 +566,7 @@ function renderTimeline(latestRun) {
     div.innerHTML = `
       <div class="step-head">
         <span class="step-tag ${stage}">${escapeHtml(stageLabel(stage))}</span>
-        <span class="step-time">${escapeHtml(time)}</span>
+        <span class="step-time">${escapeHtml(`${time}${duration}`)}</span>
       </div>
       <div class="step-body">${stageBodyHtml(stepCopy)}</div>
     `;
@@ -538,6 +598,8 @@ function renderWorkbench(data, killStatus) {
   renderDecisions(data.history?.decisions || []);
   renderOrders(data.history?.orders || []);
   renderTargets(data.history?.targets || []);
+  renderReconcile(data.history?.reconcile || data.latest_run?.reconcile_items || []);
+  renderRunPnlSummary(data.latest_run?.run_pnl_summary || {});
   renderRisk(data.risk || {}, data.history?.targets || []);
   renderPerformance(data.performance || {});
   renderAutomation(data.automation || {});
