@@ -5,6 +5,39 @@ from src.storage.models import Base
 from src.storage.runtime_store import RuntimeStore
 
 
+def test_paper_execution_service_records_reconcile_snapshot_fields(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path}/paper.db", future=True)
+    Base.metadata.create_all(engine)
+    store = RuntimeStore(engine)
+    service = PaperExecutionService(store=store, fee_bps=3.0, slippage_bps=5.0)
+
+    service.execute_targets(
+        targets=[
+            {
+                "run_context_id": "wrk-001",
+                "target_position_id": "tp-001",
+                "symbol": "NVDA",
+                "action": "BUY",
+                "quantity": 4,
+                "price": 100.0,
+                "notional": 400,
+            }
+        ],
+        initial_state={"cash": 10_000.0, "positions": {}},
+        mark_prices={"NVDA": 99.90},
+        quote_meta_by_symbol={"NVDA": {"as_of": "2026-06-15T20:15:06+08:00", "status": "ok"}},
+        trade_date="2026-06-15",
+    )
+
+    snapshot = store.get_latest_account_snapshot(run_context_id="wrk-001")
+    position = snapshot["positions"]["NVDA"]
+
+    assert position["mark_price"] == 99.90
+    assert position["market_value"] == 399.6
+    assert position["unrealized_pnl"] < 0
+    assert position["mark_time"] == "2026-06-15T20:15:06+08:00"
+
+
 def test_paper_execution_service_records_lifecycle_and_reconcile_snapshot(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path}/paper.db", future=True)
     Base.metadata.create_all(engine)

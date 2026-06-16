@@ -346,3 +346,37 @@ def test_run_endpoint_explains_zero_executable_orders(test_app, monkeypatch):
     assert "无可执行订单，已跳过模拟执行" in (execute_done.get("message") or "")
     assert "未发生模拟成交" in (reconcile_done.get("message") or "")
     assert payload["latest_run"]["order_items"] == []
+
+
+def test_workbench_uses_authoritative_target_quantity_and_reconcile_items(test_app, pg_store):
+    pg_store.upsert_dashboard_run_summary(
+        run_context_id="wrk-001",
+        trade_date="2026-06-15",
+        decision_mode="real",
+        execution_mode="full",
+        capital_base=10_000,
+        status="completed",
+        execution_fee_total=0.36,
+        realized_pnl=0.0,
+        unrealized_pnl=-0.60,
+        net_pnl=-0.96,
+        started_at="2026-06-15T20:15:06+08:00",
+        finished_at="2026-06-15T20:15:38+08:00",
+        latest_workbench={
+            "latest_run": {
+                "run_context_id": "wrk-001",
+                "target_items": [{"symbol": "NVDA", "target_quantity": 4}],
+                "reconcile_items": [{"symbol": "NVDA", "mark_price": 99.90}],
+                "run_pnl_summary": {"net_pnl": -0.96},
+            }
+        },
+    )
+
+    client = TestClient(test_app)
+    response = client.get("/api/v1/dashboard/workbench?run_context_id=wrk-001")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["latest_run"]["target_items"][0]["target_quantity"] == 4
+    assert payload["latest_run"]["reconcile_items"][0]["mark_price"] == 99.90
+    assert payload["latest_run"]["run_pnl_summary"]["net_pnl"] == -0.96

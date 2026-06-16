@@ -119,16 +119,25 @@ def get_dashboard(store: RuntimeStore = Depends(get_runtime_store)):
 def get_workbench(
     market: str = Query(default="a", description="市场: a 或 us"),
     account_kind: str = Query(default="auto", description="账户类型: auto 或 manual"),
+    run_context_id: str | None = Query(default=None),
     decisions_page: int = Query(default=1, ge=1, description="决策页码"),
     orders_page: int = Query(default=1, ge=1, description="订单页码"),
     targets_page: int = Query(default=1, ge=1, description="目标仓位页码"),
     page_size: int = Query(default=20, ge=1, le=100, description="每页条数"),
     store: RuntimeStore = Depends(get_runtime_store),
 ) -> dict:
+    if run_context_id:
+        summary = store.get_dashboard_run_summary(run_context_id)
+        if summary is None:
+            raise HTTPException(status_code=404, detail="run_context_id not found")
+        return summary["latest_workbench"]
     payload = _build_workbench_payload(
-        store, market=market,
-        decisions_page=decisions_page, orders_page=orders_page,
-        targets_page=targets_page, page_size=page_size,
+        store,
+        market=market,
+        decisions_page=decisions_page,
+        orders_page=orders_page,
+        targets_page=targets_page,
+        page_size=page_size,
     )
     payload["alpha"] = _build_alpha_panel_payload(store)
     return payload

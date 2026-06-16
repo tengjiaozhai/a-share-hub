@@ -140,12 +140,12 @@ class PaperExecutionService:
         for symbol, position in positions.items():
             quantity = int(position.get("quantity", 0))
             avg_cost = float(position.get("avg_cost", 0.0))
-            quote_meta = quote_meta_by_symbol.get(symbol, {})
-            mark_price = float(quote_meta.get("price", mark_prices.get(symbol, avg_cost)))
+            mark_price = float(mark_prices.get(symbol, avg_cost))
             market_value = round(quantity * mark_price, 2)
             cost_basis = round(quantity * avg_cost, 2)
             unrealized_pnl = round(market_value - cost_basis, 2)
             change_pct = round((mark_price - avg_cost) / avg_cost, 6) if avg_cost else 0.0
+            quote_meta = quote_meta_by_symbol.get(symbol, {})
             enriched[symbol] = {
                 **position,
                 "mark_price": mark_price,
