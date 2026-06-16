@@ -482,49 +482,46 @@ function renderReconcile(list) {
 }
 
 function stageBodyHtml(step) {
+  if (!step || typeof step !== 'object') return '';
   const stage = normalizeText(step.stage || step.name, '').toLowerCase();
-  const items = toList(step.items);
-  if (stage === 'reconcile' && items.length) {
-    const rows = items.map(item => {
+  if (stage === 'reconcile' && toList(step.items).length) {
+    return toList(step.items).map(item => {
       return `<tr><td>${escapeHtml(normalizeText(item.symbol))}</td><td>${escapeHtml(formatCurrency(item.avg_cost))}</td><td>${escapeHtml(formatCurrency(item.mark_price))}</td><td>${escapeHtml(formatPercent(item.change_pct))}</td><td>${escapeHtml(formatCurrency(item.unrealized_pnl))}</td></tr>`;
     }).join('');
-    return `<table><tr><th>股票</th><th>成本价</th><th>现价</th><th>涨跌幅</th><th>未实现盈亏</th></tr>${rows}</table>`;
   }
   return legacyStageBodyHtml(step);
 }
 
 const legacyStageBodyHtml = function(step) {
+  if (!step || typeof step !== 'object') return '';
   const stage = normalizeText(step.stage || step.name, '').toLowerCase();
   const items = toList(step.items);
   if (items.length) {
     const first = items[0] || {};
     if (first.target_position_ratio !== undefined || first.target_weight !== undefined) {
-      const rows = items.map(item => {
+      return toList(items).map(item => {
         const symbol = escapeHtml(normalizeText(pickFirst(item, ['symbol', 'stock_code'])));
         const quantity = escapeHtml(normalizeText(pickFirst(item, ['target_quantity', 'quantity', 'target_value'])));
         const weight = escapeHtml(formatPercent(pickFirst(item, ['target_weight', 'target_position_ratio'], null)));
         return `<tr><td>${symbol}</td><td>${quantity}</td><td>${weight}</td></tr>`;
       }).join('');
-      return `<table><tr><th>股票</th><th>目标数量</th><th>权重</th></tr>${rows}</table>`;
     }
     if (first.status !== undefined || first.limit_price !== undefined || first.quantity !== undefined) {
-      const rows = items.map(item => {
+      return toList(items).map(item => {
         const symbol = escapeHtml(normalizeText(pickFirst(item, ['symbol', 'stock_code'])));
         const action = escapeHtml(normalizeText(pickFirst(item, ['action', 'parsed_action']), '--').toUpperCase());
         const qty = escapeHtml(normalizeText(pickFirst(item, ['quantity', 'qty']), '--'));
         const status = escapeHtml(normalizeText(item.status, '--').toUpperCase());
         return `<tr><td>${symbol}</td><td>${action}</td><td>${qty}</td><td>${status}</td></tr>`;
       }).join('');
-      return `<table><tr><th>股票</th><th>方向</th><th>数量</th><th>状态</th></tr>${rows}</table>`;
     }
-    const rows = items.map(item => {
+    return toList(items).map(item => {
       const symbol = escapeHtml(normalizeText(pickFirst(item, ['symbol', 'stock_code'])));
       const action = normalizeText(pickFirst(item, ['action', 'parsed_action', 'signal']), '--').toUpperCase();
       const confidence = escapeHtml(formatConfidence(item.confidence));
       const badgeClass = action === 'BUY' ? 'badge-buy' : action === 'SELL' ? 'badge-sell' : 'badge-hold';
       return `<tr><td>${symbol}</td><td><span class="badge ${badgeClass}">${escapeHtml(action)}</span></td><td>${confidence}</td></tr>`;
     }).join('');
-    return `<table><tr><th>股票</th><th>动作</th><th>置信度</th></tr>${rows}</table>`;
   }
   const message = normalizeText(step.message || step.summary || step.detail, '--');
   if (stage === 'reconcile') {
@@ -549,6 +546,7 @@ function renderTimeline(latestRun) {
   timeline.innerHTML = '';
   document.getElementById('run-trace-id').textContent = latestRun?.run_context_id || '--';
   steps.forEach(step => {
+    if (!step) return;
     const stage = normalizeText(step.stage || step.name, 'stage').toLowerCase();
     const statusRaw = normalizeText(step.status, 'done').toLowerCase();
     const status = statusRaw === 'error' || statusRaw === 'failed' ? 'error' : statusRaw === 'running' || statusRaw === 'in_progress' ? 'running' : 'done';

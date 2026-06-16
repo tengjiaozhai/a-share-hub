@@ -3,6 +3,31 @@ const RUN_EVENTS_API = (runContextId) => `/api/v1/dashboard/runs/${encodeURIComp
 
 let runEventSource = null;
 let currentRunContextId = null;
+let runStreamHeartbeatTimer = null;
+let runStreamHardTimeoutTimer = null;
+const RUN_STREAM_HEARTBEAT_MS = 30000;
+const RUN_STREAM_HARD_TIMEOUT_MS = 60000;
+
+function clearRunStreamTimers() {
+  if (runStreamHeartbeatTimer) {
+    clearTimeout(runStreamHeartbeatTimer);
+    runStreamHeartbeatTimer = null;
+  }
+  if (runStreamHardTimeoutTimer) {
+    clearTimeout(runStreamHardTimeoutTimer);
+    runStreamHardTimeoutTimer = null;
+  }
+}
+
+function forceCloseRunStream(reason) {
+  clearRunStreamTimers();
+  if (!runEventSource) return;
+  try { runEventSource.close(); } catch (_) { /* 关闭失败也不影响后续清理 */ }
+  runEventSource = null;
+  setStreamStatus('error', '运行超时');
+  addAlert('err', reason || '运行超时，连接已断开');
+  finishRun();
+}
 
 function setStreamStatus(kind, message) {
   const el = document.getElementById('stream-status');
@@ -39,15 +64,30 @@ function connectRunStream(runContextId) {
   document.getElementById('run-trace-id').textContent = runContextId;
   setStreamStatus('running', '运行中');
   runEventSource = new EventSource(RUN_EVENTS_API(runContextId));
+
+  const resetHeartbeat = () => {
+    if (runStreamHeartbeatTimer) clearTimeout(runStreamHeartbeatTimer);
+    runStreamHeartbeatTimer = setTimeout(() => {
+      forceCloseRunStream('运行超时，30 秒内未收到任何事件，连接已断开');
+    }, RUN_STREAM_HEARTBEAT_MS);
+  };
+  resetHeartbeat();
+
+  runStreamHardTimeoutTimer = setTimeout(() => {
+    forceCloseRunStream('运行超时，已达到 60 秒硬性上限，强制关闭');
+  }, RUN_STREAM_HARD_TIMEOUT_MS);
+
   runEventSource.onmessage = (event) => {
     try {
       const payload = JSON.parse(event.data);
       applyRunStreamEvent(payload);
+      resetHeartbeat();
     } catch (err) {
       addAlert('err', `解析事件失败: ${err.message}`);
     }
   };
   runEventSource.addEventListener('run.completed', async (event) => {
+    clearRunStreamTimers();
     const payload = JSON.parse(event.data);
     await loadRunSnapshot(payload.run_context_id);
     setStreamStatus('success', '本轮完成');
@@ -56,6 +96,7 @@ function connectRunStream(runContextId) {
     finishRun();
   });
   runEventSource.addEventListener('run.failed', async (event) => {
+    clearRunStreamTimers();
     const payload = JSON.parse(event.data);
     await loadRunSnapshot(payload.run_context_id);
     setStreamStatus('error', '运行失败');
@@ -64,6 +105,9 @@ function connectRunStream(runContextId) {
     runEventSource = null;
     finishRun();
   });
+  runEventSource.onerror = () => {
+    clearRunStreamTimers();
+  };
 }
 
 async function loadRunSnapshot(runContextId) {

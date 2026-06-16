@@ -192,3 +192,40 @@ def test_dashboard_split_has_no_legacy_frontend_paths():
     assert "StaticFiles" not in main_py
     assert '/new' not in routes_py
     assert 'dashboard.html' not in routes_py
+
+
+def test_render_dashboard_html_contains_stage_body_html_guards():
+    import re
+
+    html = render_dashboard_html()
+    assert "function stageBodyHtml" in html
+
+    match = re.search(r"function stageBodyHtml\(.*?\n}", html, re.DOTALL)
+    assert match, "stageBodyHtml not found"
+    fn_src = match.group(0)
+
+    assert ("if (!step" in fn_src) or ("if (!step ||" in fn_src), (
+        "stageBodyHtml must guard against null/undefined step"
+    )
+
+    for line in fn_src.split("\n"):
+        if ".map(" in line and "toList(" not in line:
+            raise AssertionError(
+                f"stageBodyHtml line has .map without toList: {line.strip()}"
+            )
+
+
+def test_render_dashboard_html_contains_sse_timeout_handler():
+    html = render_dashboard_html()
+
+    assert ("setTimeout" in html) or ("超时" in html), (
+        "SSE timeout handler missing in dashboard_run.js"
+    )
+    assert ("运行超时" in html) or ("force close" in html) or ("forceClose" in html), (
+        "SSE timeout UI message missing (运行超时 / force close / forceClose)"
+    )
+
+
+def test_render_dashboard_html_contains_inline_favicon_link():
+    html = render_dashboard_html()
+    assert 'rel="icon"' in html, "favicon link missing"
