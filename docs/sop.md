@@ -816,3 +816,29 @@ curl -s http://127.0.0.1:8000/health/ready
    - `现价`：本轮对账用到的价格。
    - `未实现盈亏`：如果现在平仓，账面上大概赚亏多少。
    - `行情时间`：这次对账使用的是哪一个时点的行情。
+
+## 浏览器 SSE 流式看不到事件的排查
+
+如果点击「运行一轮模拟交易」后，timeline 停在第一个 stage 不动，pnl 始终 0.00，stream pill 显示「运行超时」：
+
+1. **检查后端响应头**
+
+   ```bash
+   curl -sI -X POST http://localhost:8000/api/v1/dashboard/runs \
+     -H 'Content-Type: application/json' --data '{"watchlist":["NVDA"]}'
+   curl -sI "http://localhost:8000/api/v1/dashboard/runs/<run_context_id>/events"
+   ```
+
+   期望看到：
+   - `content-type: text/event-stream; charset=utf-8`
+   - `cache-control: no-cache`
+   - `x-accel-buffering: no`
+   - `connection: keep-alive`
+
+2. **检查 nginx 反代**（如果部署在 nginx 后面）：确保 `location /api/v1/dashboard/runs/` 段有 `proxy_buffering off;` 和 `add_header Cache-Control no-cache;`。
+
+3. **检查 sse-starlette 版本**：`pip show sse-starlette`，版本需要 >= 2.1.0，更早版本在 Starlette 0.27+ 上有 chunked-encoding 立即关闭 bug。
+
+4. **检查 server 是否用了新代码**：如果 `routes_dashboard.py` 已经改成 `EventSourceResponse` 但 server 还在跑旧进程，需要 kill 旧进程后重启 `python3 -m src.main serve`。
+
+5. **测试断线重连**：浏览器 DevTools Network 面板 → 找 EventSource 连接 → 右键 → "Reconnect"，应能从 `Last-Event-ID` 之后继续（路由读 `Header(default=None, alias="Last-Event-ID")`，自动按客户端发送的 `Last-Event-ID` HTTP 头定位续点）。
