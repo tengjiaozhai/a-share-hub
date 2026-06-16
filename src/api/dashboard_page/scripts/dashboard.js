@@ -595,8 +595,14 @@ function renderWorkbench(data, killStatus) {
   renderDecisions(data.history?.decisions || []);
   renderOrders(data.history?.orders || []);
   renderTargets(data.history?.targets || []);
-  renderReconcile(data.history?.reconcile || data.latest_run?.reconcile_items || []);
-  renderRunPnlSummary(data.latest_run?.run_pnl_summary || {});
+  const reconcileData = data.history?.reconcile || data.latest_run?.reconcile_items;
+  if (Array.isArray(reconcileData) && reconcileData.length > 0) {
+    renderReconcile(reconcileData);
+  }
+  const pnlData = data.latest_run?.run_pnl_summary;
+  if (pnlData && typeof pnlData === 'object' && Object.keys(pnlData).length > 0) {
+    renderRunPnlSummary(pnlData);
+  }
   renderRisk(data.risk || {}, data.history?.targets || []);
   renderPerformance(data.performance || {});
   renderAutomation(data.automation || {});
@@ -679,13 +685,12 @@ async function loadHistoryPanel(market) {
 }
 
 function renderHistoryPanel(data) {
-  const autoPane = document.getElementById('pane-auto');
+  const autoPane = document.getElementById('auto-runs-history') || document.getElementById('pane-auto');
   const manualPane = document.getElementById('pane-manual');
   if (autoPane) {
-    const timeline = document.getElementById('timeline');
     const runs = toList(data.auto_runs);
     if (runs.length) {
-      const runsHtml = runs.map(r => `
+      autoPane.innerHTML = runs.map(r => `
         <div class="tl-step done">
           <div class="step-head">
             <span class="step-tag execute">${escapeHtml(r.market || 'a')}</span>
@@ -694,15 +699,8 @@ function renderHistoryPanel(data) {
           <div class="step-body">${escapeHtml(r.status || '')} ${r.error_message ? '— ' + escapeHtml(r.error_message) : ''}</div>
         </div>
       `).join('');
-      if (timeline) {
-        timeline.innerHTML = runsHtml;
-      } else {
-        autoPane.innerHTML = runsHtml;
-      }
-    } else if (timeline) {
-      timeline.innerHTML = '<div class="timeline-empty">暂无自动运行记录</div>';
     } else {
-      autoPane.innerHTML = '<div class="timeline-empty">暂无自动运行记录</div>';
+      autoPane.innerHTML = '';
     }
   }
   if (manualPane) {
