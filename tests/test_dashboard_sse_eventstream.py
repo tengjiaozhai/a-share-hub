@@ -11,11 +11,11 @@ from src.storage.dependencies import get_runtime_store
 from src.storage.runtime_store import RuntimeStore
 
 
-SSE_DELIMITER = b"\n\n"
+SSE_DELIMITER = b"\r\n\r\n"
 
 
 def parse_sse_chunk(chunk: bytes) -> list[dict]:
-    """Parse one SSE message block (terminated by \\n\\n) into {event, data, id}."""
+    """Parse one SSE message block (terminated by \\r\\n\\r\\n) into {event, data, id}."""
     messages: list[dict] = []
     for block in chunk.split(SSE_DELIMITER):
         block = block.strip()
@@ -25,6 +25,7 @@ def parse_sse_chunk(chunk: bytes) -> list[dict]:
         event_id = None
         data_lines: list[str] = []
         for line in block.split(b"\n"):
+            line = line.rstrip(b"\r")
             if line.startswith(b"event: "):
                 event_name = line[len(b"event: "):].decode("utf-8")
             elif line.startswith(b"id: "):

@@ -1,10 +1,12 @@
+import asyncio
 import json
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse
+from sse_starlette.sse import EventSourceResponse
 
 from src.agents.llm_client import LLMClient
 from src.alpha.execution_service import AlphaExecutionService
@@ -195,24 +197,38 @@ def start_dashboard_run(
 
 
 @router.get("/api/v1/dashboard/runs/{run_context_id}/events")
-def stream_dashboard_run_events(
+async def stream_dashboard_run_events(
     run_context_id: str,
+    last_event_id: str | None = Query(default=None),
     store: RuntimeStore = Depends(get_runtime_store),
-) -> StreamingResponse:
-    def event_iter():
-        last_seq = 0
+) -> EventSourceResponse:
+    after_seq = int(last_event_id) if last_event_id and last_event_id.isdigit() else 0
+
+    async def event_iter():
+        last_seq = after_seq
         while True:
             events = store.list_dashboard_run_events(run_context_id, after_seq=last_seq)
             for event in events:
                 last_seq = event["seq"]
-                yield f"event: {event['event_type']}\n"
-                yield f"data: {json.dumps(event, ensure_ascii=True)}\n\n"
+                yield {
+                    "id": str(event["seq"]),
+                    "event": event["event_type"],
+                    "data": json.dumps(event, ensure_ascii=True),
+                }
             summary = store.get_dashboard_run_summary(run_context_id)
             if summary and summary["status"] in {"completed", "failed"}:
-                break
-            time.sleep(0.2)
+                return
+            await asyncio.sleep(0.2)
 
-    return StreamingResponse(event_iter(), media_type="text/event-stream")
+    return EventSourceResponse(
+        event_iter(),
+        ping=15,
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @router.get("/api/v1/dashboard/performance")
