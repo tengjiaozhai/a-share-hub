@@ -3,7 +3,7 @@ import json
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from sse_starlette.sse import EventSourceResponse
 
@@ -198,7 +198,7 @@ def start_dashboard_run(
 @router.get("/api/v1/dashboard/runs/{run_context_id}/events")
 async def stream_dashboard_run_events(
     run_context_id: str,
-    last_event_id: str | None = Query(default=None),
+    last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
     store: RuntimeStore = Depends(get_runtime_store),
 ) -> EventSourceResponse:
     after_seq = int(last_event_id) if last_event_id and last_event_id.isdigit() else 0
