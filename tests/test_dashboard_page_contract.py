@@ -63,6 +63,21 @@ def test_render_dashboard_html_contains_strategy_workbench_contract():
         assert marker in html
 
 
+def test_render_dashboard_html_contains_streaming_run_markers():
+    html = render_dashboard_html()
+    required_markers = [
+        'id="run-trace-id"',
+        'id="stream-status"',
+        'id="run-pnl-net"',
+        'id="run-pnl-fee"',
+        'id="run-pnl-unrealized"',
+        'id="tab-reconcile"',
+        'id="tb-reconcile"',
+    ]
+    for marker in required_markers:
+        assert marker in html
+
+
 def test_dashboard_route_uses_rendered_split_html():
     client = TestClient(build_app())
     response = client.get("/dashboard")
