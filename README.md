@@ -331,3 +331,62 @@ Phase 4 引入了安全门控机制，控制 API 下单能力的启用：
 ## 新手指南
 
 详细的新手 SOP 请查看 [docs/sop.md](docs/sop.md)
+
+## 部署服务
+
+### 代码提交与推送
+
+```bash
+# 1. 本地提交
+git add -A && git commit -m "描述"
+
+# 2. 合并到 master（如果在 feature 分支）
+git checkout master
+git merge --no-ff feature/your-branch -m "merge: 描述"
+git push origin master
+git checkout feature/your-branch
+```
+
+### 服务器拉取与重启
+
+```bash
+# 1. SSH 连接到服务器后执行
+cd /home/ec2-user/a-share-hub
+
+# 2. 拉取最新代码
+git fetch origin
+git reset --hard origin/master
+
+# 3. 安装新增依赖（如有）
+~/miniconda3/envs/py311/bin/pip install 新依赖名
+
+# 4. 重启服务
+lsof -ti:8000 | xargs kill -9
+setsid ~/miniconda3/envs/py311/bin/python -m uvicorn src.main:app \
+  --host 0.0.0.0 --port 8000 \
+  --app-dir /home/ec2-user/a-share-hub \
+  > /tmp/uvicorn.log 2>&1 < /dev/null &
+```
+
+### 验证部署
+
+```bash
+# 等待 6 秒后检查
+pgrep -af 'uvicorn src.main' | grep -v bash
+netstat -tlnp | grep 8000
+curl -s http://127.0.0.1:8000/health
+# 应返回 {"status":"ok"}
+
+# 检查服务状态
+curl -s http://127.0.0.1:8000/api/v1/dashboard/workbench | python -c \
+  'import sys,json; d=json.load(sys.stdin); print("DB:", d["services"]["database"], "LLM:", d["services"]["llm"], "Market:", d["services"]["market"])'
+```
+
+### 常见问题
+
+| 症状 | 原因 | 解决 |
+|------|------|------|
+| `git pull` 报 "Already up to date" 但代码不是最新 | 本地 master 超前于 origin | `git fetch origin && git reset --hard origin/master` |
+| 启动后 500 错误 | 缺少新增依赖 | 检查 `pyproject.toml` 新增了什么，`pip install` 安装 |
+| `ModuleNotFoundError` | 旧进程仍持有端口 | `lsof -ti:8000 \| xargs kill -9` 后重启 |
+| 端口 8000 无人监听 | setsid 进程未启动成功 | 查看 `tail -20 /tmp/uvicorn.log` 排查导入错误 |
