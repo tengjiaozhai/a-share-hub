@@ -16,3 +16,14 @@ def test_dashboard_runbook_mentions_market_endpoints():
     assert "/api/v1/market/quote" in content
     assert "000858.SZ" in content
     assert "quote symbol not found" in content
+
+
+def test_dashboard_run_contract_mentions_stream_endpoints_and_event_types():
+    text = Path("docs/dashboard-run-contract.md").read_text(encoding="utf-8")
+    assert "/api/v1/dashboard/runs" in text
+    assert "/api/v1/dashboard/runs/{run_context_id}/events" in text
+    assert "run.accepted" in text
+    assert "stage.updated" in text
+    assert "run.completed" in text
+    assert "run_pnl_summary" in text
+    assert "reconcile_items" in text
