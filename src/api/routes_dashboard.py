@@ -1,8 +1,10 @@
+import json
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi.responses import HTMLResponse, StreamingResponse
 
 from src.agents.llm_client import LLMClient
 from src.alpha.execution_service import AlphaExecutionService
@@ -141,6 +143,76 @@ def get_workbench(
     )
     payload["alpha"] = _build_alpha_panel_payload(store)
     return payload
+
+
+def _launch_dashboard_run(run_context_id: str, config: dict) -> None:
+    from src.execution.shadow_run_service import ShadowRunService
+
+    store = get_runtime_store()
+    settings = Settings()
+    llm = _get_llm()
+    provider = AkshareProvider()
+    service = ShadowRunService(store=store, settings=settings, llm=llm, provider=provider)
+    service.run(run_context_id=run_context_id, config=config)
+
+
+@router.post("/api/v1/dashboard/runs", status_code=202)
+def start_dashboard_run(
+    config: dict | None = None,
+    background_tasks: BackgroundTasks = None,
+    store: RuntimeStore = Depends(get_runtime_store),
+) -> dict:
+    payload = config or {}
+    run_context_id = f"wrk-{_now_cst().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+    store.upsert_dashboard_run_summary(
+        run_context_id=run_context_id,
+        trade_date=_now_cst().date().isoformat(),
+        decision_mode=str(payload.get("decision_mode", "mock")),
+        execution_mode="decision" if payload.get("execution_mode") == "decision" else "full",
+        capital_base=int(payload.get("capital_base", 1_000_000)),
+        status="accepted",
+        execution_fee_total=0.0,
+        realized_pnl=0.0,
+        unrealized_pnl=0.0,
+        net_pnl=0.0,
+        started_at=_now_cst().isoformat(),
+        finished_at=None,
+        latest_workbench={"latest_run": {"run_context_id": run_context_id, "steps": []}},
+    )
+    store.append_dashboard_run_event(
+        run_context_id=run_context_id,
+        event_type="run.accepted",
+        stage="decision",
+        status="running",
+        payload={"message": "请求已提交，等待后台执行"},
+    )
+    background_tasks.add_task(_launch_dashboard_run, run_context_id, payload)
+    return {
+        "run_context_id": run_context_id,
+        "stream_url": f"/api/v1/dashboard/runs/{run_context_id}/events",
+        "status": "accepted",
+    }
+
+
+@router.get("/api/v1/dashboard/runs/{run_context_id}/events")
+def stream_dashboard_run_events(
+    run_context_id: str,
+    store: RuntimeStore = Depends(get_runtime_store),
+) -> StreamingResponse:
+    def event_iter():
+        last_seq = 0
+        while True:
+            events = store.list_dashboard_run_events(run_context_id, after_seq=last_seq)
+            for event in events:
+                last_seq = event["seq"]
+                yield f"event: {event['event_type']}\n"
+                yield f"data: {json.dumps(event, ensure_ascii=True)}\n\n"
+            summary = store.get_dashboard_run_summary(run_context_id)
+            if summary and summary["status"] in {"completed", "failed"}:
+                break
+            time.sleep(0.2)
+
+    return StreamingResponse(event_iter(), media_type="text/event-stream")
 
 
 @router.get("/api/v1/dashboard/performance")

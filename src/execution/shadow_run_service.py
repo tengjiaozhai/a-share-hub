@@ -14,6 +14,15 @@ class ShadowRunService:
         self.llm = llm
         self.provider = provider
 
+    def emit(self, run_context_id: str, event_type: str, stage: str, status: str, payload: dict) -> None:
+        self.store.append_dashboard_run_event(
+            run_context_id=run_context_id,
+            event_type=event_type,
+            stage=stage,
+            status=status,
+            payload=payload,
+        )
+
     def build_run_pnl_summary(self, previous_nav: float, current_nav: float, orders: list[dict], reconcile_items: list[dict]) -> dict:
         execution_fee_total = round(sum(float(order.get("fee", 0.0) or 0.0) for order in orders), 2)
         realized_pnl = round(sum(float(order.get("pnl_delta", 0.0) or 0.0) for order in orders), 2)
