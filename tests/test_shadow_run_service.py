@@ -220,3 +220,73 @@ def test_shadow_run_service_emits_run_failed_on_exception(pg_store, settings_stu
 
     events = pg_store.list_dashboard_run_events("wrk-test-3")
     assert any(e["event_type"] == "run.failed" for e in events)
+
+
+def test_stage_updated_events_carry_cumulative_render_state(pg_store, settings_stub):
+    """Each stage.updated payload must expose the cumulative render state at the
+    top level so the front-end can paint timeline/pnl/reconcile progressively
+    rather than waiting for run.completed to flash everything at once.
+
+    The render contract:
+      payload.steps            — list of step dicts accumulated so far
+      payload.reconcile_items  — current reconcile rows ([] until reconcile runs)
+      payload.run_pnl_summary  — current PnL summary ({} until reconcile runs)
+
+    run.completed must also expose all three at the top level with final values.
+    """
+    _seed_accepted_run(pg_store, "wrk-cumulative-001")
+
+    service = ShadowRunService(
+        store=pg_store,
+        settings=settings_stub,
+        llm=MockLLM(),
+        provider=MockProvider(),
+    )
+    service.run(
+        run_context_id="wrk-cumulative-001",
+        config={"watchlist": ["NVDA"], "decision_mode": "mock", "capital_base": 1_000_000},
+    )
+
+    events = pg_store.list_dashboard_run_events("wrk-cumulative-001")
+    stage_events = [e for e in events if e["event_type"] == "stage.updated"]
+    completed_events = [e for e in events if e["event_type"] == "run.completed"]
+
+    # Every stage.updated event must carry the cumulative render state at top level.
+    assert stage_events, "expected at least one stage.updated event"
+    for event in stage_events:
+        payload = event["payload"]
+        assert isinstance(payload.get("steps"), list), (
+            f"stage={event['stage']} payload missing top-level steps array"
+        )
+        assert "reconcile_items" in payload, (
+            f"stage={event['stage']} payload missing top-level reconcile_items"
+        )
+        assert "run_pnl_summary" in payload, (
+            f"stage={event['stage']} payload missing top-level run_pnl_summary"
+        )
+
+    # Cumulative step count must be monotonic non-decreasing across the stream.
+    cumulative_lengths = [len(event["payload"]["steps"]) for event in stage_events]
+    assert cumulative_lengths == sorted(cumulative_lengths), (
+        f"stage events must carry monotonically growing steps: {cumulative_lengths}"
+    )
+
+    # Final stage (reconcile) payload must contain the final reconcile + pnl values.
+    final_stage_payload = stage_events[-1]["payload"]
+    assert final_stage_payload["stage"] == "reconcile", (
+        f"expected final stage event to be reconcile, got {final_stage_payload.get('stage')}"
+    )
+    assert isinstance(final_stage_payload["reconcile_items"], list)
+    assert final_stage_payload["reconcile_items"], (
+        "reconcile stage payload should carry the final reconcile_items list"
+    )
+    assert "net_pnl" in final_stage_payload["run_pnl_summary"]
+
+    # run.completed must also carry the same top-level fields so the front-end
+    # has a consistent payload shape on the closing event.
+    assert completed_events, "expected run.completed event"
+    completed_payload = completed_events[-1]["payload"]
+    assert isinstance(completed_payload.get("steps"), list)
+    assert isinstance(completed_payload.get("reconcile_items"), list)
+    assert "run_pnl_summary" in completed_payload
+    assert "net_pnl" in completed_payload["run_pnl_summary"]

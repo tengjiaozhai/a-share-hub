@@ -251,3 +251,30 @@ def test_render_dashboard_html_contains_resilient_sse_onerror():
     assert ("RECONNECT" in html) or ("reconnect" in html), (
         "Reconnect constants missing"
     )
+
+
+def test_render_dashboard_html_sse_timeouts_match_backend_run_time():
+    """SSE 心跳/硬性超时常量必须 ≥ 后端实测的完整 run 耗时（≥ 60s / ≥ 120s）。
+
+    后端一次完整 run（含 LLM 决策 5 个 symbol）实测 ≈ 35s，留 2x 安全余量：
+    - 心跳阈值：≥ 60s（避免误判"无事件"）
+    - 硬性上限：≥ 120s（允许偶发慢 LLM 推理）
+    """
+    html = render_dashboard_html()
+    import re
+    hb_match = re.search(r"RUN_STREAM_HEARTBEAT_MS\s*=\s*([\d_]+)", html)
+    ht_match = re.search(r"RUN_STREAM_HARD_TIMEOUT_MS\s*=\s*([\d_]+)", html)
+    assert hb_match, "RUN_STREAM_HEARTBEAT_MS constant missing"
+    assert ht_match, "RUN_STREAM_HARD_TIMEOUT_MS constant missing"
+    heartbeat_ms = int(hb_match.group(1).replace("_", ""))
+    hard_timeout_ms = int(ht_match.group(1).replace("_", ""))
+    assert heartbeat_ms >= 60_000, (
+        f"heartbeat {heartbeat_ms}ms too short; "
+        "实测后端 run ≈ 35s，30s 心跳会误判超时"
+    )
+    assert hard_timeout_ms >= heartbeat_ms, (
+        f"hard timeout {hard_timeout_ms}ms must be >= heartbeat {heartbeat_ms}ms"
+    )
+    assert hard_timeout_ms >= 120_000, (
+        f"hard timeout {hard_timeout_ms}ms too short; 至少要给 LLM 推理 120s"
+    )

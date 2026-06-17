@@ -33,13 +33,31 @@ class ShadowRunService:
         self.llm = llm
         self.provider = provider
 
-    def emit(self, run_context_id: str, event_type: str, stage: str, status: str, payload: dict) -> None:
+    def emit(
+        self,
+        run_context_id: str,
+        event_type: str,
+        stage: str,
+        status: str,
+        payload: dict,
+        *,
+        steps: list[dict] | None = None,
+        reconcile_items: list[dict] | None = None,
+        run_pnl_summary: dict | None = None,
+    ) -> None:
+        enriched_payload = dict(payload)
+        if steps is not None:
+            enriched_payload["steps"] = list(steps)
+        if reconcile_items is not None:
+            enriched_payload["reconcile_items"] = list(reconcile_items)
+        if run_pnl_summary is not None:
+            enriched_payload["run_pnl_summary"] = dict(run_pnl_summary)
         self.store.append_dashboard_run_event(
             run_context_id=run_context_id,
             event_type=event_type,
             stage=stage,
             status=status,
-            payload=payload,
+            payload=enriched_payload,
         )
 
     def build_run_pnl_summary(self, previous_nav: float, current_nav: float, orders: list[dict], reconcile_items: list[dict]) -> dict:
@@ -132,6 +150,9 @@ class ShadowRunService:
                         f"模式: {decision_mode}"
                     )
                 },
+                steps=list(steps),
+                reconcile_items=[],
+                run_pnl_summary={},
             )
 
             use_real_llm = bool(
@@ -214,6 +235,9 @@ class ShadowRunService:
                 stage="target",
                 status="running",
                 payload={"message": "计算目标仓位..."},
+                steps=list(steps),
+                reconcile_items=[],
+                run_pnl_summary={},
             )
 
             targets = build_target_positions(
@@ -292,6 +316,9 @@ class ShadowRunService:
                 stage="execute",
                 status="running",
                 payload={"message": "发送订单中..."},
+                steps=list(steps),
+                reconcile_items=[],
+                run_pnl_summary={},
             )
 
             execution_result: dict | None = None

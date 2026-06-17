@@ -6,9 +6,9 @@ let currentRunContextId = null;
 let runStreamHeartbeatTimer = null;
 let runStreamHardTimeoutTimer = null;
 let runStreamReconnectAttempts = 0;
-const RUN_STREAM_HEARTBEAT_MS = 30000;
-const RUN_STREAM_HARD_TIMEOUT_MS = 60000;
-const RUN_STREAM_RECONNECT_MAX = 3;
+const RUN_STREAM_HEARTBEAT_MS = 90_000;
+const RUN_STREAM_HARD_TIMEOUT_MS = 180_000;
+const RUN_STREAM_RECONNECT_MAX = 5;
 
 function clearRunStreamTimers() {
   if (runStreamHeartbeatTimer) {
@@ -72,13 +72,13 @@ function connectRunStream(runContextId) {
   const resetHeartbeat = () => {
     if (runStreamHeartbeatTimer) clearTimeout(runStreamHeartbeatTimer);
     runStreamHeartbeatTimer = setTimeout(() => {
-      endRunStream('运行超时，30 秒内未收到任何事件，连接已断开', 'error');
+      endRunStream('运行超时，90 秒内未收到任何事件，连接已断开', 'error');
     }, RUN_STREAM_HEARTBEAT_MS);
   };
   resetHeartbeat();
 
   runStreamHardTimeoutTimer = setTimeout(() => {
-    endRunStream('运行超时，已达到 60 秒硬性上限，强制关闭', 'error');
+    endRunStream('运行超时，已达到 180 秒硬性上限，强制关闭', 'error');
   }, RUN_STREAM_HARD_TIMEOUT_MS);
 
   runStreamReconnectAttempts = 0;

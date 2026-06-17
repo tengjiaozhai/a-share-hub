@@ -70,8 +70,8 @@ function aLoadQuotes() {
   fetch('/api/v1/a-stock/watchlist')
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      aWatchlistData = data || [];
-      aWatchlistTotal = aWatchlistData.length;
+      aWatchlistData = (data && data.items) || [];
+      aWatchlistTotal = (data && typeof data.total === 'number') ? data.total : aWatchlistData.length;
       aQuotesPage = 1;
       return aLoadPageQuotes();
     })
@@ -357,11 +357,12 @@ function aLoadWatchlistChips() {
     .then(function(data) {
       var el = document.getElementById('a-watchlist-chips');
       if (!el) return;
-      if (!data || data.length === 0) {
+      var items = Array.isArray(data) ? data : (data && data.items) || [];
+      if (!items.length) {
         el.innerHTML = '<span style="font-size:11px;color:var(--dim)">暂无自选</span>';
         return;
       }
-      el.innerHTML = data.map(function(item) {
+      el.innerHTML = items.map(function(item) {
         return '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border:1px solid var(--border);border-radius:3px;font-size:11px">' +
           '<a href="#" onclick="aSelectSymbol(\'' + item.symbol + '\');return false" style="color:var(--text);text-decoration:none">' + item.symbol + '</a>' +
           '<span style="color:var(--red);cursor:pointer" onclick="aRemoveWatchlist(\'' + item.symbol + '\')">&times;</span>' +
