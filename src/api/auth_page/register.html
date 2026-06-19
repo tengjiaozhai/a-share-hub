@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>交易助手 - 注册</title>
+  <link rel="icon" href="data:,">
+  <style>
+{{INLINE_STYLES}}
+  </style>
+</head>
+<body>
+  <main class="auth-shell">
+    <section class="auth-hero" aria-label="交易助手介绍">
+      <div class="brand-mark">交易助手</div>
+      <h1>创建你的交易控制台</h1>
+      <p>用一个账号管理策略运行、行情观察、模拟交易和风险状态。</p>
+      <div class="feature-row">
+        <span>A股 / 美股</span>
+        <span>自动交易</span>
+        <span>策略回测</span>
+        <span>风控监控</span>
+        <span>模拟账本</span>
+      </div>
+      <div class="metric-strip">
+        <div><strong>BUY</strong><em>因子信号</em></div>
+        <div><strong>HOLD</strong><em>仓位管理</em></div>
+        <div><strong>SELL</strong><em>风控退出</em></div>
+      </div>
+    </section>
+
+    <section class="auth-card" aria-label="注册表单">
+      <div class="card-kicker">TRADING ASSISTANT</div>
+      <h2>创建交易助手账号</h2>
+      <p class="card-subtitle">用于访问策略仪表盘、模拟交易和风控面板</p>
+      {{ERROR_BLOCK}}
+      <form method="post" action="/api/v1/auth/register" class="auth-form">
+        <input type="hidden" name="next" value="{{NEXT_VALUE}}">
+        <label>
+          <span>用户名</span>
+          <input name="username" autocomplete="username" required>
+        </label>
+        <label>
+          <span>邮箱</span>
+          <input name="email" type="email" autocomplete="email" required>
+        </label>
+        <label>
+          <span>密码</span>
+          <input name="password" type="password" autocomplete="new-password" minlength="8" required>
+        </label>
+        <label>
+          <span>确认密码</span>
+          <input name="confirm_password" type="password" autocomplete="new-password" minlength="8" required>
+        </label>
+        <button type="submit">注册并进入</button>
+      </form>
+      <p class="auth-switch">已有账号？<a href="/login?next={{NEXT_VALUE}}">去登录</a></p>
+    </section>
+  </main>
+  <script>
+{{INLINE_AUTH_JS}}
+  </script>
+</body>
+</html>
