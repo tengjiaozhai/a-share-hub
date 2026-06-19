@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     enable_live_trading: bool = False
     execution_mode: str = "shadow"
 
+    auth_secret_key: str = ""
+    auth_cookie_name: str = "access_token"
+    auth_cookie_secure: bool = False
+    auth_session_hours: int = 168
+
     # LLM
     llm_provider: str = "deepseek"
     llm_api_key: str = ""
