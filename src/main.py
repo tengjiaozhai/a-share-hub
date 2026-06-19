@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from hashlib import sha256
 
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 
 from src.a_stock.routes import router as a_stock_router
 from src.agents.llm_client import LLMClient
@@ -106,6 +107,10 @@ def build_app() -> FastAPI:
     app.include_router(alpha_router)
     app.include_router(us_stock_router)
     app.include_router(a_stock_router)
+
+    @app.get("/", include_in_schema=False)
+    def root_redirect():
+        return RedirectResponse(url="/dashboard")
 
     _register_scheduler_lifecycle(app)
 
