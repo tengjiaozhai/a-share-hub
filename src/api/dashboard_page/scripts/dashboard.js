@@ -1583,6 +1583,49 @@ function setupHistoryScrollObserver(footerEl) {
   }
 }
 
+var RUN_CARD_ITEM_HEIGHT = 72;
+var RUN_CARD_VIRTUAL_THRESHOLD = 50;
+
+function renderRunCenterVirtual(runs, options) {
+  var list = document.getElementById('run-center-list');
+  if (!list) return renderRunCenter(runs, options);
+  if (runs.length < RUN_CARD_VIRTUAL_THRESHOLD) {
+    return renderRunCenter(runs, options);
+  }
+  var buffer = 4;
+  var itemHeight = RUN_CARD_ITEM_HEIGHT;
+  var totalHeight = Math.ceil(runs.length / 2) * itemHeight;
+  var scrollTop = list.scrollTop;
+  var viewportHeight = list.clientHeight;
+  var startRow = Math.max(0, Math.floor(scrollTop / itemHeight) - buffer);
+  var endRow = Math.min(
+    Math.ceil(runs.length / 2),
+    Math.ceil((scrollTop + viewportHeight) / itemHeight) + buffer
+  );
+  var visibleRuns = runs.slice(startRow * 2, endRow * 2);
+  var paddingTop = startRow * itemHeight;
+  var paddingBottom = totalHeight - endRow * itemHeight;
+
+  if (!options.preserveData) {
+    replaceHistoryRuns(runs);
+  }
+  var filtered = getFilteredHistoryRuns().filter(function(run) {
+    var idx = runs.findIndex(function(r) { return r.id === run.id; });
+    return idx >= startRow * 2 && idx < endRow * 2;
+  });
+  list.innerHTML =
+    '<div style="height:' + paddingTop + 'px"></div>' +
+    filtered.map(renderRunCard).join('') +
+    '<div style="height:' + paddingBottom + 'px"></div>';
+  if (selectedHistoryRunMeta) {
+    list.querySelectorAll('.run-card').forEach(function(card) {
+      if (card.dataset.runId === selectedHistoryRunMeta.id) {
+        card.classList.add('active');
+      }
+    });
+  }
+}
+
 function renderRunCenter(runs, options = {}) {
   if (!options.preserveData) {
     replaceHistoryRuns(runs);
