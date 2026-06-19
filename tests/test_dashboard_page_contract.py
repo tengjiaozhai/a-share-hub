@@ -307,3 +307,14 @@ def test_render_dashboard_html_contains_run_card_hint():
     html = render_dashboard_html()
     assert "run-card-hint" in html
     assert "点击查看案件详情" in html
+
+
+def test_render_dashboard_html_contains_case_drawer_contract():
+    """验证 drawer 容器和关闭控件已嵌入"""
+    html = render_dashboard_html()
+    assert 'id="case-drawer"' in html
+    assert 'class="case-drawer"' in html
+    assert 'id="drawer-backdrop"' in html
+    assert 'class="drawer-close"' in html
+    assert 'closeCaseDrawer' in html
+    assert 'class="case-shell"' in html
