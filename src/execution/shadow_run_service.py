@@ -46,6 +46,8 @@ class ShadowRunService:
         run_pnl_summary: dict | None = None,
     ) -> None:
         enriched_payload = dict(payload)
+        enriched_payload["stage"] = stage
+        enriched_payload["status"] = status
         if steps is not None:
             enriched_payload["steps"] = list(steps)
         if reconcile_items is not None:
@@ -349,6 +351,9 @@ class ShadowRunService:
                 stage="reconcile",
                 status="running",
                 payload={"message": "核对执行结果..."},
+                steps=list(steps),
+                reconcile_items=list(reconcile_items),
+                run_pnl_summary=dict(run_pnl_summary),
             )
 
             previous_nav = float(account_state.get("nav", capital_base))
@@ -371,6 +376,16 @@ class ShadowRunService:
                 reconcile_items=reconcile_items,
                 run_pnl_summary=run_pnl_summary,
             )
+            self.emit(
+                run_context_id,
+                "stage.updated",
+                stage="reconcile",
+                status="done",
+                payload={"message": f"所有订单已确认。模拟盈亏: {daily_pnl:+.2f}"},
+                steps=list(steps),
+                reconcile_items=list(reconcile_items),
+                run_pnl_summary=dict(run_pnl_summary),
+            )
 
         except Exception as exc:  # noqa: BLE001 - emit failure context, then re-raise below
             run_status = "failed"
@@ -383,6 +398,9 @@ class ShadowRunService:
                     stage="reconcile",
                     status="failed",
                     payload={"error": last_error, "message": "影子运行异常终止"},
+                    steps=list(steps),
+                    reconcile_items=list(reconcile_items),
+                    run_pnl_summary=dict(run_pnl_summary),
                 )
             except Exception:
                 logger.exception("Failed to emit run.failed event")
@@ -418,6 +436,9 @@ class ShadowRunService:
                         "steps": steps,
                         "message": "影子运行已完成",
                     },
+                    steps=list(steps),
+                    reconcile_items=list(reconcile_items),
+                    run_pnl_summary=dict(run_pnl_summary),
                 )
 
     def _persist_latest_workbench(

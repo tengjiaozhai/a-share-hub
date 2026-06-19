@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from src.alpha.binance_public_client import BinanceAlphaPublicClient
 from src.alpha.execution_models import AlphaExecutionRequest
 from src.alpha.execution_service import AlphaExecutionService
+from src.alpha.portfolio_service import AlphaPortfolioService
 from src.alpha.reconciliation import reconcile_alpha_positions
 from src.alpha.research_service import AlphaResearchService
 from src.alpha.service import AlphaMarketService
@@ -41,6 +42,11 @@ class RecordAlphaFillRequest(BaseModel):
     executed_quantity: float
     executed_price: float
     notes: str
+
+
+class RebuildAlphaPortfolioRequest(BaseModel):
+    opening_cash: float
+    price_map: dict[str, float] = {}
 
 
 async def get_alpha_service() -> AsyncGenerator[AlphaMarketService, None]:
@@ -139,6 +145,22 @@ def record_alpha_fill(ticket_id: str, payload: RecordAlphaFillRequest, store: Ru
     return {"ticket_id": ticket_id, "fill_id": fill_id, "recorded": True}
 
 
+@router.get("/portfolio")
+def get_alpha_portfolio(store: RuntimeStore = Depends(get_runtime_store)) -> dict:
+    return AlphaPortfolioService(store).load_portfolio()
+
+
+@router.post("/portfolio/rebuilds")
+def rebuild_alpha_portfolio(
+    payload: RebuildAlphaPortfolioRequest,
+    store: RuntimeStore = Depends(get_runtime_store),
+) -> dict:
+    return AlphaPortfolioService(store).rebuild_portfolio(
+        opening_cash=payload.opening_cash,
+        price_map=payload.price_map,
+    )
+
+
 @router.post("/reconciliation/run")
 def run_alpha_reconciliation(payload: dict, store: RuntimeStore = Depends(get_runtime_store)) -> dict:
     latest = store.get_latest_alpha_portfolio_snapshot() or {"cash_balance": 0.0}
@@ -174,13 +196,42 @@ def add_alpha_watchlist(payload: AddAlphaWatchlistRequest, store: RuntimeStore =
     return {"stored": True, "symbol": payload.symbol}
 
 
+def _apply_holdings_guidance(items: list[dict], positions: list[dict]) -> list[dict]:
+    held_positions = {
+        row["symbol"]: row
+        for row in positions
+        if float(row.get("quantity", 0.0)) > 0
+    }
+    enriched = []
+    for item in items:
+        action = str(item.get("action", "HOLD")).upper()
+        position = held_positions.get(item["symbol"])
+        is_held = position is not None
+        if action == "BUY":
+            guidance = "add_or_watch" if is_held else "new_position_candidate"
+        elif action == "SELL":
+            guidance = "reduce_or_exit" if is_held else "ignore_no_position"
+        else:
+            guidance = "watch_only"
+        enriched.append(
+            {
+                **item,
+                "is_held": is_held,
+                "held_quantity": position["quantity"] if position else 0.0,
+                "portfolio_guidance": guidance,
+            }
+        )
+    return enriched
+
+
 @router.post("/research/scan")
 async def scan_alpha_watchlist(
     store: RuntimeStore = Depends(get_runtime_store),
     research_service: AlphaResearchService = Depends(get_alpha_research_service),
 ) -> dict:
     symbols = [item["symbol"] for item in store.list_alpha_watchlist_items()]
-    return {"items": await research_service.rank_watchlist(symbols)}
+    ranked = await research_service.rank_watchlist(symbols)
+    return {"items": _apply_holdings_guidance(ranked, store.list_alpha_positions())}
 
 
 class ProposeTopTicketRequest(BaseModel):

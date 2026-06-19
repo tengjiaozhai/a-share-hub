@@ -38,3 +38,44 @@ def test_portfolio_service_rebuilds_positions_from_manual_fills(tmp_path):
     assert round(summary["unrealized_pnl"], 2) == 20.0
     assert round(summary["nav"], 2) == 10_020.0
     assert summary["positions"][0]["symbol"] == "AAPLx"
+
+
+def test_portfolio_service_loads_enriched_fill_history(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path}/runtime.db", future=True)
+    Base.metadata.create_all(engine)
+    store = RuntimeStore(engine)
+
+    ticket_id = store.insert_alpha_ticket(
+        asset_symbol="AAPLx",
+        underlying_symbol="AAPL",
+        action="BUY",
+        thesis="phase2 seed",
+        suggested_quantity=2.0,
+        suggested_limit_price=200.0,
+        expires_at="2026-06-01T16:00:00+08:00",
+    )
+    store.insert_alpha_manual_fill(
+        ticket_id=ticket_id,
+        operator_id="trader-01",
+        executed_quantity=2.0,
+        executed_price=200.0,
+        notes="buy fill",
+    )
+    store.replace_alpha_positions(
+        [{"symbol": "AAPLx", "quantity": 2.0, "avg_cost": 200.0, "mark_price": 210.0}]
+    )
+    store.insert_alpha_portfolio_snapshot(
+        cash_balance=9_600.0,
+        realized_pnl=0.0,
+        unrealized_pnl=20.0,
+        nav=10_020.0,
+    )
+
+    service = AlphaPortfolioService(store)
+    portfolio = service.load_portfolio()
+
+    assert portfolio["snapshot"]["nav"] == 10_020.0
+    assert portfolio["positions"][0]["symbol"] == "AAPLx"
+    assert portfolio["fills"][0]["ticket_id"] == ticket_id
+    assert portfolio["fills"][0]["asset_symbol"] == "AAPLx"
+    assert portfolio["fills"][0]["action"] == "BUY"

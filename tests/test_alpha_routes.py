@@ -71,6 +71,13 @@ def test_alpha_ticket_api_supports_create_approve_and_fill(test_app):
     assert fill_res.status_code == 200
     assert fill_res.json()["recorded"] is True
 
+    portfolio_res = client.get("/api/v1/alpha/portfolio")
+    assert portfolio_res.status_code == 200
+    portfolio = portfolio_res.json()
+    assert portfolio["fills"][0]["ticket_id"] == ticket_id
+    assert portfolio["fills"][0]["asset_symbol"] == "AAPLx"
+    assert portfolio["fills"][0]["action"] == "BUY"
+
     workbench_res = client.get("/api/v1/dashboard/workbench")
     assert workbench_res.status_code == 200
     assert "alpha" in workbench_res.json()
@@ -158,6 +165,9 @@ def test_alpha_research_scan_endpoint_returns_ranked_candidates():
         {"symbol": "AAPLx", "underlying_symbol": "AAPL", "priority": 1},
         {"symbol": "SPYx", "underlying_symbol": "SPY", "priority": 2},
     ]
+    mock_store.list_alpha_positions.return_value = [
+        {"symbol": "AAPLx", "quantity": 1.5, "avg_cost": 205.0, "mark_price": 211.0}
+    ]
 
     from src.storage.dependencies import get_runtime_store
 
@@ -182,8 +192,64 @@ def test_alpha_research_scan_endpoint_returns_ranked_candidates():
     assert len(items) == 2
     assert items[0]["symbol"] == "AAPLx"
     assert items[0]["action"] == "BUY"
+    assert items[0]["is_held"] is True
+    assert items[0]["held_quantity"] == 1.5
+    assert items[0]["portfolio_guidance"] == "add_or_watch"
     assert items[1]["symbol"] == "SPYx"
     assert items[1]["action"] == "SELL"
+    assert items[1]["is_held"] is False
+    assert items[1]["portfolio_guidance"] == "ignore_no_position"
+
+
+def test_alpha_portfolio_rebuild_endpoint_rebuilds_from_all_fills(test_app, pg_store):
+    buy_ticket_id = pg_store.insert_alpha_ticket(
+        asset_symbol="AAPLx",
+        underlying_symbol="AAPL",
+        action="BUY",
+        thesis="open position",
+        suggested_quantity=2.0,
+        suggested_limit_price=200.0,
+        expires_at="2026-06-01T16:00:00+08:00",
+    )
+    sell_ticket_id = pg_store.insert_alpha_ticket(
+        asset_symbol="AAPLx",
+        underlying_symbol="AAPL",
+        action="SELL",
+        thesis="trim position",
+        suggested_quantity=0.5,
+        suggested_limit_price=210.0,
+        expires_at="2026-06-01T16:30:00+08:00",
+    )
+    pg_store.insert_alpha_manual_fill(
+        ticket_id=buy_ticket_id,
+        operator_id="trader-01",
+        executed_quantity=2.0,
+        executed_price=200.0,
+        notes="buy fill",
+    )
+    pg_store.insert_alpha_manual_fill(
+        ticket_id=sell_ticket_id,
+        operator_id="trader-01",
+        executed_quantity=0.5,
+        executed_price=210.0,
+        notes="sell fill",
+    )
+    client = TestClient(test_app)
+
+    response = client.post(
+        "/api/v1/alpha/portfolio/rebuilds",
+        json={"opening_cash": 10_000.0, "price_map": {"AAPLx": 215.0}},
+    )
+
+    assert response.status_code == 200
+    portfolio = response.json()
+    assert round(portfolio["snapshot"]["cash_balance"], 2) == 9_705.0
+    assert round(portfolio["snapshot"]["realized_pnl"], 2) == 5.0
+    assert round(portfolio["snapshot"]["unrealized_pnl"], 2) == 22.5
+    assert round(portfolio["snapshot"]["nav"], 2) == 10_027.5
+    assert portfolio["positions"][0]["symbol"] == "AAPLx"
+    assert round(portfolio["positions"][0]["quantity"], 2) == 1.5
+    assert len(portfolio["fills"]) == 2
 
 
 def test_alpha_research_candidate_can_be_promoted_to_ticket(test_app, pg_store, monkeypatch):

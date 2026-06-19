@@ -12,6 +12,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from src.agents.llm_client import LLMClient
 from src.alpha.execution_service import AlphaExecutionService
+from src.alpha.portfolio_service import AlphaPortfolioService
 from src.api.dashboard_page.render import render_dashboard_html
 from src.core.config import Settings
 from src.core.market_rules import resolve_lot_size
@@ -82,19 +83,14 @@ _HISTORY_CURSOR_SEPARATOR = "|"
 
 def _build_alpha_panel_payload(store: RuntimeStore) -> dict:
     tickets = store.list_alpha_tickets()
-    latest_ticket_id = tickets[0]["ticket_id"] if tickets else None
-    latest_snapshot = store.get_latest_alpha_portfolio_snapshot()
+    portfolio = AlphaPortfolioService(store).load_portfolio()
     recon_runs = store.list_alpha_reconciliation_runs()
     latest_recon = recon_runs[0] if recon_runs else None
     capability = _get_alpha_execution_service().get_capability()
     capability_payload = capability if isinstance(capability, dict) else capability.__dict__
     return {
         "tickets": tickets,
-        "fills": store.list_alpha_manual_fills(ticket_id=latest_ticket_id) if latest_ticket_id else [],
-        "portfolio": {
-            "positions": store.list_alpha_positions(),
-            "snapshot": latest_snapshot,
-        },
+        "portfolio": portfolio,
         "exceptions": {
             "latest_status": latest_recon["status"] if latest_recon else "UNKNOWN",
             "latest_discrepancies": latest_recon["discrepancies"] if latest_recon else {},

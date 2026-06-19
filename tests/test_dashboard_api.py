@@ -154,6 +154,22 @@ def test_workbench_payload_includes_alpha_panel(test_app, pg_store):
 
 
 def test_workbench_payload_includes_alpha_portfolio_and_exceptions(test_app, pg_store):
+    ticket_id = pg_store.insert_alpha_ticket(
+        asset_symbol="AAPLx",
+        underlying_symbol="AAPL",
+        action="BUY",
+        thesis="portfolio seed",
+        suggested_quantity=1.2,
+        suggested_limit_price=201.0,
+        expires_at="2026-06-01T16:00:00+08:00",
+    )
+    pg_store.insert_alpha_manual_fill(
+        ticket_id=ticket_id,
+        operator_id="trader-01",
+        executed_quantity=1.2,
+        executed_price=201.0,
+        notes="seed fill",
+    )
     pg_store.replace_alpha_positions(
         [{"symbol": "AAPLx", "quantity": 1.2, "avg_cost": 201.0, "mark_price": 225.0}]
     )
@@ -175,6 +191,8 @@ def test_workbench_payload_includes_alpha_portfolio_and_exceptions(test_app, pg_
     assert response.status_code == 200
     payload = response.json()
     assert payload["alpha"]["portfolio"]["snapshot"]["nav"] == 8_798.8
+    assert payload["alpha"]["portfolio"]["fills"][0]["asset_symbol"] == "AAPLx"
+    assert "fills" not in payload["alpha"]
     assert payload["alpha"]["exceptions"]["latest_status"] == "MISMATCH"
 
 

@@ -982,6 +982,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   flex: 1;
   overflow-y: auto;
 }
+.alpha-panel-body-tight {
+  gap: 12px;
+}
 .alpha-big-value {
   font-size: 17px;
   font-weight: 700;
@@ -1017,7 +1020,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   gap: 14px;
   padding: 20px 24px 0;
 }
-.alpha-panel-form form {
+.alpha-history-grid {
+  padding: 20px 24px 0;
+}
+.alpha-form {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1040,7 +1046,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   color: var(--dim);
 }
 .alpha-panel-form input,
-.alpha-panel-form textarea {
+.alpha-panel-form textarea,
+.alpha-fill-form input,
+.alpha-fill-form textarea,
+.alpha-fill-form select,
+.alpha-form input,
+.alpha-form textarea,
+.alpha-form select {
   background: var(--panel);
   border: 1px solid var(--stroke);
   color: var(--fg);
@@ -1051,11 +1063,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   transition: border-color .15s;
 }
 .alpha-panel-form input:focus,
-.alpha-panel-form textarea:focus {
+.alpha-panel-form textarea:focus,
+.alpha-fill-form input:focus,
+.alpha-fill-form textarea:focus,
+.alpha-fill-form select:focus,
+.alpha-form input:focus,
+.alpha-form textarea:focus,
+.alpha-form select:focus {
   outline: none;
   border-color: var(--accent);
 }
-.alpha-panel-form textarea {
+.alpha-panel-form textarea,
+.alpha-fill-form textarea,
+.alpha-form textarea {
   resize: vertical;
   min-height: 70px;
 }
@@ -1072,6 +1092,46 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 }
 .alpha-panel-form button[type="submit"]:hover { opacity: .85; }
 .alpha-panel-form button[type="submit"]:active { transform: scale(.98); }
+.alpha-fill-form button[type="submit"],
+.alpha-form button[type="submit"] {
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .15s, transform .1s;
+}
+.alpha-fill-form button[type="submit"]:hover,
+.alpha-form button[type="submit"]:hover { opacity: .85; }
+.alpha-fill-form button[type="submit"]:active,
+.alpha-form button[type="submit"]:active { transform: scale(.98); }
+.alpha-ticket-summary {
+  min-height: 20px;
+}
+.alpha-ticket-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.alpha-form-status {
+  min-height: 18px;
+  font-size: 11px;
+}
+.alpha-inline-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+.alpha-inline-status.ok { color: var(--green); }
+.alpha-inline-status.warn { color: var(--warn); }
+.alpha-inline-status.err { color: var(--red); }
+.alpha-inline-status.info { color: var(--dim); }
 .alpha-ticket-count {
   display: inline-flex;
   align-items: center;
@@ -1158,6 +1218,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   grid-template-columns: 1fr 1.3fr;
   gap: 14px;
   padding: 20px 24px 28px;
+}
+.alpha-support-stack {
+  display: grid;
+  gap: 14px;
 }
 .alpha-assets-body { padding: 0; }
 .alpha-asset-item {
@@ -1298,20 +1362,61 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   color: var(--muted);
   text-align: right;
 }
-.alpha-portfolio-summary {
-  font-size: 12px;
-  color: var(--muted);
-  margin-bottom: 8px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--stroke);
+.alpha-candidate-rich {
+  grid-template-columns: 1.1fr auto auto;
 }
+.alpha-candidate-guidance {
+  font-size: 10px;
+  color: var(--dim);
+  margin-top: 2px;
+}
+.alpha-candidate-metrics {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+.alpha-candidate-guidance-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(77,212,198,.08);
+  color: var(--accent);
+}
+.alpha-holdings-summary,
+.alpha-portfolio-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.alpha-summary-card {
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 10px;
+}
+.alpha-summary-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--dim);
+  margin-bottom: 4px;
+}
+.alpha-summary-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--fg);
+}
+.alpha-summary-value.positive { color: var(--green); }
+.alpha-summary-value.negative { color: var(--red); }
 .alpha-positions-list {
   font-size: 11px;
 }
 .alpha-position-item {
-  display: flex;
-  justify-content: space-between;
-  padding: 5px 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
   border-bottom: 1px solid var(--stroke);
 }
 .alpha-position-item:last-child { border-bottom: none; }
@@ -1319,8 +1424,82 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   font-weight: 600;
   color: var(--fg);
 }
+.alpha-position-sub {
+  font-size: 10px;
+  color: var(--dim);
+  margin-top: 2px;
+}
+.alpha-position-metrics {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
 .alpha-position-detail {
   color: var(--muted);
+}
+.alpha-history-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.alpha-fill-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--stroke);
+}
+.alpha-fill-row:last-child { border-bottom: none; }
+.alpha-fill-symbol {
+  font-weight: 700;
+  color: var(--fg);
+}
+.alpha-fill-meta {
+  font-size: 10px;
+  color: var(--dim);
+  margin-top: 2px;
+}
+.alpha-fill-value {
+  color: var(--muted);
+  font-size: 11px;
+  text-align: right;
+}
+.alpha-leg-card {
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 10px;
+  margin-bottom: 8px;
+}
+.alpha-leg-card:last-child { margin-bottom: 0; }
+.alpha-leg-symbol {
+  font-weight: 700;
+  color: var(--fg);
+}
+.alpha-leg-meta {
+  font-size: 10px;
+  color: var(--dim);
+  margin-top: 2px;
+}
+.alpha-leg-stats {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.alpha-exception-json {
+  color: var(--red);
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+.alpha-ok-note {
+  color: var(--green);
+  font-size: 12px;
 }
 
 /* Alpha responsive */
@@ -1328,17 +1507,24 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   .alpha-status-grid { grid-template-columns: repeat(2, 1fr); }
   .alpha-ops-grid { grid-template-columns: 1fr; }
   .alpha-data-grid { grid-template-columns: 1fr; }
+  .alpha-history-columns { grid-template-columns: 1fr; }
+  .alpha-holdings-summary,
+  .alpha-portfolio-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
   .alpha-hero { padding: 16px 14px 14px; }
   .alpha-hero h2 { font-size: 16px; }
   .alpha-status-grid { grid-template-columns: 1fr; padding: 14px 14px 0; }
   .alpha-ops-grid { padding: 14px 14px 0; }
+  .alpha-history-grid { padding: 14px 14px 0; }
   .alpha-data-grid { padding: 14px 14px 20px; }
   .alpha-form-row { grid-template-columns: 1fr; }
   .alpha-ticket-item { grid-template-columns: 1fr auto; gap: 4px; }
   .alpha-asset-item { grid-template-columns: 1fr auto; gap: 4px; }
   .alpha-action-bar { flex-direction: column; }
+  .alpha-fill-row { grid-template-columns: 1fr auto; }
+  .alpha-holdings-summary,
+  .alpha-portfolio-summary { grid-template-columns: 1fr; }
 }
 
 /* ── Backtest Result Card ── */

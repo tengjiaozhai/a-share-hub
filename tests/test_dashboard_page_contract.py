@@ -37,6 +37,9 @@ def test_render_dashboard_html_contains_alpha_contract():
     html = render_dashboard_html()
     assert "view-alpha" in html
     assert "alpha-execution-capability" in html
+    assert "alpha-holdings-summary" in html
+    assert "alpha-fill-history" in html
+    assert "alpha-multi-leg-history" in html
     assert "const ALPHA_ASSETS_API = '/api/v1/alpha/assets';" in html
     assert "const ALPHA_TICKETS_API = '/api/v1/alpha/tickets';" in html
     assert "runAlphaScan" in html
@@ -185,12 +188,15 @@ def test_render_dashboard_html_contains_market_and_alpha_controls():
         'id="scan-btn"',
         'id="alpha-assets"',
         'id="alpha-ticket-form"',
+        'id="alpha-fill-form"',
+        'id="alpha-fill-ticket"',
         'id="alpha-execution-capability"',
         "const ALPHA_CAPABILITIES_API = '/api/v1/alpha/capabilities';",
         "const ALPHA_ASSETS_API = '/api/v1/alpha/assets';",
         "const ALPHA_TICKETS_API = '/api/v1/alpha/tickets';",
         'runAlphaScan',
         'proposeTopAlphaTicket',
+        'submitAlphaManualFill',
         'aLoadQuotes',
     ]
     for marker in required_markers:

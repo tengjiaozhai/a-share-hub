@@ -1,15 +1,13 @@
 <div class="view alpha-desk" id="view-alpha">
 
-  <!-- ═══ HERO ═══ -->
   <section class="alpha-hero">
     <div class="alpha-hero-copy">
       <p class="alpha-kicker">Alpha Desk</p>
-      <h2>Alpha 代币化证券</h2>
-      <p class="alpha-summary">半自动执行台，先确认执行能力，再录入建议单，再回看资产与研究候选。</p>
+      <h2>Alpha 持仓助手</h2>
+      <p class="alpha-summary">围绕当前持仓回填成交、跟踪风险、筛选加减仓候选。建议单、资产状态与观察列表仍保留在同一执行台。</p>
     </div>
   </section>
 
-  <!-- ═══ STATUS GRID ═══ -->
   <section class="alpha-status-grid">
     <article class="alpha-panel" id="alpha-execution-capability">
       <div class="alpha-panel-head">
@@ -23,14 +21,6 @@
       </div>
     </article>
 
-    <article class="alpha-panel">
-      <div class="alpha-panel-head">Alpha 组合</div>
-      <div class="alpha-panel-body">
-        <div id="alpha-portfolio-summary" class="alpha-portfolio-summary"></div>
-        <div id="alpha-positions" class="alpha-positions-list"></div>
-      </div>
-    </article>
-
     <article class="alpha-panel alpha-panel-exceptions">
       <div class="alpha-panel-head">
         <span class="alpha-panel-dot" id="alpha-exc-dot"></span>
@@ -40,43 +30,71 @@
         <div id="alpha-exceptions"></div>
       </div>
     </article>
-  </section>
 
-  <!-- ═══ OPS GRID ═══ -->
-  <section class="alpha-ops-grid">
-    <article class="alpha-panel alpha-panel-form">
-      <div class="alpha-panel-head">建议单录入</div>
+    <article class="alpha-panel alpha-panel-fill-form">
+      <div class="alpha-panel-head">手动回填成交</div>
       <div class="alpha-panel-body">
-        <form id="alpha-ticket-form" onsubmit="submitAlphaTicket(event)">
+        <form id="alpha-fill-form" class="alpha-form" onsubmit="submitAlphaManualFill(event)">
           <div class="alpha-form-row">
             <div class="alpha-field">
-              <label>资产代码</label>
-              <input id="alpha-symbol" placeholder="如 AAPL" />
+              <label>建议单</label>
+              <select id="alpha-fill-ticket" onchange="handleAlphaFillTicketChange(event)"></select>
             </div>
             <div class="alpha-field">
-              <label>标的代码</label>
-              <input id="alpha-underlying" placeholder="如 AAPL.US" />
+              <label>操作员</label>
+              <input id="alpha-fill-operator" placeholder="如 trader-01" />
             </div>
           </div>
+          <div id="alpha-fill-ticket-meta" class="alpha-ticket-summary"></div>
           <div class="alpha-form-row">
             <div class="alpha-field">
-              <label>数量</label>
-              <input id="alpha-qty" type="number" placeholder="0" />
+              <label>成交数量</label>
+              <input id="alpha-fill-qty" type="number" step="0.0001" min="0" placeholder="0" />
             </div>
             <div class="alpha-field">
-              <label>限价</label>
-              <input id="alpha-limit" type="number" step="0.01" placeholder="0.00" />
+              <label>成交价格</label>
+              <input id="alpha-fill-price" type="number" step="0.0001" min="0" placeholder="0.0000" />
             </div>
           </div>
           <div class="alpha-field">
-            <label>投资逻辑</label>
-            <textarea id="alpha-thesis" placeholder="描述你的投资逻辑..."></textarea>
+            <label>备注</label>
+            <textarea id="alpha-fill-notes" placeholder="分批成交、滑点、经手人备注"></textarea>
           </div>
-          <button type="submit">创建建议单</button>
+          <div id="alpha-fill-status" class="alpha-form-status"></div>
+          <button type="submit">记录成交</button>
         </form>
       </div>
     </article>
+  </section>
 
+  <section class="alpha-ops-grid">
+    <article class="alpha-panel alpha-panel-holdings">
+      <div class="alpha-panel-head">当前持仓</div>
+      <div class="alpha-panel-body alpha-panel-body-tight">
+        <div id="alpha-holdings-summary" class="alpha-holdings-summary"></div>
+        <div class="alpha-section-label">持仓列表</div>
+        <div id="alpha-positions" class="alpha-positions-list"></div>
+      </div>
+    </article>
+
+    <article class="alpha-panel alpha-panel-history">
+      <div class="alpha-panel-head">成交 / Multi-leg 历史</div>
+      <div class="alpha-panel-body">
+        <div class="alpha-history-columns">
+          <div class="alpha-data-section">
+            <div class="alpha-section-label">最近成交</div>
+            <div id="alpha-fill-history"></div>
+          </div>
+          <div class="alpha-data-section">
+            <div class="alpha-section-label">Multi-leg 历史</div>
+            <div id="alpha-multi-leg-history"></div>
+          </div>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section class="alpha-history-grid">
     <article class="alpha-panel alpha-panel-queue">
       <div class="alpha-panel-head">
         建议单队列
@@ -88,17 +106,51 @@
     </article>
   </section>
 
-  <!-- ═══ DATA GRID ═══ -->
   <section class="alpha-data-grid">
-    <article class="alpha-panel">
-      <div class="alpha-panel-head">资产状态</div>
-      <div class="alpha-panel-body alpha-assets-body">
-        <div id="alpha-assets"></div>
-      </div>
-    </article>
+    <div class="alpha-support-stack">
+      <article class="alpha-panel alpha-panel-form">
+        <div class="alpha-panel-head">建议单录入</div>
+        <div class="alpha-panel-body">
+          <form id="alpha-ticket-form" class="alpha-form" onsubmit="submitAlphaTicket(event)">
+            <div class="alpha-form-row">
+              <div class="alpha-field">
+                <label>资产代码</label>
+                <input id="alpha-symbol" placeholder="如 AAPLx" />
+              </div>
+              <div class="alpha-field">
+                <label>标的代码</label>
+                <input id="alpha-underlying" placeholder="如 AAPL" />
+              </div>
+            </div>
+            <div class="alpha-form-row">
+              <div class="alpha-field">
+                <label>数量</label>
+                <input id="alpha-qty" type="number" step="0.0001" min="0" placeholder="0" />
+              </div>
+              <div class="alpha-field">
+                <label>限价</label>
+                <input id="alpha-limit" type="number" step="0.0001" min="0" placeholder="0.0000" />
+              </div>
+            </div>
+            <div class="alpha-field">
+              <label>投资逻辑</label>
+              <textarea id="alpha-thesis" placeholder="描述建仓、加仓或减仓逻辑"></textarea>
+            </div>
+            <button type="submit">创建建议单</button>
+          </form>
+        </div>
+      </article>
+
+      <article class="alpha-panel">
+        <div class="alpha-panel-head">资产状态</div>
+        <div class="alpha-panel-body alpha-assets-body">
+          <div id="alpha-assets"></div>
+        </div>
+      </article>
+    </div>
 
     <article class="alpha-panel alpha-panel-research">
-      <div class="alpha-panel-head">观察列表与候选</div>
+      <div class="alpha-panel-head">观察列表与持仓候选</div>
       <div class="alpha-panel-body">
         <div class="alpha-action-bar">
           <button class="alpha-btn alpha-btn-primary" onclick="runAlphaScan()">运行扫描</button>
