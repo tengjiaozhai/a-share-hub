@@ -177,6 +177,7 @@ class AlphaManualFillRow(Base):
     operator_id: Mapped[str] = mapped_column(String(64), nullable=False)
     executed_quantity: Mapped[float] = mapped_column(Float, nullable=False)
     executed_price: Mapped[float] = mapped_column(Float, nullable=False)
+    executed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     notes: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 

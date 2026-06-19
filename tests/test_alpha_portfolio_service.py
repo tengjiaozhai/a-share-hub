@@ -59,6 +59,7 @@ def test_portfolio_service_loads_enriched_fill_history(tmp_path):
         operator_id="trader-01",
         executed_quantity=2.0,
         executed_price=200.0,
+        executed_at="2026-06-01T10:30:00+08:00",
         notes="buy fill",
     )
     store.replace_alpha_positions(
@@ -79,3 +80,4 @@ def test_portfolio_service_loads_enriched_fill_history(tmp_path):
     assert portfolio["fills"][0]["ticket_id"] == ticket_id
     assert portfolio["fills"][0]["asset_symbol"] == "AAPLx"
     assert portfolio["fills"][0]["action"] == "BUY"
+    assert portfolio["fills"][0]["executed_at"] == "2026-06-01T10:30:00+08:00"

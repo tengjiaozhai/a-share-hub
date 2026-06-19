@@ -35,6 +35,22 @@ function alphaGuidanceLabel(guidance) {
   }
 }
 
+function alphaLocalDateTimeValue(date) {
+  const dt = date || new Date();
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+}
+
+function alphaParsePriceMap(raw) {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return {};
+  const parsed = JSON.parse(trimmed);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('价格映射必须是 JSON 对象');
+  }
+  return parsed;
+}
+
 function groupAlphaFillsBySymbol(fills) {
   return fills.reduce((acc, fill) => {
     const symbol = fill.asset_symbol || fill.symbol || 'UNKNOWN';
@@ -124,7 +140,7 @@ function renderAlphaFillHistory(fills) {
     <div class="alpha-fill-row">
       <div>
         <div class="alpha-fill-symbol">${escapeHtml(fill.asset_symbol || fill.ticket_id)}</div>
-        <div class="alpha-fill-meta">${escapeHtml(normalizeText(fill.created_at, '--'))}</div>
+        <div class="alpha-fill-meta">${escapeHtml(normalizeText(fill.executed_at || fill.created_at, '--'))}</div>
       </div>
       <span class="alpha-ticket-action ${alphaActionClass(fill.action)}">${escapeHtml(normalizeText(fill.action, 'HOLD'))}</span>
       <div class="alpha-fill-value">${escapeHtml(String(fill.executed_quantity))} @ ${escapeHtml(formatNumber(fill.executed_price, 4))}</div>
@@ -253,6 +269,10 @@ function handleAlphaFillTicketChange(event) {
   const priceEl = document.getElementById('alpha-fill-price');
   if (qtyEl && !qtyEl.value) qtyEl.value = String(ticket.suggested_quantity || '');
   if (priceEl && !priceEl.value) priceEl.value = String(ticket.suggested_limit_price || '');
+  const priceMapEl = document.getElementById('alpha-rebuild-price-map');
+  if (priceMapEl && !priceMapEl.value && ticket.asset_symbol && ticket.suggested_limit_price) {
+    priceMapEl.value = JSON.stringify({ [ticket.asset_symbol]: Number(ticket.suggested_limit_price) });
+  }
 }
 
 async function loadAlphaWorkbench() {
@@ -268,6 +288,10 @@ async function loadAlphaWorkbench() {
   renderAlphaCandidates(data.alpha?.research?.latest_candidates || []);
   if (data.alpha?.execution_capability) {
     renderAlphaExecutionCapability(data.alpha.execution_capability);
+  }
+  const executedAtEl = document.getElementById('alpha-fill-executed-at');
+  if (executedAtEl && !executedAtEl.value) {
+    executedAtEl.value = alphaLocalDateTimeValue();
   }
 }
 
@@ -305,12 +329,20 @@ async function submitAlphaManualFill(event) {
   const statusRoot = document.getElementById('alpha-fill-status');
   try {
     const ticketId = document.getElementById('alpha-fill-ticket').value.trim();
+    const executedAtInput = document.getElementById('alpha-fill-executed-at');
+    const executedAtValue = executedAtInput.value || alphaLocalDateTimeValue();
+    const openingCashValue = document.getElementById('alpha-rebuild-opening-cash').value;
     const payload = {
       operator_id: document.getElementById('alpha-fill-operator').value.trim(),
       executed_quantity: Number(document.getElementById('alpha-fill-qty').value),
       executed_price: Number(document.getElementById('alpha-fill-price').value),
+      executed_at: new Date(executedAtValue).toISOString(),
       notes: document.getElementById('alpha-fill-notes').value.trim(),
+      rebuild_price_map: alphaParsePriceMap(document.getElementById('alpha-rebuild-price-map').value),
     };
+    if (openingCashValue !== '') {
+      payload.rebuild_opening_cash = Number(openingCashValue);
+    }
     if (!ticketId) {
       throw new Error('请先选择建议单');
     }
@@ -324,7 +356,10 @@ async function submitAlphaManualFill(event) {
       throw new Error(extractErrorMessage(body, '记录成交失败'));
     }
     if (statusRoot) {
-      statusRoot.innerHTML = alphaStatusMarkup('成交已记录，正在刷新持仓视图。', 'ok');
+      statusRoot.innerHTML = alphaStatusMarkup(
+        body.portfolio_rebuilt ? '成交已记录，组合快照已重建。' : '成交已记录，正在刷新持仓视图。',
+        'ok',
+      );
     }
     event.target.reset();
     await loadAlphaWorkbench();

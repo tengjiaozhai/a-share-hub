@@ -53,4 +53,7 @@ def test_dashboard_contains_alpha_manual_fill_entry_ui():
     assert 'id="alpha-fill-operator"' in html
     assert 'id="alpha-fill-qty"' in html
     assert 'id="alpha-fill-price"' in html
+    assert 'id="alpha-fill-executed-at"' in html
+    assert 'id="alpha-rebuild-opening-cash"' in html
+    assert 'id="alpha-rebuild-price-map"' in html
     assert "submitAlphaManualFill" in html

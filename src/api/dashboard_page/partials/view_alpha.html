@@ -56,6 +56,20 @@
               <input id="alpha-fill-price" type="number" step="0.0001" min="0" placeholder="0.0000" />
             </div>
           </div>
+          <div class="alpha-form-row">
+            <div class="alpha-field">
+              <label>真实成交时间</label>
+              <input id="alpha-fill-executed-at" type="datetime-local" />
+            </div>
+            <div class="alpha-field">
+              <label>重建起始现金</label>
+              <input id="alpha-rebuild-opening-cash" type="number" step="0.01" min="0" value="10000" />
+            </div>
+          </div>
+          <div class="alpha-field">
+            <label>重建价格映射 JSON</label>
+            <textarea id="alpha-rebuild-price-map" placeholder='如 {"AAPLx": 215.0}，留空则按均价估值'></textarea>
+          </div>
           <div class="alpha-field">
             <label>备注</label>
             <textarea id="alpha-fill-notes" placeholder="分批成交、滑点、经手人备注"></textarea>
