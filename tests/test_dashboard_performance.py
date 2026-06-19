@@ -1,6 +1,3 @@
-from datetime import date
-
-
 def test_build_performance_returns_empty_when_no_history():
     from src.api.routes_dashboard import _build_performance_payload
 
@@ -10,6 +7,11 @@ def test_build_performance_returns_empty_when_no_history():
         "month_return": 0.0,
         "max_drawdown": 0.0,
         "nav_curve": [],
+        "window": "30d",
+        "window_return": 0.0,
+        "start_date": None,
+        "end_date": None,
+        "sample_count": 0,
     }
 
 

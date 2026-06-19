@@ -1,8 +1,10 @@
-from datetime import date
+from datetime import date, datetime, timedelta
+
+from sqlalchemy import select
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from src.paper_ledger.models import PaperBase
+from src.paper_ledger.models import PaperBase, ScheduledJobLockRow
 from src.paper_ledger.store import PaperLedgerStore
 
 
@@ -90,11 +92,74 @@ def test_nav_history():
 def test_check_run_exists():
     session = setup_db()
     store = PaperLedgerStore(session)
-    
+
     account = store.get_or_create_account("a", "auto")
     assert not store.check_run_exists("a", date(2026, 6, 6), "auto")
-    
-    run = store.create_run(account.account_id, "a", date(2026, 6, 6), "auto", {}, [])
-    store.update_run_status(run.run_id, "success")
-    
+
+    store.create_run(account.account_id, "a", date(2026, 6, 6), "auto", {}, [])
+
     assert store.check_run_exists("a", date(2026, 6, 6), "auto")
+
+
+def test_failed_run_does_not_block_retry():
+    session = setup_db()
+    store = PaperLedgerStore(session)
+
+    account = store.get_or_create_account("a", "auto")
+    run = store.create_run(account.account_id, "a", date(2026, 6, 6), "auto", {}, [])
+    store.update_run_status(run.run_id, "failed")
+
+    assert not store.check_run_exists("a", date(2026, 6, 6), "auto")
+
+
+def test_create_nav_snapshot_is_idempotent_by_account_date_source():
+    session = setup_db()
+    store = PaperLedgerStore(session)
+
+    account = store.get_or_create_account("a", "auto")
+    first = store.create_nav_snapshot(account.account_id, date(2026, 6, 6), 100.0, 50.0, 50.0, source="auto")
+    second = store.create_nav_snapshot(account.account_id, date(2026, 6, 6), 101.0, 51.0, 50.0, source="auto")
+
+    assert second.nav_id == first.nav_id
+    assert len(store.get_nav_history(account.account_id, 10)) == 1
+
+
+def test_acquire_job_lock_is_exclusive():
+    session = setup_db()
+    store = PaperLedgerStore(session)
+
+    job_key = store.acquire_job_lock("daily_trading", "a", date(2026, 6, 6), lock_owner="worker-1")
+    duplicate = store.acquire_job_lock("daily_trading", "a", date(2026, 6, 6), lock_owner="worker-2")
+
+    assert job_key == "daily_trading:a:2026-06-06"
+    assert duplicate is None
+
+    store.finish_job_lock(job_key, "success")
+    lock = session.execute(select(ScheduledJobLockRow)).scalar_one()
+    assert lock.status == "success"
+    assert lock.finished_at is not None
+
+
+def test_expired_running_job_lock_can_be_reclaimed():
+    session = setup_db()
+    store = PaperLedgerStore(session)
+
+    job_key = store.acquire_job_lock(
+        "daily_trading",
+        "a",
+        date(2026, 6, 6),
+        ttl_seconds=1,
+        lock_owner="worker-1",
+    )
+    lock = session.execute(select(ScheduledJobLockRow)).scalar_one()
+    lock.expires_at = datetime.utcnow() - timedelta(seconds=1)
+    session.commit()
+    session.expunge(lock)
+
+    reclaimed = store.acquire_job_lock("daily_trading", "a", date(2026, 6, 6), lock_owner="worker-2")
+
+    assert reclaimed == job_key
+    lock = session.execute(select(ScheduledJobLockRow)).scalar_one()
+    assert lock.lock_owner == "worker-2"
+    assert lock.status == "running"
+    assert lock.finished_at is None

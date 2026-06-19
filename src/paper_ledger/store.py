@@ -1,6 +1,10 @@
+import os
+import socket
 import uuid
-from datetime import date, datetime
-from sqlalchemy import select, and_
+from datetime import date, datetime, timedelta
+
+from sqlalchemy import and_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.paper_ledger.models import (
@@ -9,6 +13,7 @@ from src.paper_ledger.models import (
     PaperPositionRow,
     PaperFillRow,
     PaperNavDailyRow,
+    ScheduledJobLockRow,
 )
 
 
@@ -35,7 +40,11 @@ class PaperLedgerStore:
                 initial_capital=initial_capital,
             )
             self._session.add(account)
-            self._session.commit()
+            try:
+                self._session.commit()
+            except IntegrityError:
+                self._session.rollback()
+                account = self._session.execute(stmt).scalar_one()
         return account
     
     def create_run(self, account_id: str, market: str, trade_date: date, run_source: str, params: dict, watchlist: list) -> PaperRunRow:
@@ -133,7 +142,20 @@ class PaperLedgerStore:
             source=source,
         )
         self._session.add(nav_row)
-        self._session.commit()
+        try:
+            self._session.commit()
+        except IntegrityError:
+            self._session.rollback()
+            existing = self._session.execute(
+                select(PaperNavDailyRow).where(
+                    and_(
+                        PaperNavDailyRow.account_id == account_id,
+                        PaperNavDailyRow.trade_date == trade_date,
+                        PaperNavDailyRow.source == source,
+                    )
+                )
+            ).scalar_one()
+            return existing
         return nav_row
     
     def get_nav_history(self, account_id: str, days: int = 30) -> list[PaperNavDailyRow]:
@@ -146,17 +168,100 @@ class PaperLedgerStore:
         )
         return list(self._session.execute(stmt).scalars().all())
     
-    def check_run_exists(self, market: str, trade_date: date, run_source: str) -> bool:
-        """检查是否已存在运行"""
+    def check_run_exists(
+        self,
+        market: str,
+        trade_date: date,
+        run_source: str,
+        blocking_statuses: tuple[str, ...] = ("running", "success"),
+    ) -> bool:
+        """检查是否已存在会阻止再次调度的运行。
+
+        自动调度不能只检查 success：并发场景下，另一个进程可能已经创建 running run，
+        此时继续创建新 run 会导致同一市场同一交易日重复执行。
+        """
         stmt = select(PaperRunRow).where(
             and_(
                 PaperRunRow.market == market,
                 PaperRunRow.trade_date == trade_date,
                 PaperRunRow.run_source == run_source,
-                PaperRunRow.status == "success",
+                PaperRunRow.status.in_(blocking_statuses),
             )
         )
         return self._session.execute(stmt).scalar_one_or_none() is not None
+
+    @staticmethod
+    def _job_key(job_name: str, market: str, trade_date: date) -> str:
+        return f"{job_name}:{market}:{trade_date.isoformat()}"
+
+    @staticmethod
+    def _default_lock_owner() -> str:
+        return f"{socket.gethostname()}:{os.getpid()}"
+
+    def acquire_job_lock(
+        self,
+        job_name: str,
+        market: str,
+        trade_date: date,
+        ttl_seconds: int = 3600,
+        lock_owner: str | None = None,
+    ) -> str | None:
+        """尝试获取调度锁，成功返回 job_key，失败返回 None。
+
+        用数据库主键做原子互斥，防止多 worker / 多实例同时执行同一个自动任务。
+        """
+        now = datetime.utcnow()
+        job_key = self._job_key(job_name, market, trade_date)
+        row = ScheduledJobLockRow(
+            job_key=job_key,
+            job_name=job_name,
+            market=market,
+            trade_date=trade_date,
+            status="running",
+            lock_owner=lock_owner or self._default_lock_owner(),
+            locked_at=now,
+            expires_at=now + timedelta(seconds=ttl_seconds),
+        )
+        self._session.add(row)
+        try:
+            self._session.commit()
+        except IntegrityError:
+            self._session.rollback()
+            result = self._session.execute(
+                update(ScheduledJobLockRow)
+                .where(
+                    and_(
+                        ScheduledJobLockRow.job_key == job_key,
+                        ScheduledJobLockRow.status == "running",
+                        ScheduledJobLockRow.expires_at <= now,
+                    )
+                )
+                .values(
+                    lock_owner=lock_owner or self._default_lock_owner(),
+                    locked_at=now,
+                    expires_at=now + timedelta(seconds=ttl_seconds),
+                    finished_at=None,
+                    error_message=None,
+                )
+            )
+            if result.rowcount:
+                self._session.commit()
+                return job_key
+            self._session.rollback()
+            return None
+        return job_key
+
+    def finish_job_lock(self, job_key: str, status: str, error_message: str | None = None) -> None:
+        """标记调度锁完成。"""
+        row = self._session.execute(
+            select(ScheduledJobLockRow).where(ScheduledJobLockRow.job_key == job_key)
+        ).scalar_one_or_none()
+        if row is None:
+            return
+        row.status = status
+        row.error_message = error_message
+        row.finished_at = datetime.utcnow()
+        self._session.commit()
 
     def get_latest_run(self, market: str, account_kind: str) -> PaperRunRow | None:
         """获取最近一次成功的运行"""

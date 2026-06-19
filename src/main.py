@@ -112,7 +112,9 @@ def build_app() -> FastAPI:
     def root_redirect():
         return RedirectResponse(url="/dashboard")
 
-    _register_scheduler_lifecycle(app)
+    settings = Settings()
+    if settings.enable_scheduler or settings.app_role == "scheduler":
+        _register_scheduler_lifecycle(app)
 
     return app
 
@@ -147,12 +149,36 @@ def _run_startup_backfill() -> None:
         engine = get_runtime_store().engine
         with Session(engine) as session:
             store = PaperLedgerStore(session)
+            today = datetime.utcnow().date()
             for market in ("a", "us"):
-                if needs_backfill(store, market):
-                    backfill_recent_days(store, market, days=30)
+                job_key = store.acquire_job_lock("startup_backfill", market, today, ttl_seconds=3600)
+                if job_key is None:
+                    continue
+                try:
+                    if needs_backfill(store, market):
+                        backfill_recent_days(store, market, days=30)
+                    store.finish_job_lock(job_key, "success")
+                except Exception as e:
+                    store.finish_job_lock(job_key, "failed", str(e))
+                    raise
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"startup backfill failed: {e}")
+
+
+async def run_scheduler_forever() -> None:
+    """运行独立调度器进程。"""
+    from src.scheduler.daily_scheduler import get_scheduler
+
+    scheduler = get_scheduler()
+    scheduler.start()
+    try:
+        _run_startup_backfill()
+        import asyncio
+
+        await asyncio.Event().wait()
+    finally:
+        scheduler.stop()
 
 
 def build_cli_parser() -> argparse.ArgumentParser:
@@ -195,6 +221,9 @@ def build_cli_parser() -> argparse.ArgumentParser:
     # serve
     subparsers.add_parser("serve", help="启动API服务")
 
+    # scheduler
+    subparsers.add_parser("scheduler", help="启动独立日频调度器")
+
     return parser
 
 
@@ -226,6 +255,12 @@ def dispatch_command(args: argparse.Namespace) -> None:
         result = run_long_horizon_evaluation(store=store, window=args.window, mode="shadow")
         import json
         print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif args.command == "scheduler":
+        import asyncio
+        import logging
+
+        logging.basicConfig(level=logging.INFO)
+        asyncio.run(run_scheduler_forever())
     elif args.command == "serve" or args.command is None:
         import logging
 

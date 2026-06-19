@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     app_env: str = "development"
     app_debug: bool = True
     app_log_level: str = "INFO"
+    app_role: str = "web"
+    enable_scheduler: bool = False
 
     database_url: str = "postgresql+psycopg://app_user:change_me@127.0.0.1:5432/a_share_hub"
     db_pool_size: int = 5

@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, Date
+from sqlalchemy import Boolean, Date, DateTime, Float, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -11,6 +11,7 @@ class PaperBase(DeclarativeBase):
 class PaperAccountRow(PaperBase):
     """纸面账户，按 market + account_kind 唯一"""
     __tablename__ = "paper_accounts"
+    __table_args__ = (UniqueConstraint("market", "account_kind", name="uq_paper_accounts_market_kind"),)
     __table_comment__ = "纸面账户表，存储模拟交易账户信息，按市场和账户类型唯一标识"
     
     account_id: Mapped[str] = mapped_column(String(64), primary_key=True, comment="账户ID，格式为 'acct-{market}-{account_kind}'")
@@ -69,6 +70,7 @@ class PaperFillRow(PaperBase):
 class PaperNavDailyRow(PaperBase):
     """每日净值快照"""
     __tablename__ = "paper_nav_daily"
+    __table_args__ = (UniqueConstraint("account_id", "trade_date", "source", name="uq_paper_nav_daily_account_date_source"),)
     __table_comment__ = "每日净值快照表，记录每个交易日的净值，用于绘制净值曲线和计算区间收益"
     
     nav_id: Mapped[str] = mapped_column(String(64), primary_key=True, comment="净值ID，格式为 'nav-{account_id}-{trade_date}'")
@@ -80,3 +82,20 @@ class PaperNavDailyRow(PaperBase):
     run_id: Mapped[str | None] = mapped_column(String(64), nullable=True, comment="关联运行ID，启动补算时可能为空")
     source: Mapped[str] = mapped_column(String(16), nullable=False, default="auto", comment="数据来源：'auto'（自动运行）、'manual'（手动运行）、'backfill'（补算）")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False, comment="创建时间")
+
+
+class ScheduledJobLockRow(PaperBase):
+    """调度任务锁，保证 auto/backfill 等自动任务在多进程场景下单语义执行。"""
+    __tablename__ = "scheduled_job_locks"
+    __table_comment__ = "调度任务锁表，用于防止多 worker 或多实例重复执行同一市场同一交易日的自动任务"
+
+    job_key: Mapped[str] = mapped_column(String(128), primary_key=True, comment="锁主键：{job_name}:{market}:{trade_date}")
+    job_name: Mapped[str] = mapped_column(String(64), nullable=False, comment="任务名称，如 daily_trading 或 startup_backfill")
+    market: Mapped[str] = mapped_column(String(16), nullable=False, comment="市场类型：'a' 或 'us'")
+    trade_date: Mapped[date] = mapped_column(Date, nullable=False, comment="任务对应日期")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="running", comment="锁状态：running/success/failed/skipped")
+    lock_owner: Mapped[str] = mapped_column(String(128), nullable=False, comment="持有者标识，通常是 hostname:pid")
+    locked_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False, comment="加锁时间")
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, comment="锁过期时间")
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, comment="完成时间")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True, comment="失败原因")
