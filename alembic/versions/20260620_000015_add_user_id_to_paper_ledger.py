@@ -46,7 +46,9 @@ def upgrade() -> None:
 
 def _upgrade_paper_accounts(is_sqlite: bool) -> None:
     """paper_accounts: UniqueConstraint 升级为 (user_id, market, account_kind)"""
-    op.drop_index("uq_paper_accounts_market_kind", table_name="paper_accounts")
+    op.execute("DROP INDEX IF EXISTS uq_paper_accounts_market_kind")
+    op.execute("DROP INDEX IF EXISTS ix_paper_accounts_market_kind")
+    op.execute("ALTER TABLE paper_accounts DROP CONSTRAINT IF EXISTS paper_accounts_market_account_kind_key")
     with op.batch_alter_table("paper_accounts") as batch_op:
         batch_op.add_column(
             sa.Column(
@@ -69,7 +71,8 @@ def _upgrade_paper_accounts(is_sqlite: bool) -> None:
 
 def _upgrade_paper_nav_daily(is_sqlite: bool) -> None:
     """paper_nav_daily: UniqueConstraint 升级为 (user_id, account_id, trade_date, source)"""
-    op.drop_index("uq_paper_nav_daily_account_date_source", table_name="paper_nav_daily")
+    op.execute("DROP INDEX IF EXISTS uq_paper_nav_daily_account_date_source")
+    op.execute("ALTER TABLE paper_nav_daily DROP CONSTRAINT IF EXISTS paper_nav_daily_account_id_trade_date_source_key")
     with op.batch_alter_table("paper_nav_daily") as batch_op:
         batch_op.add_column(
             sa.Column(
