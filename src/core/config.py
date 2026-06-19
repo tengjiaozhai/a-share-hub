@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     auth_cookie_secure: bool = False
     auth_session_hours: int = 168
 
+    broker_hmac_secret: str = ""
+
     # LLM
     llm_provider: str = "deepseek"
     llm_api_key: str = ""

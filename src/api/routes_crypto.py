@@ -2,7 +2,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
 
-router = APIRouter(prefix="/api/crypto", tags=["crypto"])
+router = APIRouter(prefix="/api/v1/crypto", tags=["crypto"])
 
 
 @router.get("/status")
