@@ -1,3 +1,4 @@
+import ast
 import asyncio
 import json
 import uuid
@@ -286,49 +287,111 @@ def get_history(
     account_kind: str = Query(default="auto"),
     source: str = Query(default="all", description="auto, manual, backfill, or all"),
     limit: int = Query(default=20, ge=1, le=100),
+    store: RuntimeStore = Depends(get_runtime_store),
 ) -> dict:
     from sqlalchemy.orm import Session as OrmSession
     from src.paper_ledger.store import PaperLedgerStore
-    from src.storage.dependencies import get_runtime_store
 
-    engine = get_runtime_store().engine
+    engine = store.engine
     with OrmSession(engine) as session:
         ledger = PaperLedgerStore(session)
-        runs = ledger.get_run_history(market, source=source, limit=limit)
-
-        auto_runs = []
-        manual_runs = []
-        for run in runs:
-            entry = {
-                "run_id": run.run_id,
-                "trade_date": run.trade_date.isoformat(),
-                "status": run.status,
-                "source": run.run_source,
-                "created_at": run.created_at.isoformat() if run.created_at else None,
-            }
-            if run.run_source == "auto":
-                auto_runs.append(entry)
-            else:
-                manual_runs.append(entry)
-
-        account = ledger.get_or_create_account(market, account_kind)
-        nav_rows = ledger.get_nav_history(account.account_id, days=limit)
-        fills = [
+        auto_rows = ledger.get_run_history(market, source=source, limit=limit)
+        auto_runs = [
             {
-                "nav_id": row.nav_id,
+                "id": row.run_id,
+                "source": "auto",
+                "market": row.market,
+                "status": row.status,
                 "trade_date": row.trade_date.isoformat(),
-                "nav": float(row.nav),
-                "source": row.source,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+                "finished_at": None,
+                "decision_mode": None,
+                "execution_mode": None,
+                "watchlist_count": _parse_watchlist_count(row.watchlist_json),
+                "decision_count": None,
+                "target_count": None,
+                "order_count": None,
+                "net_pnl": None,
+                "error_message": row.error_message,
+                "run_context_id": None,
+                "supports_case_view": False,
             }
-            for row in nav_rows
+            for row in auto_rows
+            if row.run_source == "auto"
         ]
 
-        return {
-            "auto_runs": auto_runs,
-            "manual_runs": manual_runs,
-            "fills": fills,
-            "decisions": [],
-        }
+    manual_runs = _build_manual_history_runs(store, market=market, limit=limit) if source in {"all", "manual"} else []
+    runs = sorted(
+        [*manual_runs, *auto_runs],
+        key=lambda item: item.get("created_at") or "",
+        reverse=True,
+    )[:limit]
+    return {"runs": runs}
+
+
+def _build_manual_history_runs(store: RuntimeStore, market: str, limit: int) -> list[dict]:
+    runs = []
+    for summary in store.list_dashboard_run_summaries(limit=max(limit * 4, 50)):
+        latest_workbench = summary.get("latest_workbench") or {}
+        latest_run = latest_workbench.get("latest_run") or {}
+        history = latest_workbench.get("history") or {}
+        decisions = history.get("decisions") or latest_run.get("decision_items") or []
+        watchlist = latest_run.get("watchlist") or [item.get("symbol") for item in decisions if item.get("symbol")]
+        resolved_market = (
+            latest_workbench.get("market")
+            or latest_run.get("market")
+            or _infer_market_from_watchlist(watchlist)
+            or market
+        )
+        if resolved_market != market:
+            continue
+        targets = history.get("targets") or latest_run.get("target_items") or []
+        orders = history.get("orders") or latest_run.get("order_items") or []
+        runs.append(
+            {
+                "id": summary["run_context_id"],
+                "source": "manual",
+                "market": resolved_market,
+                "status": summary["status"],
+                "trade_date": summary["trade_date"],
+                "created_at": summary["started_at"],
+                "finished_at": summary["finished_at"],
+                "decision_mode": summary["decision_mode"],
+                "execution_mode": summary["execution_mode"],
+                "watchlist_count": len(watchlist),
+                "decision_count": len(decisions),
+                "target_count": len(targets),
+                "order_count": len(orders),
+                "net_pnl": float(summary["net_pnl"]),
+                "error_message": latest_run.get("error_message") or latest_run.get("error"),
+                "run_context_id": summary["run_context_id"],
+                "supports_case_view": True,
+            }
+        )
+        if len(runs) >= limit:
+            break
+    return runs
+
+
+def _infer_market_from_watchlist(watchlist: list[str]) -> str | None:
+    symbols = [str(symbol).strip().upper() for symbol in watchlist if str(symbol).strip()]
+    if not symbols:
+        return None
+    if all("." in symbol or symbol[:1].isdigit() for symbol in symbols):
+        return "a"
+    return "us"
+
+
+def _parse_watchlist_count(raw_watchlist: object) -> int:
+    if isinstance(raw_watchlist, list):
+        return len(raw_watchlist)
+    if not isinstance(raw_watchlist, str) or not raw_watchlist.strip():
+        return 0
+    try:
+        parsed = ast.literal_eval(raw_watchlist)
+    except (ValueError, SyntaxError):
+        return 0
+    return len(parsed) if isinstance(parsed, list) else 0
 
 
 def _build_performance_payload(history: list[dict]) -> dict:
@@ -1140,6 +1203,3 @@ def save_preferences(config: dict, store: RuntimeStore = Depends(get_runtime_sto
     merged = {**existing, **filtered}
     store.set_preference("dashboard", merged)
     return {"status": "ok"}
-
-
-

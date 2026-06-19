@@ -11,8 +11,10 @@ const HISTORY_API = '/api/v1/dashboard/history';
 function switchTab(btn, paneId) {
   btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-  document.getElementById(paneId).classList.add('active');
+  document.querySelectorAll('.case-stage-pane, .tab-pane').forEach(p => p.classList.remove('active'));
+  const pane = document.getElementById(paneId);
+  if (pane) pane.classList.add('active');
+  selectedCaseStage = paneId;
 }
 
 function switchView(btn, viewId) {
@@ -423,6 +425,417 @@ function renderAlerts(alerts) {
   }).join('');
 }
 
+function runSourceLabel(source) {
+  const normalized = normalizeText(source, '').toLowerCase();
+  if (normalized === 'manual') return '手动';
+  if (normalized === 'auto') return '自动';
+  if (normalized === 'backfill') return '回补';
+  return normalizeText(source, '--');
+}
+
+function runStatusLabel(status) {
+  const normalized = normalizeText(status, '').toLowerCase();
+  if (normalized === 'completed' || normalized === 'success') return '已完成';
+  if (normalized === 'running' || normalized === 'in_progress') return '运行中';
+  if (normalized === 'accepted') return '已接受';
+  if (normalized === 'failed' || normalized === 'error') return '失败';
+  return normalizeText(status, '--');
+}
+
+function runStatusClass(status) {
+  const normalized = normalizeText(status, '').toLowerCase();
+  if (normalized === 'completed' || normalized === 'success') return 'ok';
+  if (normalized === 'running' || normalized === 'in_progress' || normalized === 'accepted') return 'warn';
+  if (normalized === 'failed' || normalized === 'error') return 'err';
+  return 'info';
+}
+
+function formatSignedCurrency(raw) {
+  if (raw === null || raw === undefined || raw === '') return '--';
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return normalizeText(raw);
+  const sign = n > 0 ? '+' : '';
+  return `${sign}CNY ${n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function getCaseCounts(snapshot) {
+  const history = snapshot?.history || {};
+  const latestRun = snapshot?.latest_run || {};
+  const decisions = toList(history.decisions || latestRun.decision_items);
+  const targets = toList(history.targets || latestRun.target_items);
+  const orders = toList(history.orders || latestRun.order_items);
+  const reconcile = toList(history.reconcile || latestRun.reconcile_items);
+  const events = toList(history.events);
+  const errors = events.filter(item => {
+    const level = normalizeText(pickFirst(item, ['level', 'severity', 'event_type']), '').toLowerCase();
+    return level === 'error' || level === 'err' || level === 'critical' || level === 'fatal';
+  });
+  const steps = toList(latestRun.steps);
+  return {
+    decisions,
+    targets,
+    orders,
+    reconcile,
+    events,
+    errors,
+    steps,
+    decisionBuy: decisions.filter(item => normalizeText(pickFirst(item, ['action', 'parsed_action', 'signal']), '').toUpperCase() === 'BUY').length,
+    decisionSell: decisions.filter(item => normalizeText(pickFirst(item, ['action', 'parsed_action', 'signal']), '').toUpperCase() === 'SELL').length,
+    decisionHold: decisions.filter(item => normalizeText(pickFirst(item, ['action', 'parsed_action', 'signal']), '').toUpperCase() === 'HOLD').length,
+  };
+}
+
+function buildRunMetaFromSnapshot(snapshot) {
+  const latestRun = snapshot?.latest_run || {};
+  const config = snapshot?.config || {};
+  const history = snapshot?.history || {};
+  const counts = getCaseCounts(snapshot);
+  const runContextId = normalizeText(latestRun.run_context_id, '');
+  return {
+    id: runContextId || 'current-run',
+    source: 'manual',
+    market: normalizeText(snapshot?.market, document.getElementById('cfg-market')?.value || 'a'),
+    status: normalizeText(latestRun.status, snapshot?.automation?.today_status || 'running'),
+    trade_date: snapshot?.trade_date || null,
+    created_at: latestRun.created_at || snapshot?.last_run_at || snapshot?.trade_date || null,
+    finished_at: latestRun.finished_at || null,
+    decision_mode: normalizeText(config.decision_mode, null),
+    execution_mode: normalizeText(config.execution_mode, null),
+    watchlist_count: toList(config.watchlist).length,
+    decision_count: counts.decisions.length,
+    target_count: counts.targets.length,
+    order_count: counts.orders.length,
+    net_pnl: latestRun.run_pnl_summary?.net_pnl ?? null,
+    error_message: latestRun.error_message || latestRun.error || null,
+    run_context_id: runContextId || null,
+    supports_case_view: Boolean(runContextId),
+    _counts: counts,
+    _history: history,
+    _latestRun: latestRun,
+  };
+}
+
+function buildRunMetaFromListItem(run) {
+  return {
+    id: run.id,
+    source: run.source,
+    market: run.market,
+    status: run.status,
+    trade_date: run.trade_date,
+    created_at: run.created_at,
+    finished_at: run.finished_at,
+    decision_mode: run.decision_mode,
+    execution_mode: run.execution_mode,
+    watchlist_count: Number(run.watchlist_count || 0),
+    decision_count: run.decision_count ?? null,
+    target_count: run.target_count ?? null,
+    order_count: run.order_count ?? null,
+    net_pnl: run.net_pnl ?? null,
+    error_message: run.error_message || null,
+    run_context_id: run.run_context_id || null,
+    supports_case_view: Boolean(run.supports_case_view),
+  };
+}
+
+function stagePaneId(stage) {
+  return `case-pane-${stage}`;
+}
+
+function renderCaseSummaryChips(meta, counts) {
+  const chips = document.getElementById('case-summary-chips');
+  if (!chips) return;
+  const sourceLabel = runSourceLabel(meta?.source);
+  const statusLabel = runStatusLabel(meta?.status);
+  const pnlText = meta ? formatSignedCurrency(meta.net_pnl) : '--';
+  const watchlistText = meta ? `${meta.watchlist_count ?? 0} 只` : '--';
+  const decisionText = counts ? `${counts.decisions.length} 条` : '--';
+  const targetText = counts ? `${counts.targets.length} 条` : '--';
+  const orderText = counts ? `${counts.orders.length} 单` : '--';
+  const errorText = counts ? `${counts.errors.length} 条` : '--';
+  chips.innerHTML = `
+    <span class="case-chip source">${escapeHtml(sourceLabel)}</span>
+    <span class="case-chip status ${runStatusClass(meta?.status)}">${escapeHtml(statusLabel)}</span>
+    <span class="case-chip">${escapeHtml(meta?.market || '--')}</span>
+    <span class="case-chip">${escapeHtml(meta?.trade_date || '--')}</span>
+    <span class="case-chip">${escapeHtml(watchlistText)}</span>
+    <span class="case-chip">${escapeHtml(`决策 ${decisionText}`)}</span>
+    <span class="case-chip">${escapeHtml(`目标 ${targetText}`)}</span>
+    <span class="case-chip">${escapeHtml(`订单 ${orderText}`)}</span>
+    <span class="case-chip">${escapeHtml(`异常 ${errorText}`)}</span>
+    <span class="case-chip pnl">${escapeHtml(pnlText)}</span>
+  `;
+}
+
+function renderCaseOverview(meta, snapshot) {
+  const overviewGrid = document.getElementById('case-overview-grid');
+  const overviewNote = document.getElementById('case-overview-note');
+  const counts = getCaseCounts(snapshot);
+
+  if (overviewGrid) {
+    overviewGrid.innerHTML = `
+      <div class="overview-card">
+        <span class="overview-label">决策</span>
+        <strong class="overview-value">${counts.decisions.length}</strong>
+        <span class="overview-sub">${counts.decisionBuy} 买 / ${counts.decisionSell} 卖 / ${counts.decisionHold} 观望</span>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">目标仓位</span>
+        <strong class="overview-value">${counts.targets.length}</strong>
+        <span class="overview-sub">配置输出的目标持仓</span>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">订单</span>
+        <strong class="overview-value">${counts.orders.length}</strong>
+        <span class="overview-sub">执行链路中的订单</span>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">对账</span>
+        <strong class="overview-value">${counts.reconcile.length}</strong>
+        <span class="overview-sub">持仓与行情校验结果</span>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">异常</span>
+        <strong class="overview-value">${counts.errors.length}</strong>
+        <span class="overview-sub">需要关注的异常事件</span>
+      </div>
+      <div class="overview-card">
+        <span class="overview-label">链路步数</span>
+        <strong class="overview-value">${counts.steps.length}</strong>
+        <span class="overview-sub">${snapshot?.latest_run?.status ? `最新状态: ${runStatusLabel(snapshot.latest_run.status)}` : '等待运行'}</span>
+      </div>
+    `;
+  }
+
+  if (overviewNote) {
+    const latestStep = counts.steps[counts.steps.length - 1];
+    const latestMessage = normalizeText(latestStep?.message || latestStep?.summary || snapshot?.latest_run?.message, '');
+    overviewNote.innerHTML = latestMessage
+      ? `最近一步：<strong>${escapeHtml(latestMessage)}</strong>`
+      : (meta?.supports_case_view ? '点击阶段按钮查看决策、订单、目标仓位、对账和异常的明细。' : '自动运行只展示概要，不提供完整案件视图。');
+  }
+}
+
+function renderCaseStageRail(meta, snapshot) {
+  const rail = document.getElementById('case-stage-rail');
+  if (!rail) return;
+  const counts = getCaseCounts(snapshot);
+  const stageButtons = [
+    { stage: 'overview', label: '概览', count: counts.steps.length },
+    { stage: 'decisions', label: '决策', count: counts.decisions.length },
+    { stage: 'targets', label: '目标仓位', count: counts.targets.length },
+    { stage: 'orders', label: '订单', count: counts.orders.length },
+    { stage: 'reconcile', label: '对账', count: counts.reconcile.length },
+    { stage: 'errors', label: '异常', count: counts.errors.length },
+  ];
+  rail.innerHTML = stageButtons.map(item => {
+    const active = selectedCaseStage === stagePaneId(item.stage) || (!selectedCaseStage && item.stage === 'overview');
+    const disabled = !meta?.supports_case_view && item.stage !== 'overview';
+    return `<button type="button" class="${active ? 'active' : ''}" ${disabled ? 'disabled' : ''} onclick="switchTab(this,'${stagePaneId(item.stage)}')">
+      <span>${escapeHtml(item.label)}</span>
+      <strong>${escapeHtml(String(item.count))}</strong>
+    </button>`;
+  }).join('');
+}
+
+function renderCaseStageVisibility() {
+  const panes = document.querySelectorAll('.case-stage-pane');
+  panes.forEach(pane => {
+    const shouldShow = pane.id === selectedCaseStage || (!selectedCaseStage && pane.id === stagePaneId('overview'));
+    pane.classList.toggle('active', shouldShow);
+  });
+}
+
+function renderCaseEmptyState(message) {
+  selectedHistoryRunMeta = null;
+  selectedCaseSnapshot = null;
+  selectedCaseStage = stagePaneId('overview');
+  const titleEl = document.getElementById('case-title');
+  const subtitleEl = document.getElementById('case-subtitle');
+  const noteEl = document.getElementById('case-overview-note');
+  const gridEl = document.getElementById('case-overview-grid');
+  if (titleEl) titleEl.textContent = '请选择运行记录';
+  if (subtitleEl) subtitleEl.textContent = message || '从上方运行中心选择一条记录，查看完整案件视图。';
+  if (noteEl) noteEl.textContent = message || '从上方运行中心选择一条记录，查看完整案件视图。';
+  if (gridEl) {
+    gridEl.innerHTML = `
+      <div class="overview-empty">
+        <strong>暂无案件</strong>
+        <span>选择一条手动运行记录后，这里会显示链路时间线和阶段明细。</span>
+      </div>
+    `;
+  }
+  const chips = document.getElementById('case-summary-chips');
+  if (chips) chips.innerHTML = '';
+  const rail = document.getElementById('case-stage-rail');
+  if (rail) rail.innerHTML = '';
+  renderDecisions([]);
+  renderOrders([]);
+  renderTargets([]);
+  renderErrorEvents([]);
+  renderReconcile([]);
+  renderTimeline({ steps: [] });
+  renderRunPnlSummary({});
+  renderCaseStageVisibility();
+}
+
+function renderCaseSnapshot(meta, snapshot) {
+  const titleEl = document.getElementById('case-title');
+  const subtitleEl = document.getElementById('case-subtitle');
+  const counts = getCaseCounts(snapshot);
+  const latestRun = snapshot?.latest_run || {};
+  const statusLabel = runStatusLabel(meta?.status || latestRun.status);
+  const sourceLabel = runSourceLabel(meta?.source);
+  const runId = meta?.run_context_id || meta?.id || latestRun.run_context_id || '--';
+  if (titleEl) {
+    titleEl.textContent = `${sourceLabel} · ${runId}`;
+  }
+  if (subtitleEl) {
+    const duration = meta?.created_at && meta?.finished_at ? `${formatTime(meta.created_at)} → ${formatTime(meta.finished_at)}` : formatTime(meta?.created_at);
+    subtitleEl.textContent = `${statusLabel} · ${meta?.market || '--'} · ${meta?.trade_date || '--'} · ${duration}`;
+  }
+
+  renderCaseSummaryChips(meta, counts);
+  renderCaseOverview(meta, snapshot);
+  renderCaseStageRail(meta, snapshot);
+  renderCaseStageVisibility();
+
+  const pnlSummary = latestRun.run_pnl_summary || {
+    net_pnl: meta?.net_pnl,
+    execution_fee_total: null,
+    unrealized_pnl: null,
+  };
+  renderRunPnlSummary(pnlSummary);
+  renderTimeline(latestRun);
+  renderDecisions(counts.decisions);
+  renderOrders(counts.orders);
+  renderTargets(counts.targets);
+  renderErrorEvents(counts.events);
+  renderReconcile(counts.reconcile);
+}
+
+function renderActiveCase() {
+  if (!selectedHistoryRunMeta) {
+    renderCaseEmptyState();
+    return;
+  }
+  if (!selectedHistoryRunMeta.supports_case_view) {
+    const meta = selectedHistoryRunMeta;
+    const titleEl = document.getElementById('case-title');
+    const subtitleEl = document.getElementById('case-subtitle');
+    const noteEl = document.getElementById('case-overview-note');
+    const gridEl = document.getElementById('case-overview-grid');
+    if (titleEl) titleEl.textContent = `${runSourceLabel(meta.source)} · ${meta.id}`;
+    if (subtitleEl) subtitleEl.textContent = `${runStatusLabel(meta.status)} · 自动运行仅保留概要`;
+    if (noteEl) noteEl.textContent = meta.error_message || '自动运行没有完整案件链路，只有概要卡片。';
+    if (gridEl) {
+      gridEl.innerHTML = `
+        <div class="overview-card">
+          <span class="overview-label">状态</span>
+          <strong class="overview-value">${escapeHtml(runStatusLabel(meta.status))}</strong>
+          <span class="overview-sub">自动运行概要</span>
+        </div>
+        <div class="overview-card">
+          <span class="overview-label">观察列表</span>
+          <strong class="overview-value">${meta.watchlist_count ?? 0}</strong>
+          <span class="overview-sub">仅记录列表规模</span>
+        </div>
+        <div class="overview-card">
+          <span class="overview-label">净值</span>
+          <strong class="overview-value">${escapeHtml(formatSignedCurrency(meta.net_pnl))}</strong>
+          <span class="overview-sub">历史运行摘要</span>
+        </div>
+        <div class="overview-empty">
+          <strong>自动运行</strong>
+          <span>没有可展开的案件细节，切换到手动运行可以查看完整链路。</span>
+        </div>
+      `;
+    }
+    const chips = document.getElementById('case-summary-chips');
+    if (chips) {
+      chips.innerHTML = `
+        <span class="case-chip source">${escapeHtml(runSourceLabel(meta.source))}</span>
+        <span class="case-chip status ${runStatusClass(meta.status)}">${escapeHtml(runStatusLabel(meta.status))}</span>
+        <span class="case-chip">${escapeHtml(meta.market || '--')}</span>
+        <span class="case-chip">${escapeHtml(meta.trade_date || '--')}</span>
+        <span class="case-chip">${escapeHtml(`观察 ${meta.watchlist_count ?? 0} 只`)}</span>
+        <span class="case-chip pnl">${escapeHtml(formatSignedCurrency(meta.net_pnl))}</span>
+      `;
+    }
+    const rail = document.getElementById('case-stage-rail');
+    if (rail) {
+      rail.innerHTML = `
+        <button type="button" class="active" onclick="switchTab(this,'${stagePaneId('overview')}')">概览 <strong>1</strong></button>
+      `;
+    }
+    selectedCaseStage = stagePaneId('overview');
+    renderCaseStageVisibility();
+    renderDecisions([]);
+    renderOrders([]);
+    renderTargets([]);
+    renderErrorEvents([]);
+    renderReconcile([]);
+    renderTimeline({ steps: [] });
+    renderRunPnlSummary({ net_pnl: meta.net_pnl });
+    return;
+  }
+  if (!selectedCaseSnapshot) {
+    const meta = selectedHistoryRunMeta;
+    const emptySnapshot = { latest_run: { steps: [] }, history: {} };
+    const titleEl = document.getElementById('case-title');
+    const subtitleEl = document.getElementById('case-subtitle');
+    if (titleEl) titleEl.textContent = `${runSourceLabel(meta.source)} · ${meta.id}`;
+    if (subtitleEl) subtitleEl.textContent = '案件快照加载中...';
+    renderCaseSummaryChips(meta, getCaseCounts(emptySnapshot));
+    renderCaseOverview(meta, emptySnapshot);
+    renderCaseStageRail(meta, emptySnapshot);
+    selectedCaseStage = stagePaneId('overview');
+    renderCaseStageVisibility();
+    renderDecisions([]);
+    renderOrders([]);
+    renderTargets([]);
+    renderErrorEvents([]);
+    renderReconcile([]);
+    renderTimeline({ steps: [] });
+    renderRunPnlSummary({ net_pnl: meta.net_pnl });
+    return;
+  }
+  renderCaseSnapshot(selectedHistoryRunMeta, selectedCaseSnapshot);
+}
+
+function activateLiveRunCase(runContextId) {
+  const watchlistValue = document.getElementById('cfg-watchlist')?.value || '';
+  selectedHistoryRunMeta = {
+    id: runContextId,
+    source: 'manual',
+    market: document.getElementById('cfg-market')?.value || 'a',
+    status: 'running',
+    trade_date: document.getElementById('inner-trade-date')?.textContent || null,
+    created_at: new Date().toISOString(),
+    finished_at: null,
+    decision_mode: document.getElementById('cfg-mode')?.value || null,
+    execution_mode: execMode,
+    watchlist_count: watchlistValue.split(',').map(s => s.trim()).filter(Boolean).length,
+    decision_count: 0,
+    target_count: 0,
+    order_count: 0,
+    net_pnl: null,
+    error_message: null,
+    run_context_id: runContextId,
+    supports_case_view: true,
+  };
+  selectedCaseSnapshot = {
+    latest_run: {
+      run_context_id: runContextId,
+      status: 'running',
+      steps: [],
+      message: '运行已提交，等待流式事件。',
+    },
+    history: {},
+  };
+  selectedCaseStage = stagePaneId('overview');
+  renderActiveCase();
+}
+
 function stageLabel(stage) {
   const tag = normalizeText(stage, 'stage').toLowerCase();
   if (tag === 'decision') return '决策';
@@ -436,24 +849,24 @@ function stageLabel(stage) {
 
 function renderRunPnlSummary(summary) {
   const pnl = summary || {};
-  const net = Number(pnl.net_pnl || 0);
-  const fee = Number(pnl.execution_fee_total || 0);
-  const unrealized = Number(pnl.unrealized_pnl || 0);
+  const net = pnl.net_pnl === null || pnl.net_pnl === undefined || pnl.net_pnl === '' ? null : Number(pnl.net_pnl);
+  const fee = pnl.execution_fee_total === null || pnl.execution_fee_total === undefined || pnl.execution_fee_total === '' ? null : Number(pnl.execution_fee_total);
+  const unrealized = pnl.unrealized_pnl === null || pnl.unrealized_pnl === undefined || pnl.unrealized_pnl === '' ? null : Number(pnl.unrealized_pnl);
 
   const netEl = document.getElementById('run-pnl-net');
   const feeEl = document.getElementById('run-pnl-fee');
   const unrealizedEl = document.getElementById('run-pnl-unrealized');
 
   if (netEl) {
-    netEl.textContent = formatCurrency(net);
+    netEl.textContent = net === null || Number.isNaN(net) ? '--' : formatSignedCurrency(net);
     netEl.className = `run-pnl-value ${net > 0 ? 'green' : net < 0 ? 'red' : ''}`;
   }
   if (feeEl) {
-    feeEl.textContent = formatCurrency(fee);
-    feeEl.className = 'run-pnl-value red';
+    feeEl.textContent = fee === null || Number.isNaN(fee) ? '--' : formatSignedCurrency(fee);
+    feeEl.className = fee && fee > 0 ? 'run-pnl-value red' : 'run-pnl-value';
   }
   if (unrealizedEl) {
-    unrealizedEl.textContent = formatCurrency(unrealized);
+    unrealizedEl.textContent = unrealized === null || Number.isNaN(unrealized) ? '--' : formatSignedCurrency(unrealized);
     unrealizedEl.className = `run-pnl-value ${unrealized > 0 ? 'green' : unrealized < 0 ? 'red' : ''}`;
   }
 }
@@ -536,14 +949,16 @@ const legacyStageBodyHtml = function(step) {
 }
 
 function renderTimeline(latestRun) {
-  const timeline = document.getElementById('timeline');
+  const timeline = document.getElementById('case-timeline');
+  if (!timeline) return;
   const steps = toList(latestRun?.steps);
+  const traceId = document.getElementById('run-trace-id');
+  if (traceId) traceId.textContent = latestRun?.run_context_id || '--';
   if (!steps.length) {
-    timeline.innerHTML = '<div class="timeline-empty" id="timeline-empty">配置参数后点击「运行一轮模拟交易」开始</div>';
+    timeline.innerHTML = '<div class="timeline-empty" id="timeline-empty">选择一条运行记录查看链路时间线</div>';
     return;
   }
   timeline.innerHTML = '';
-  document.getElementById('run-trace-id').textContent = latestRun?.run_context_id || '--';
   steps.forEach(step => {
     if (!step) return;
     const stage = normalizeText(step.stage || step.name, 'stage').toLowerCase();
@@ -585,6 +1000,16 @@ function renderWorkbench(data, killStatus) {
   renderStatus(data, killStatus || {});
   const config = { ...(data.config || {}), ...(data._serverPrefs || {}) };
   renderConfig(config);
+  const snapshotRunId = normalizeText(data.latest_run?.run_context_id, '');
+  const activeRunId = normalizeText(selectedHistoryRunMeta?.run_context_id, '');
+  const preserveActiveCase = Boolean(
+    !simRunning
+    && selectedHistoryRunMeta
+    && (
+      selectedHistoryRunMeta.supports_case_view === false
+      || (activeRunId && snapshotRunId && activeRunId !== snapshotRunId)
+    )
+  );
 
   // Apply server-side pagination metadata
   const p = data.pagination || {};
@@ -592,29 +1017,33 @@ function renderWorkbench(data, killStatus) {
   if (p.orders) { pag.orders.total = p.orders.total; pag.orders.totalPages = p.orders.total_pages; }
   if (p.targets) { pag.targets.total = p.targets.total; pag.targets.totalPages = p.targets.total_pages; }
 
-  renderDecisions(data.history?.decisions || []);
-  renderOrders(data.history?.orders || []);
-  renderTargets(data.history?.targets || []);
-  const reconcileData = data.history?.reconcile || data.latest_run?.reconcile_items;
-  if (Array.isArray(reconcileData) && reconcileData.length > 0) {
-    renderReconcile(reconcileData);
-  }
-  const pnlData = data.latest_run?.run_pnl_summary;
-  if (pnlData && typeof pnlData === 'object' && Object.keys(pnlData).length > 0) {
-    renderRunPnlSummary(pnlData);
-  }
   renderRisk(data.risk || {}, data.history?.targets || []);
   renderPerformance(data.performance || {});
   renderAutomation(data.automation || {});
-  renderErrorEvents(data.history?.events || []);
   renderAlerts(data.risk?.alerts || []);
-  renderTimeline(data.latest_run || { steps: [] });
+  if (!preserveActiveCase) {
+    const snapshotMeta = data.latest_run?.run_context_id ? buildRunMetaFromSnapshot(data) : null;
+    if (snapshotMeta) {
+      selectedHistoryRunMeta = selectedHistoryRunMeta
+        ? { ...selectedHistoryRunMeta, ...snapshotMeta }
+        : snapshotMeta;
+      selectedCaseSnapshot = data;
+      renderActiveCase();
+    } else if (!selectedHistoryRunMeta) {
+      renderCaseEmptyState();
+    }
+  }
 }
 
 async function loadDashboard() {
   const market = document.getElementById('cfg-market')?.value || 'a';
   try {
     setPanelLoading('all');
+    const panelLoads = [
+      Promise.resolve().then(() => loadPerformancePanel(market)),
+      Promise.resolve().then(() => loadAutomationPanel(market)),
+      Promise.resolve().then(() => loadHistoryPanel(market)),
+    ];
     const [workbenchRes, killStatusRes] = await Promise.all([
       fetch(`${WORKBENCH_API}?market=${market}&account_kind=auto`),
       fetch(KILL_SWITCH_STATUS_API),
@@ -643,11 +1072,7 @@ async function loadDashboard() {
 
     renderWorkbench(workbenchBody, killStatusBody);
 
-    Promise.allSettled([
-      loadPerformancePanel(market),
-      loadAutomationPanel(market),
-      loadHistoryPanel(market),
-    ]).then(() => { clearPanelLoading(); });
+    Promise.allSettled(panelLoads).then(() => { clearPanelLoading(); });
 
     await refreshMarketQuotes();
   } catch (error) {
@@ -680,44 +1105,134 @@ async function loadHistoryPanel(market) {
     const res = await fetch(`${HISTORY_API}?market=${market}&account_kind=auto&source=all&limit=20`);
     if (!res.ok) return;
     const data = await parseResponseBody(res);
-    renderHistoryPanel(data);
+    renderRunCenter(data.runs || []);
   } catch (_) {}
 }
 
-function renderHistoryPanel(data) {
-  const autoPane = document.getElementById('auto-runs-history') || document.getElementById('pane-auto');
-  const manualPane = document.getElementById('pane-manual');
-  if (autoPane) {
-    const runs = toList(data.auto_runs);
-    if (runs.length) {
-      autoPane.innerHTML = runs.map(r => `
-        <div class="tl-step done">
-          <div class="step-head">
-            <span class="step-tag execute">${escapeHtml(r.market || 'a')}</span>
-            <span class="step-time">${escapeHtml(formatTime(r.created_at))}</span>
-          </div>
-          <div class="step-body">${escapeHtml(r.status || '')} ${r.error_message ? '— ' + escapeHtml(r.error_message) : ''}</div>
-        </div>
-      `).join('');
-    } else {
-      autoPane.innerHTML = '';
+function getFilteredHistoryRuns() {
+  if (selectedHistorySource === 'manual') return historyRuns.filter(run => run.source === 'manual');
+  if (selectedHistorySource === 'auto') return historyRuns.filter(run => run.source === 'auto');
+  return historyRuns.slice();
+}
+
+function renderRunFilterButton(source, label, count) {
+  const active = selectedHistorySource === source;
+  return `<button type="button" class="pill-btn ${active ? 'active' : ''}" data-history-source="${escapeHtml(source)}" onclick="setHistoryFilter('${source}', this)">
+    <span>${escapeHtml(label)}</span>
+    <strong>${escapeHtml(String(count))}</strong>
+  </button>`;
+}
+
+function renderRunCard(run) {
+  const active = selectedHistoryRunMeta && normalizeText(selectedHistoryRunMeta.id, '') === normalizeText(run.id, '');
+  const statusClass = runStatusClass(run.status);
+  const netPnl = formatSignedCurrency(run.net_pnl);
+  const details = [
+    run.trade_date || '--',
+    run.market || '--',
+    run.supports_case_view ? '完整案件' : '概要',
+  ];
+  const counts = [
+    `决策 ${run.decision_count ?? 0}`,
+    `目标 ${run.target_count ?? 0}`,
+    `订单 ${run.order_count ?? 0}`,
+    `观察 ${run.watchlist_count ?? 0}`,
+  ];
+  const note = normalizeText(run.error_message, '');
+  return `
+    <button type="button" class="run-card ${active ? 'active' : ''}" data-run-id="${escapeHtml(run.id)}" onclick="selectHistoryRun('${escapeHtml(run.id)}')">
+      <div class="run-card-head">
+        <span class="run-card-source ${run.source}">${escapeHtml(runSourceLabel(run.source))}</span>
+        <span class="run-card-status ${statusClass}">${escapeHtml(runStatusLabel(run.status))}</span>
+      </div>
+      <div class="run-card-title">${escapeHtml(run.id)}</div>
+      <div class="run-card-meta">
+        ${details.map(item => `<span>${escapeHtml(item)}</span>`).join('')}
+      </div>
+      <div class="run-card-badges">
+        ${counts.map(item => `<span class="run-mini-chip">${escapeHtml(item)}</span>`).join('')}
+        <span class="run-mini-chip pnl">${escapeHtml(netPnl)}</span>
+      </div>
+      <div class="run-card-note ${note ? 'show' : ''}">${escapeHtml(note || (run.decision_mode ? `${run.decision_mode} · ${run.execution_mode || '--'}` : ''))}</div>
+    </button>
+  `;
+}
+
+function renderRunCenter(runs) {
+  historyRuns = toList(runs).map(buildRunMetaFromListItem);
+  const filtered = getFilteredHistoryRuns();
+  const filters = document.getElementById('run-history-filters');
+  const list = document.getElementById('run-center-list');
+  const counts = {
+    all: historyRuns.length,
+    manual: historyRuns.filter(run => run.source === 'manual').length,
+    auto: historyRuns.filter(run => run.source === 'auto').length,
+  };
+  if (filters) {
+    filters.innerHTML = [
+      renderRunFilterButton('all', '全部', counts.all),
+      renderRunFilterButton('manual', '手动', counts.manual),
+      renderRunFilterButton('auto', '自动', counts.auto),
+    ].join('');
+  }
+
+  if (!selectedHistoryRunMeta && filtered.length) {
+    selectHistoryRun(filtered[0].id, { fromRender: true });
+  }
+
+  if (!list) return;
+  if (!filtered.length) {
+    list.innerHTML = '<div class="run-center-empty">没有符合当前筛选条件的运行记录</div>';
+    if (!selectedHistoryRunMeta) {
+      renderCaseEmptyState('当前筛选下没有可用的运行记录。');
+    }
+    return;
+  }
+
+  list.innerHTML = filtered.map(renderRunCard).join('');
+  if (selectedHistoryRunMeta) {
+    const current = filtered.find(run => normalizeText(run.id, '') === normalizeText(selectedHistoryRunMeta.id, ''));
+    if (!current) {
+      list.querySelectorAll('.run-card').forEach(card => card.classList.remove('active'));
     }
   }
-  if (manualPane) {
-    const runs = toList(data.manual_runs);
-    if (runs.length) {
-      manualPane.innerHTML = runs.map(r => `
-        <div class="tl-step done">
-          <div class="step-head">
-            <span class="step-tag decision">${escapeHtml(r.market || 'a')}</span>
-            <span class="step-time">${escapeHtml(formatTime(r.created_at))}</span>
-          </div>
-          <div class="step-body">${escapeHtml(r.status || '')}</div>
-        </div>
-      `).join('');
-    } else {
-      manualPane.innerHTML = '<div class="timeline-empty">手动运行记录将在此显示</div>';
+}
+
+function setHistoryFilter(source) {
+  selectedHistorySource = source || 'all';
+  renderRunCenter(historyRuns);
+}
+
+async function selectHistoryRun(runId, options = {}) {
+  const run = historyRuns.find(item => normalizeText(item.id, '') === normalizeText(runId, ''));
+  if (!run) return;
+
+  selectedHistoryRunMeta = { ...run };
+  selectedCaseStage = stagePaneId('overview');
+  renderRunCenter(historyRuns);
+
+  if (!run.supports_case_view || !run.run_context_id) {
+    selectedCaseSnapshot = null;
+    renderActiveCase();
+    return;
+  }
+
+  const token = ++historySnapshotToken;
+  selectedCaseSnapshot = null;
+  renderActiveCase();
+  try {
+    const res = await fetch(`${WORKBENCH_API}?run_context_id=${encodeURIComponent(run.run_context_id)}`);
+    const body = await parseResponseBody(res);
+    if (!res.ok) {
+      throw new Error(extractErrorMessage(body, `运行快照加载失败 (${res.status})`));
     }
+    if (token !== historySnapshotToken) return;
+    selectedCaseSnapshot = body;
+    renderActiveCase();
+  } catch (error) {
+    if (token !== historySnapshotToken) return;
+    selectedCaseSnapshot = null;
+    renderCaseEmptyState(error.message);
   }
 }
 
@@ -742,6 +1257,7 @@ function buildRunPayload() {
     .map(s => s.trim())
     .filter(Boolean);
   return {
+    market: document.getElementById('cfg-market').value,
     capital_base: Number(document.getElementById('cfg-capital').value) * 10000,
     watchlist,
     max_position_ratio: Number(document.getElementById('cfg-max-pos').value) / 100,

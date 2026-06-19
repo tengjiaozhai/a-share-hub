@@ -29,11 +29,28 @@ class DashboardPerformancePayload(BaseModel):
     comparison_cards: list[dict]
 
 
+class DashboardRunListItem(BaseModel):
+    id: str
+    source: str
+    market: str
+    status: str
+    trade_date: str | None
+    created_at: str | None
+    finished_at: str | None
+    decision_mode: str | None
+    execution_mode: str | None
+    watchlist_count: int
+    decision_count: int | None
+    target_count: int | None
+    order_count: int | None
+    net_pnl: float | None
+    error_message: str | None
+    run_context_id: str | None
+    supports_case_view: bool
+
+
 class DashboardHistoryPayload(BaseModel):
-    auto_runs: list[dict]
-    manual_runs: list[dict]
-    fills: list[dict]
-    decisions: list[dict]
+    runs: list[DashboardRunListItem]
 
 
 class DashboardAlertPayload(BaseModel):

@@ -40,15 +40,86 @@ function setStreamStatus(kind, message) {
   el.textContent = message;
 }
 
-function applyRunStreamEvent(payload) {
-  if (!payload || typeof payload !== 'object') return;
-  if (payload.run_context_id) {
-    document.getElementById('run-trace-id').textContent = payload.run_context_id;
+function parseRunStreamEnvelope(event) {
+  try {
+    const envelope = JSON.parse(event.data);
+    return envelope && typeof envelope === 'object' ? envelope : null;
+  } catch (err) {
+    addAlert('err', `解析事件失败: ${err.message}`);
+    return null;
   }
-  if (Array.isArray(payload.steps)) {
+}
+
+function buildRunStreamSteps(envelope, payload) {
+  const steps = Array.isArray(payload.steps) ? payload.steps.map(step => ({ ...step })) : [];
+  const eventType = normalizeText(envelope.event_type, '').toLowerCase();
+  const stage = normalizeText(envelope.stage, '').toLowerCase();
+  const status = normalizeText(envelope.status, '').toLowerCase();
+  const message = normalizeText(payload.message || payload.error, '');
+  const shouldAppendCurrentStage = (eventType === 'run.accepted' || eventType === 'stage.updated' || eventType === 'run.failed')
+    && stage
+    && message;
+
+  if (!shouldAppendCurrentStage) return steps;
+
+  const lastStep = steps[steps.length - 1];
+  const lastStage = normalizeText(lastStep?.stage || lastStep?.name, '').toLowerCase();
+  const lastStatus = normalizeText(lastStep?.status, '').toLowerCase();
+  if (lastStage === stage && lastStatus === status) {
+    return steps;
+  }
+
+  steps.push({
+    stage,
+    status,
+    timestamp: envelope.created_at,
+    message,
+  });
+  return steps;
+}
+
+function applyRunStreamEvent(envelope) {
+  if (!envelope || typeof envelope !== 'object') return;
+  const payload = envelope.payload;
+  if (!payload || typeof payload !== 'object') return;
+  const steps = buildRunStreamSteps(envelope, payload);
+  const runContextId = normalizeText(envelope.run_context_id, '');
+  if (runContextId && currentRunContextId && runContextId !== currentRunContextId) {
+    return;
+  }
+  if (simRunning && runContextId && normalizeText(selectedHistoryRunMeta?.run_context_id, '') !== runContextId) {
+    activateLiveRunCase(runContextId);
+  }
+
+  if (selectedCaseSnapshot && normalizeText(selectedCaseSnapshot.latest_run?.run_context_id, '') === runContextId) {
+    selectedCaseSnapshot.latest_run = {
+      ...(selectedCaseSnapshot.latest_run || {}),
+      run_context_id: runContextId,
+      steps,
+      status: envelope.status || selectedCaseSnapshot.latest_run?.status,
+      message: payload.message || selectedCaseSnapshot.latest_run?.message,
+      error_message: payload.error || selectedCaseSnapshot.latest_run?.error_message,
+      run_pnl_summary: payload.run_pnl_summary || selectedCaseSnapshot.latest_run?.run_pnl_summary,
+      reconcile_items: payload.reconcile_items || selectedCaseSnapshot.latest_run?.reconcile_items,
+    };
+  }
+  if (selectedHistoryRunMeta && normalizeText(selectedHistoryRunMeta.run_context_id, '') === runContextId) {
+    selectedHistoryRunMeta.status = envelope.status || selectedHistoryRunMeta.status;
+    if (payload.run_pnl_summary && payload.run_pnl_summary.net_pnl !== undefined) {
+      selectedHistoryRunMeta.net_pnl = payload.run_pnl_summary.net_pnl;
+    }
+    if (payload.error) {
+      selectedHistoryRunMeta.error_message = payload.error;
+    }
+  }
+
+  if (envelope.run_context_id) {
+    document.getElementById('run-trace-id').textContent = envelope.run_context_id;
+  }
+  if (steps.length) {
     renderTimeline({
-      run_context_id: payload.run_context_id,
-      steps: payload.steps,
+      run_context_id: envelope.run_context_id,
+      steps,
     });
   }
   if (payload.run_pnl_summary) {
@@ -56,6 +127,10 @@ function applyRunStreamEvent(payload) {
   }
   if (Array.isArray(payload.reconcile_items)) {
     renderReconcile(payload.reconcile_items);
+  }
+  if (selectedHistoryRunMeta && normalizeText(selectedHistoryRunMeta.run_context_id, '') === runContextId && selectedCaseSnapshot) {
+    renderCaseOverview(selectedHistoryRunMeta, selectedCaseSnapshot);
+    renderCaseStageRail(selectedHistoryRunMeta, selectedCaseSnapshot);
   }
 }
 
@@ -65,6 +140,9 @@ function connectRunStream(runContextId) {
     runEventSource = null;
   }
   currentRunContextId = runContextId;
+  if (typeof activateLiveRunCase === 'function') {
+    activateLiveRunCase(runContextId);
+  }
   document.getElementById('run-trace-id').textContent = runContextId;
   setStreamStatus('running', '运行中');
   runEventSource = new EventSource(RUN_EVENTS_API(runContextId));
@@ -83,25 +161,28 @@ function connectRunStream(runContextId) {
 
   runStreamReconnectAttempts = 0;
 
-  runEventSource.onmessage = (event) => {
+  const handleStreamEvent = (event) => {
     runStreamReconnectAttempts = 0;
-    try {
-      const payload = JSON.parse(event.data);
-      applyRunStreamEvent(payload);
-      resetHeartbeat();
-    } catch (err) {
-      addAlert('err', `解析事件失败: ${err.message}`);
-    }
+    const envelope = parseRunStreamEnvelope(event);
+    if (!envelope) return;
+    applyRunStreamEvent(envelope);
+    resetHeartbeat();
   };
+  runEventSource.addEventListener('run.accepted', handleStreamEvent);
+  runEventSource.addEventListener('stage.updated', handleStreamEvent);
   runEventSource.addEventListener('run.completed', async (event) => {
-    const payload = JSON.parse(event.data);
-    try { await loadRunSnapshot(payload.run_context_id); } catch (_) { /* 快照加载失败也不影响结束 */ }
+    const envelope = parseRunStreamEnvelope(event);
+    if (!envelope) return;
+    applyRunStreamEvent(envelope);
+    try { await loadRunSnapshot(envelope.run_context_id); } catch (_) { /* 快照加载失败也不影响结束 */ }
     endRunStream('本轮完成', 'success');
   });
   runEventSource.addEventListener('run.failed', async (event) => {
-    const payload = JSON.parse(event.data);
-    try { await loadRunSnapshot(payload.run_context_id); } catch (_) { /* 快照加载失败也不影响结束 */ }
-    endRunStream(payload.payload?.message || '运行失败', 'error');
+    const envelope = parseRunStreamEnvelope(event);
+    if (!envelope) return;
+    applyRunStreamEvent(envelope);
+    try { await loadRunSnapshot(envelope.run_context_id); } catch (_) { /* 快照加载失败也不影响结束 */ }
+    endRunStream(envelope.payload?.message || '运行失败', 'error');
   });
   runEventSource.onerror = () => {
     if (runStreamHeartbeatTimer) {

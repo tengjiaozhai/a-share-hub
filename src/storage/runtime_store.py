@@ -15,6 +15,15 @@ def _to_cst(dt: datetime) -> datetime:
 def _cst_iso(dt: datetime) -> str:
     return _to_cst(dt).isoformat()
 
+
+def _parse_summary_timestamp(value: str | None) -> datetime | None:
+    if value is None:
+        return None
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        return parsed
+    return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+
 from sqlalchemy import func, select
 
 from src.storage.models import (
@@ -1034,8 +1043,8 @@ class RuntimeStore:
             "realized_pnl": realized_pnl,
             "unrealized_pnl": unrealized_pnl,
             "net_pnl": net_pnl,
-            "started_at": datetime.fromisoformat(started_at),
-            "finished_at": datetime.fromisoformat(finished_at) if finished_at else None,
+            "started_at": _parse_summary_timestamp(started_at),
+            "finished_at": _parse_summary_timestamp(finished_at),
             "latest_workbench_json": json.dumps(latest_workbench, ensure_ascii=True, sort_keys=True),
             "updated_at": datetime.utcnow(),
         }
@@ -1080,6 +1089,34 @@ class RuntimeStore:
             "finished_at": _cst_iso(row.finished_at) if row.finished_at else None,
             "latest_workbench": json.loads(row.latest_workbench_json or "{}"),
         }
+
+    def list_dashboard_run_summaries(self, limit: int = 50) -> list[dict]:
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                select(DashboardRunSummaryRow)
+                .order_by(DashboardRunSummaryRow.started_at.desc())
+                .limit(limit)
+            ).fetchall()
+        return [
+            {
+                "run_context_id": row.run_context_id,
+                "trade_date": row.trade_date,
+                "decision_mode": row.decision_mode,
+                "execution_mode": row.execution_mode,
+                "capital_base": row.capital_base,
+                "status": row.status,
+                "execution_fee_total": row.execution_fee_total,
+                "realized_pnl": row.realized_pnl,
+                "unrealized_pnl": row.unrealized_pnl,
+                "net_pnl": row.net_pnl,
+                "started_at": _cst_iso(row.started_at),
+                "finished_at": _cst_iso(row.finished_at) if row.finished_at else None,
+                "created_at": _cst_iso(row.created_at),
+                "updated_at": _cst_iso(row.updated_at),
+                "latest_workbench": json.loads(row.latest_workbench_json or "{}"),
+            }
+            for row in rows
+        ]
 
     def append_dashboard_run_event(
         self,

@@ -71,7 +71,10 @@ def test_render_dashboard_html_contains_streaming_run_markers():
         'id="run-pnl-net"',
         'id="run-pnl-fee"',
         'id="run-pnl-unrealized"',
-        'id="tab-reconcile"',
+        'id="run-history-filters"',
+        'id="run-center-list"',
+        'id="case-stage-rail"',
+        'id="case-pane-reconcile"',
         'id="tb-reconcile"',
     ]
     for marker in required_markers:

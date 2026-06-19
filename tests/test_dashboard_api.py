@@ -1,6 +1,7 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 
 class FakeLLM:
@@ -56,6 +57,12 @@ def seed_dashboard_records(store):
         payload={"broker_order_id": "paper-001"},
     )
     return decision_run_id, target_position_id, execution_order_id
+
+
+def ensure_paper_ledger_tables(engine) -> None:
+    from src.paper_ledger.models import PaperBase
+
+    PaperBase.metadata.create_all(engine)
 
 
 def test_dashboard_workbench_route_exists(test_app):
@@ -203,6 +210,141 @@ def test_workbench_uses_authoritative_target_quantity_and_reconcile_items(test_a
     assert payload["latest_run"]["target_items"][0]["target_quantity"] == 4
     assert payload["latest_run"]["reconcile_items"][0]["mark_price"] == 99.90
     assert payload["latest_run"]["run_pnl_summary"]["net_pnl"] == -0.96
+
+
+def test_history_returns_single_canonical_runs_list(test_app, pg_store):
+    from src.paper_ledger.store import PaperLedgerStore
+
+    ensure_paper_ledger_tables(pg_store.engine)
+    with Session(pg_store.engine) as session:
+        ledger = PaperLedgerStore(session)
+        account = ledger.get_or_create_account("a", "auto")
+        auto_run = ledger.create_run(
+            account_id=account.account_id,
+            market="a",
+            trade_date=date(2026, 6, 16),
+            run_source="auto",
+            params={"strategy": "shadow"},
+            watchlist=["600519.SH", "000858.SZ"],
+        )
+        ledger.update_run_status(auto_run.run_id, "success")
+        auto_run_id = auto_run.run_id
+
+    pg_store.upsert_dashboard_run_summary(
+        run_context_id="wrk-history-001",
+        trade_date="2026-06-17",
+        decision_mode="real",
+        execution_mode="full",
+        capital_base=1_000_000,
+        status="completed",
+        execution_fee_total=12.5,
+        realized_pnl=100.0,
+        unrealized_pnl=-25.5,
+        net_pnl=74.5,
+        started_at="2026-06-17T09:30:00+08:00",
+        finished_at="2026-06-17T09:35:00+08:00",
+        latest_workbench={
+            "latest_run": {
+                "run_context_id": "wrk-history-001",
+                "watchlist": ["600519.SH", "000858.SZ", "601318.SH"],
+                "decision_items": [{"symbol": "600519.SH"}, {"symbol": "000858.SZ"}],
+                "target_items": [{"symbol": "600519.SH"}],
+                "order_items": [{"symbol": "600519.SH"}],
+                "run_pnl_summary": {"net_pnl": 74.5},
+                "error_message": None,
+            }
+        },
+    )
+
+    client = TestClient(test_app)
+    response = client.get("/api/v1/dashboard/history?limit=10")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert set(payload.keys()) == {"runs"}
+    assert "auto_runs" not in payload
+    assert "manual_runs" not in payload
+
+    runs = payload["runs"]
+    assert len(runs) == 2
+
+    manual_run = next(run for run in runs if run["source"] == "manual")
+    assert manual_run == {
+        "id": "wrk-history-001",
+        "source": "manual",
+        "market": "a",
+        "status": "completed",
+        "trade_date": "2026-06-17",
+        "created_at": "2026-06-17T09:30:00+08:00",
+        "finished_at": "2026-06-17T09:35:00+08:00",
+        "decision_mode": "real",
+        "execution_mode": "full",
+        "watchlist_count": 3,
+        "decision_count": 2,
+        "target_count": 1,
+        "order_count": 1,
+        "net_pnl": 74.5,
+        "error_message": None,
+        "run_context_id": "wrk-history-001",
+        "supports_case_view": True,
+    }
+
+    auto_history_run = next(run for run in runs if run["source"] == "auto")
+    assert auto_history_run["id"] == auto_run_id
+    assert auto_history_run["market"] == "a"
+    assert auto_history_run["status"] == "success"
+    assert auto_history_run["trade_date"] == "2026-06-16"
+    assert auto_history_run["created_at"] is not None
+    assert auto_history_run["finished_at"] is None
+    assert auto_history_run["decision_mode"] is None
+    assert auto_history_run["execution_mode"] is None
+    assert auto_history_run["watchlist_count"] == 2
+    assert auto_history_run["decision_count"] is None
+    assert auto_history_run["target_count"] is None
+    assert auto_history_run["order_count"] is None
+    assert auto_history_run["net_pnl"] is None
+    assert auto_history_run["error_message"] is None
+    assert auto_history_run["run_context_id"] is None
+    assert auto_history_run["supports_case_view"] is False
+
+
+def test_history_manual_runs_link_case_view_by_run_context_id(test_app, pg_store):
+    ensure_paper_ledger_tables(pg_store.engine)
+    pg_store.upsert_dashboard_run_summary(
+        run_context_id="wrk-history-404",
+        trade_date="2026-06-18",
+        decision_mode="mock",
+        execution_mode="decision",
+        capital_base=500_000,
+        status="failed",
+        execution_fee_total=0.0,
+        realized_pnl=0.0,
+        unrealized_pnl=0.0,
+        net_pnl=0.0,
+        started_at="2026-06-18T10:00:00+08:00",
+        finished_at="2026-06-18T10:01:00+08:00",
+        latest_workbench={
+            "latest_run": {
+                "run_context_id": "wrk-history-404",
+                "watchlist": [],
+                "decision_items": [],
+                "target_items": [],
+                "order_items": [],
+                "error_message": "upstream unavailable",
+            }
+        },
+    )
+
+    client = TestClient(test_app)
+    history_payload = client.get("/api/v1/dashboard/history?limit=10").json()
+    manual_run = next(run for run in history_payload["runs"] if run["id"] == "wrk-history-404")
+
+    assert manual_run["supports_case_view"] is True
+    assert manual_run["run_context_id"] == "wrk-history-404"
+
+    workbench_response = client.get("/api/v1/dashboard/workbench?run_context_id=wrk-history-404")
+    assert workbench_response.status_code == 200
+    assert workbench_response.json()["latest_run"]["run_context_id"] == "wrk-history-404"
 
 
 def test_old_run_endpoint_is_removed(test_app, monkeypatch):

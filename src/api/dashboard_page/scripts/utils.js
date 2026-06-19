@@ -9,6 +9,12 @@ let btRunning = false;
 let searchResults = [];
 let selectedSearchIndex = -1;
 let isSearchMode = false;
+let selectedHistorySource = 'all';
+let historyRuns = [];
+let selectedHistoryRunMeta = null;
+let selectedCaseSnapshot = null;
+let selectedCaseStage = 'case-pane-overview';
+let historySnapshotToken = 0;
 
 const PAGE_SIZE = 20;
 const pag = {
