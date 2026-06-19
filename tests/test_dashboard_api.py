@@ -20,7 +20,7 @@ class FakeLLM:
 
 
 def seed_dashboard_records(store):
-    decision_run_id = store.insert_decision_run(
+    decision_run_id = store.insert_decision_run(user_id="test-user", 
         symbol="600519.SH",
         prompt_hash="hash-001",
         model_name="mock",
@@ -35,7 +35,7 @@ def seed_dashboard_records(store):
             "market_context": {"mode": "shadow"},
         },
     )
-    target_position_id = store.insert_target_position(
+    target_position_id = store.insert_target_position(user_id="test-user", 
         decision_run_id=decision_run_id,
         symbol="600519.SH",
         action="BUY",
@@ -43,7 +43,7 @@ def seed_dashboard_records(store):
         target_position_ratio=0.1,
         expires_at=(datetime.utcnow() + timedelta(hours=1)).isoformat(),
     )
-    execution_order_id = store.insert_execution_order(
+    execution_order_id = store.insert_execution_order(user_id="test-user", 
         target_position_id=target_position_id,
         symbol="600519.SH",
         action="BUY",
@@ -134,7 +134,7 @@ def test_kill_switch_events_are_visible_in_workbench_history(test_app):
 
 
 def test_workbench_payload_includes_alpha_panel(test_app, pg_store):
-    ticket_id = pg_store.insert_alpha_ticket(
+    ticket_id = pg_store.insert_alpha_ticket(user_id="test-user", 
         asset_symbol="AAPLx",
         underlying_symbol="AAPL",
         action="BUY",
@@ -154,7 +154,7 @@ def test_workbench_payload_includes_alpha_panel(test_app, pg_store):
 
 
 def test_workbench_payload_includes_alpha_portfolio_and_exceptions(test_app, pg_store):
-    ticket_id = pg_store.insert_alpha_ticket(
+    ticket_id = pg_store.insert_alpha_ticket(user_id="test-user", 
         asset_symbol="AAPLx",
         underlying_symbol="AAPL",
         action="BUY",
@@ -163,7 +163,7 @@ def test_workbench_payload_includes_alpha_portfolio_and_exceptions(test_app, pg_
         suggested_limit_price=201.0,
         expires_at="2026-06-01T16:00:00+08:00",
     )
-    pg_store.insert_alpha_manual_fill(
+    pg_store.insert_alpha_manual_fill(user_id="test-user", 
         ticket_id=ticket_id,
         operator_id="trader-01",
         executed_quantity=1.2,
@@ -171,15 +171,17 @@ def test_workbench_payload_includes_alpha_portfolio_and_exceptions(test_app, pg_
         notes="seed fill",
     )
     pg_store.replace_alpha_positions(
-        [{"symbol": "AAPLx", "quantity": 1.2, "avg_cost": 201.0, "mark_price": 225.0}]
+        user_id="test-user",
+        positions=[{"symbol": "AAPLx", "quantity": 1.2, "avg_cost": 201.0, "mark_price": 225.0}],
     )
     pg_store.insert_alpha_portfolio_snapshot(
+        user_id="test-user",
         cash_balance=8_500.0,
         realized_pnl=20.0,
         unrealized_pnl=28.8,
         nav=8_798.8,
     )
-    pg_store.insert_alpha_reconciliation_run(
+    pg_store.insert_alpha_reconciliation_run(user_id="test-user", 
         source="manual",
         status="MISMATCH",
         discrepancies={"positions": {"AAPLx": {"internal": 1.2, "external": 1.0}}},
@@ -197,7 +199,7 @@ def test_workbench_payload_includes_alpha_portfolio_and_exceptions(test_app, pg_
 
 
 def test_workbench_uses_authoritative_target_quantity_and_reconcile_items(test_app, pg_store):
-    pg_store.upsert_dashboard_run_summary(
+    pg_store.upsert_dashboard_run_summary(user_id="test-user", 
         run_context_id="wrk-001",
         trade_date="2026-06-15",
         decision_mode="real",
@@ -248,7 +250,7 @@ def test_history_returns_single_canonical_runs_list(test_app, pg_store):
         ledger.update_run_status(auto_run.run_id, "success")
         auto_run_id = auto_run.run_id
 
-    pg_store.upsert_dashboard_run_summary(
+    pg_store.upsert_dashboard_run_summary(user_id="test-user", 
         run_context_id="wrk-history-001",
         trade_date="2026-06-17",
         decision_mode="real",
@@ -331,7 +333,7 @@ def test_history_returns_single_canonical_runs_list(test_app, pg_store):
 
 def test_history_manual_runs_link_case_view_by_run_context_id(test_app, pg_store):
     ensure_paper_ledger_tables(pg_store.engine)
-    pg_store.upsert_dashboard_run_summary(
+    pg_store.upsert_dashboard_run_summary(user_id="test-user", 
         run_context_id="wrk-history-404",
         trade_date="2026-06-18",
         decision_mode="mock",
@@ -370,7 +372,7 @@ def test_history_manual_runs_link_case_view_by_run_context_id(test_app, pg_store
 
 def test_history_supports_cursor_pagination_for_incremental_loading(test_app, pg_store):
     ensure_paper_ledger_tables(pg_store.engine)
-    pg_store.upsert_dashboard_run_summary(
+    pg_store.upsert_dashboard_run_summary(user_id="test-user", 
         run_context_id="wrk-history-101",
         trade_date="2026-06-18",
         decision_mode="mock",
@@ -385,7 +387,7 @@ def test_history_supports_cursor_pagination_for_incremental_loading(test_app, pg
         finished_at="2026-06-18T10:03:00+08:00",
         latest_workbench={"latest_run": {"run_context_id": "wrk-history-101", "watchlist": ["NVDA"]}},
     )
-    pg_store.upsert_dashboard_run_summary(
+    pg_store.upsert_dashboard_run_summary(user_id="test-user", 
         run_context_id="wrk-history-102",
         trade_date="2026-06-18",
         decision_mode="mock",
@@ -400,7 +402,7 @@ def test_history_supports_cursor_pagination_for_incremental_loading(test_app, pg
         finished_at="2026-06-18T10:05:00+08:00",
         latest_workbench={"latest_run": {"run_context_id": "wrk-history-102", "watchlist": ["AAPL"]}},
     )
-    pg_store.upsert_dashboard_run_summary(
+    pg_store.upsert_dashboard_run_summary(user_id="test-user", 
         run_context_id="wrk-history-103",
         trade_date="2026-06-18",
         decision_mode="mock",

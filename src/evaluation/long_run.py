@@ -2,19 +2,20 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from src.storage.models import SYSTEM_USER_ID
 
 _WINDOW_DAYS = {"1m": 31, "3m": 93, "1y": 366}
 
 
-def run_long_horizon_evaluation(store, window: str, mode: str) -> dict:
+def run_long_horizon_evaluation(store, window: str, mode: str, user_id: str = SYSTEM_USER_ID) -> dict:
     if window not in _WINDOW_DAYS:
         return {"status": "error", "window": window, "mode": mode, "reason": "unsupported window"}
 
     since = datetime.utcnow() - timedelta(days=_WINDOW_DAYS[window])
-    snapshots = store.list_account_snapshots(since=since)
-    decision_runs = store.list_decision_runs()
-    orders = store.list_execution_orders()
-    reconciliation = store.get_reconciliation_status()
+    snapshots = store.list_account_snapshots(user_id=user_id, since=since)
+    decision_runs = store.list_decision_runs(user_id=user_id)
+    orders = store.list_execution_orders(user_id=user_id)
+    reconciliation = store.get_reconciliation_status(user_id=user_id)
 
     navs = [float(row["nav"]) for row in snapshots]
     total_return = _total_return(navs)

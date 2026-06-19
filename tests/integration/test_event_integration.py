@@ -43,29 +43,30 @@ def test_end_to_end_decision_creation_with_events(repository, event_bus, mock_ll
         event_bus=event_bus,
         llm_client=mock_llm_client,
     )
-    
+
     # 创建请求
     request = CreateDecisionRunRequest(
         symbol=Symbol("600519.SH"),
         mock_llm=False,
+        user_id="test-user",
     )
-    
+
     # 执行用例
     response = use_case.execute(request)
-    
+
     # 验证成功
     assert response.success is True
     assert response.decision_run_id is not None
-    
+
     # 验证记录已保存
-    record = repository.get_decision_run(response.decision_run_id)
+    record = repository.get_decision_run(user_id="test-user", decision_run_id=response.decision_run_id)
     assert record is not None
     assert record["symbol"] == "600519.SH"
-    
+
     # 验证事件已发布
     published_events = event_bus.get_published_events_by_type(DecisionRunCreated)
     assert len(published_events) == 1
-    
+
     event = published_events[0]
     assert event.decision_run_id == response.decision_run_id
     assert event.symbol == "600519.SH"
@@ -78,31 +79,32 @@ def test_end_to_end_decision_failure_with_events(repository, event_bus, setup_ha
     mock_llm_client = Mock()
     mock_llm_client.model = "deepseek"
     mock_llm_client.generate.return_value = None
-    
+
     # 创建用例
     use_case = CreateDecisionRunUseCase(
         decision_run_repository=repository,
         event_bus=event_bus,
         llm_client=mock_llm_client,
     )
-    
+
     # 创建请求
     request = CreateDecisionRunRequest(
         symbol=Symbol("600519.SH"),
         mock_llm=False,
+        user_id="test-user",
     )
-    
+
     # 执行用例
     response = use_case.execute(request)
-    
+
     # 验证失败
     assert response.success is False
     assert response.error == "LLM client returned no output"
-    
+
     # 验证事件已发布
     published_events = event_bus.get_published_events_by_type(DecisionRunFailed)
     assert len(published_events) == 1
-    
+
     event = published_events[0]
     assert event.symbol == "600519.SH"
     assert event.error == "LLM client returned no output"

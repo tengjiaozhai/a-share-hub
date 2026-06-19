@@ -1,7 +1,9 @@
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Float, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Date, DateTime, Float, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from src.storage.models import SYSTEM_USER_ID
 
 
 class PaperBase(DeclarativeBase):
@@ -9,12 +11,15 @@ class PaperBase(DeclarativeBase):
 
 
 class PaperAccountRow(PaperBase):
-    """纸面账户，按 market + account_kind 唯一"""
+    """纸面账户，按 user_id + market + account_kind 唯一"""
     __tablename__ = "paper_accounts"
-    __table_args__ = (UniqueConstraint("market", "account_kind", name="uq_paper_accounts_market_kind"),)
-    __table_comment__ = "纸面账户表，存储模拟交易账户信息，按市场和账户类型唯一标识"
-    
-    account_id: Mapped[str] = mapped_column(String(64), primary_key=True, comment="账户ID，格式为 'acct-{market}-{account_kind}'")
+    __table_args__ = (
+        UniqueConstraint("user_id", "market", "account_kind", name="uq_paper_accounts_user_market_kind"),
+    )
+    __table_comment__ = "纸面账户表，存储模拟交易账户信息，按用户、市场和账户类型唯一标识"
+
+    account_id: Mapped[str] = mapped_column(String(64), primary_key=True, comment="账户ID，格式为 'acct-{user_id}-{market}-{account_kind}'")
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default=SYSTEM_USER_ID, comment="账户所属用户ID")
     market: Mapped[str] = mapped_column(String(16), nullable=False, comment="市场类型：'a'（A股）或 'us'（美股）")
     account_kind: Mapped[str] = mapped_column(String(16), nullable=False, comment="账户类型：'auto'（自动交易）或 'manual'（手动沙盒）")
     initial_capital: Mapped[float] = mapped_column(Float, nullable=False, comment="初始资金（单位：元）")
@@ -25,8 +30,9 @@ class PaperRunRow(PaperBase):
     """每次运行一条记录"""
     __tablename__ = "paper_runs"
     __table_comment__ = "模拟交易运行记录表，每次运行（自动/手动/回填）生成一条记录"
-    
+
     run_id: Mapped[str] = mapped_column(String(64), primary_key=True, comment="运行ID，格式为 'run-{uuid}'")
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default=SYSTEM_USER_ID, comment="运行所属用户ID")
     account_id: Mapped[str] = mapped_column(String(64), nullable=False, comment="关联账户ID")
     market: Mapped[str] = mapped_column(String(16), nullable=False, comment="市场类型：'a' 或 'us'")
     trade_date: Mapped[date] = mapped_column(Date, nullable=False, comment="交易日期")
@@ -42,8 +48,9 @@ class PaperPositionRow(PaperBase):
     """当前持仓"""
     __tablename__ = "paper_positions"
     __table_comment__ = "模拟交易持仓表，存储当前持仓状态，每次运行后更新"
-    
-    position_id: Mapped[str] = mapped_column(String(64), primary_key=True, comment="持仓ID，格式为 'pos-{account_id}-{symbol}'")
+
+    position_id: Mapped[str] = mapped_column(String(64), primary_key=True, comment="持仓ID，格式为 'pos-{user_id}-{account_id}-{symbol}'")
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default=SYSTEM_USER_ID, comment="持仓所属用户ID")
     account_id: Mapped[str] = mapped_column(String(64), nullable=False, comment="关联账户ID")
     symbol: Mapped[str] = mapped_column(String(32), nullable=False, comment="股票代码，如 '600519.SH'、'AAPL'")
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, comment="持仓数量（股）")
@@ -55,8 +62,9 @@ class PaperFillRow(PaperBase):
     """模拟成交明细"""
     __tablename__ = "paper_fills"
     __table_comment__ = "模拟成交明细表，记录每次运行产生的成交记录"
-    
+
     fill_id: Mapped[str] = mapped_column(String(64), primary_key=True, comment="成交ID，格式为 'fill-{uuid}'")
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default=SYSTEM_USER_ID, comment="成交所属用户ID")
     run_id: Mapped[str] = mapped_column(String(64), nullable=False, comment="关联运行ID")
     account_id: Mapped[str] = mapped_column(String(64), nullable=False, comment="关联账户ID")
     symbol: Mapped[str] = mapped_column(String(32), nullable=False, comment="股票代码")
@@ -70,10 +78,13 @@ class PaperFillRow(PaperBase):
 class PaperNavDailyRow(PaperBase):
     """每日净值快照"""
     __tablename__ = "paper_nav_daily"
-    __table_args__ = (UniqueConstraint("account_id", "trade_date", "source", name="uq_paper_nav_daily_account_date_source"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "account_id", "trade_date", "source", name="uq_paper_nav_daily_user_account_date_source"),
+    )
     __table_comment__ = "每日净值快照表，记录每个交易日的净值，用于绘制净值曲线和计算区间收益"
-    
-    nav_id: Mapped[str] = mapped_column(String(64), primary_key=True, comment="净值ID，格式为 'nav-{account_id}-{trade_date}'")
+
+    nav_id: Mapped[str] = mapped_column(String(64), primary_key=True, comment="净值ID，格式为 'nav-{user_id}-{account_id}-{trade_date}'")
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default=SYSTEM_USER_ID, comment="净值所属用户ID")
     account_id: Mapped[str] = mapped_column(String(64), nullable=False, comment="关联账户ID")
     trade_date: Mapped[date] = mapped_column(Date, nullable=False, comment="交易日期")
     nav: Mapped[float] = mapped_column(Float, nullable=False, comment="当日净值（nav = cash + positions_value）")

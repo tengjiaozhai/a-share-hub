@@ -26,7 +26,11 @@ from src.decision.decision_runner import build_decision_run_record
 from src.decision.input_builder import build_decision_input_snapshot
 from src.portfolio.target_planner import build_target_position
 from src.storage.dependencies import get_runtime_store
+from src.storage.models import SYSTEM_USER_ID
 from src.us_stock.routes import router as us_stock_router
+
+# CLI 命令在用户未登录时使用 system 账户执行
+CLI_USER_ID = SYSTEM_USER_ID
 
 
 def run_decide_command(symbols: list[str], mock_llm: bool, store=None) -> dict:
@@ -56,7 +60,7 @@ def run_decide_command(symbols: list[str], mock_llm: bool, store=None) -> dict:
             input_snapshot=input_snapshot,
             model_name=client.model,
         )
-        decision_run_id = runtime_store.insert_decision_run(**record)
+        decision_run_id = runtime_store.insert_decision_run(user_id=CLI_USER_ID, **record)
         decision_run_ids.append(decision_run_id)
 
         if record["parsed_action"] in {"BUY", "SELL"} and record["target_position_ratio"] > 0:
@@ -71,6 +75,7 @@ def run_decide_command(symbols: list[str], mock_llm: bool, store=None) -> dict:
                 expires_at=(datetime.utcnow() + timedelta(hours=1)).isoformat(),
             )
             target_position_id = runtime_store.insert_target_position(
+                user_id=CLI_USER_ID,
                 decision_run_id=decision_run_id,
                 symbol=target["symbol"],
                 action=target["action"],
@@ -146,6 +151,7 @@ def _run_startup_backfill() -> None:
     """启动时检查 auto 账户是否需要 backfill"""
     try:
         from sqlalchemy.orm import Session
+
         from src.paper_ledger.backfill import backfill_recent_days, needs_backfill
         from src.paper_ledger.store import PaperLedgerStore
         from src.storage.dependencies import get_runtime_store
@@ -155,12 +161,12 @@ def _run_startup_backfill() -> None:
             store = PaperLedgerStore(session)
             today = datetime.utcnow().date()
             for market in ("a", "us"):
-                job_key = store.acquire_job_lock("startup_backfill", market, today, ttl_seconds=3600)
+                job_key = store.acquire_job_lock(SYSTEM_USER_ID, "startup_backfill", market, today, ttl_seconds=3600)
                 if job_key is None:
                     continue
                 try:
-                    if needs_backfill(store, market):
-                        backfill_recent_days(store, market, days=30)
+                    if needs_backfill(store, market, user_id=SYSTEM_USER_ID):
+                        backfill_recent_days(store, market, days=30, user_id=SYSTEM_USER_ID)
                     store.finish_job_lock(job_key, "success")
                 except Exception as e:
                     store.finish_job_lock(job_key, "failed", str(e))

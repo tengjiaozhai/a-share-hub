@@ -3,6 +3,8 @@ from sqlalchemy import create_engine
 from src.storage.models import Base
 from src.storage.runtime_store import RuntimeStore
 
+TEST_USER_ID = "test-user"
+
 
 def test_runtime_store_lists_run_scoped_target_order_and_snapshot_details(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path}/runtime_store.db", future=True)
@@ -10,6 +12,7 @@ def test_runtime_store_lists_run_scoped_target_order_and_snapshot_details(tmp_pa
     store = RuntimeStore(engine)
 
     decision_run_id = store.insert_decision_run(
+        user_id=TEST_USER_ID,
         symbol="600519.SH",
         prompt_hash="dashboard-wrk-001",
         run_context_id="wrk-001",
@@ -22,6 +25,7 @@ def test_runtime_store_lists_run_scoped_target_order_and_snapshot_details(tmp_pa
         input_snapshot={"symbol": "600519.SH"},
     )
     target_position_id = store.insert_target_position(
+        user_id=TEST_USER_ID,
         decision_run_id=decision_run_id,
         run_context_id="wrk-001",
         symbol="600519.SH",
@@ -38,6 +42,7 @@ def test_runtime_store_lists_run_scoped_target_order_and_snapshot_details(tmp_pa
         diagnostics={"available_cash": 50000.0, "raw_quantity": 975.61},
     )
     execution_order_id = store.insert_execution_order(
+        user_id=TEST_USER_ID,
         target_position_id=target_position_id,
         run_context_id="wrk-001",
         symbol="600519.SH",
@@ -51,7 +56,8 @@ def test_runtime_store_lists_run_scoped_target_order_and_snapshot_details(tmp_pa
         slippage_bps=5.0,
     )
     store.update_execution_order_status(
-        execution_order_id,
+        user_id=TEST_USER_ID,
+        execution_order_id=execution_order_id,
         status="PARTIAL",
         status_code="PARTIALLY_FILLED",
         status_reason="400/900 filled",
@@ -69,6 +75,7 @@ def test_runtime_store_lists_run_scoped_target_order_and_snapshot_details(tmp_pa
         payload={"filled_quantity": 400},
     )
     store.insert_account_snapshot(
+        user_id=TEST_USER_ID,
         cash=950000.0,
         nav=990500.0,
         run_context_id="wrk-001",
@@ -85,9 +92,9 @@ def test_runtime_store_lists_run_scoped_target_order_and_snapshot_details(tmp_pa
         },
     )
 
-    targets = store.list_target_positions(run_context_id="wrk-001")
-    orders = store.list_execution_orders(run_context_id="wrk-001")
-    reconcile = store.get_reconciliation_status(run_context_id="wrk-001")
+    targets = store.list_target_positions(user_id=TEST_USER_ID, run_context_id="wrk-001")
+    orders = store.list_execution_orders(user_id=TEST_USER_ID, run_context_id="wrk-001")
+    reconcile = store.get_reconciliation_status(user_id=TEST_USER_ID, run_context_id="wrk-001")
 
     assert targets[0]["status_reason"] == "cash"
     assert targets[0]["diagnostics"]["available_cash"] == 50000.0
@@ -102,6 +109,7 @@ def test_runtime_store_persists_dashboard_run_summary_and_event_log(tmp_path):
     store = RuntimeStore(engine)
 
     store.upsert_dashboard_run_summary(
+        user_id=TEST_USER_ID,
         run_context_id="wrk-001",
         trade_date="2026-06-15",
         decision_mode="real",
@@ -117,6 +125,7 @@ def test_runtime_store_persists_dashboard_run_summary_and_event_log(tmp_path):
         latest_workbench={"latest_run": {"run_context_id": "wrk-001"}},
     )
     first_seq = store.append_dashboard_run_event(
+        user_id=TEST_USER_ID,
         run_context_id="wrk-001",
         event_type="run.accepted",
         stage="decision",
@@ -124,6 +133,7 @@ def test_runtime_store_persists_dashboard_run_summary_and_event_log(tmp_path):
         payload={"message": "请求已受理"},
     )
     second_seq = store.append_dashboard_run_event(
+        user_id=TEST_USER_ID,
         run_context_id="wrk-001",
         event_type="stage.updated",
         stage="decision",
@@ -131,8 +141,8 @@ def test_runtime_store_persists_dashboard_run_summary_and_event_log(tmp_path):
         payload={"items": [{"symbol": "NVDA", "action": "BUY"}]},
     )
 
-    summary = store.get_dashboard_run_summary("wrk-001")
-    events = store.list_dashboard_run_events("wrk-001")
+    summary = store.get_dashboard_run_summary(user_id=TEST_USER_ID, run_context_id="wrk-001")
+    events = store.list_dashboard_run_events(user_id=TEST_USER_ID, run_context_id="wrk-001")
 
     assert summary["execution_fee_total"] == 0.12
     assert summary["net_pnl"] == -0.60

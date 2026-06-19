@@ -112,9 +112,11 @@ def test_alpha_ticket_api_returns_404_for_nonexistent_ticket(test_app):
 
 def test_alpha_reconciliation_route_returns_run_id(test_app, pg_store):
     pg_store.replace_alpha_positions(
-        [{"symbol": "AAPLx", "quantity": 1.2, "avg_cost": 201.0, "mark_price": 225.0}]
+        user_id="test-user",
+        positions=[{"symbol": "AAPLx", "quantity": 1.2, "avg_cost": 201.0, "mark_price": 225.0}],
     )
     pg_store.insert_alpha_portfolio_snapshot(
+        user_id="test-user",
         cash_balance=8_500.0,
         realized_pnl=20.0,
         unrealized_pnl=28.8,
@@ -208,6 +210,7 @@ def test_alpha_research_scan_endpoint_returns_ranked_candidates():
 
 def test_alpha_portfolio_rebuild_endpoint_rebuilds_from_all_fills(test_app, pg_store):
     buy_ticket_id = pg_store.insert_alpha_ticket(
+        user_id="test-user",
         asset_symbol="AAPLx",
         underlying_symbol="AAPL",
         action="BUY",
@@ -217,6 +220,7 @@ def test_alpha_portfolio_rebuild_endpoint_rebuilds_from_all_fills(test_app, pg_s
         expires_at="2026-06-01T16:00:00+08:00",
     )
     sell_ticket_id = pg_store.insert_alpha_ticket(
+        user_id="test-user",
         asset_symbol="AAPLx",
         underlying_symbol="AAPL",
         action="SELL",
@@ -226,6 +230,7 @@ def test_alpha_portfolio_rebuild_endpoint_rebuilds_from_all_fills(test_app, pg_s
         expires_at="2026-06-01T16:30:00+08:00",
     )
     pg_store.insert_alpha_manual_fill(
+        user_id="test-user",
         ticket_id=buy_ticket_id,
         operator_id="trader-01",
         executed_quantity=2.0,
@@ -233,6 +238,7 @@ def test_alpha_portfolio_rebuild_endpoint_rebuilds_from_all_fills(test_app, pg_s
         notes="buy fill",
     )
     pg_store.insert_alpha_manual_fill(
+        user_id="test-user",
         ticket_id=sell_ticket_id,
         operator_id="trader-01",
         executed_quantity=0.5,
@@ -259,6 +265,7 @@ def test_alpha_portfolio_rebuild_endpoint_rebuilds_from_all_fills(test_app, pg_s
 
 def test_alpha_fill_can_rebuild_portfolio_immediately(test_app, pg_store):
     ticket_id = pg_store.insert_alpha_ticket(
+        user_id="test-user",
         asset_symbol="AAPLx",
         underlying_symbol="AAPL",
         action="BUY",
@@ -342,6 +349,7 @@ def test_alpha_capabilities_report_manual_mode(monkeypatch):
 
 def test_generate_portfolio_report_endpoint(test_app, pg_store):
     ticket_id = pg_store.insert_alpha_ticket(
+        user_id="test-user",
         asset_symbol="AAPLx",
         underlying_symbol="AAPL",
         action="BUY",
@@ -351,13 +359,14 @@ def test_generate_portfolio_report_endpoint(test_app, pg_store):
         expires_at="2026-06-01T16:00:00+08:00",
     )
     pg_store.insert_alpha_manual_fill(
+        user_id="test-user",
         ticket_id=ticket_id,
         operator_id="trader-01",
         executed_quantity=2.0,
         executed_price=200.0,
         notes="buy fill",
     )
-    AlphaPortfolioService(pg_store).rebuild_from_manual_fills(
+    AlphaPortfolioService(pg_store, user_id="test-user").rebuild_from_manual_fills(
         opening_cash=10_000.0,
         price_map={"AAPLx": 210.0},
     )

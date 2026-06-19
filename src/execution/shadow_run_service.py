@@ -35,6 +35,7 @@ class ShadowRunService:
 
     def emit(
         self,
+        user_id: str,
         run_context_id: str,
         event_type: str,
         stage: str,
@@ -55,6 +56,7 @@ class ShadowRunService:
         if run_pnl_summary is not None:
             enriched_payload["run_pnl_summary"] = dict(run_pnl_summary)
         self.store.append_dashboard_run_event(
+            user_id=user_id,
             run_context_id=run_context_id,
             event_type=event_type,
             stage=stage,
@@ -99,7 +101,7 @@ class ShadowRunService:
             )
         return sorted(items, key=lambda item: item["symbol"])
 
-    def run(self, run_context_id: str, config: dict) -> None:
+    def run(self, user_id: str, run_context_id: str, config: dict) -> None:
         """Execute one dashboard shadow run end-to-end and persist a complete
         latest_workbench payload. Emits stage events (decision/target/execute/
         reconcile) and terminates with run.completed or run.failed.
@@ -142,6 +144,7 @@ class ShadowRunService:
         try:
             # --- Stage 1: decision -----------------------------------------
             self.emit(
+                user_id,
                 run_context_id,
                 "stage.updated",
                 stage="decision",
@@ -173,8 +176,8 @@ class ShadowRunService:
                 except Exception:
                     price_by_symbol[symbol] = 100.0
 
-            self.store.deactivate_expired_targets()
-            current_snapshot = self.store.get_latest_account_snapshot()
+            self.store.deactivate_expired_targets(user_id=user_id)
+            current_snapshot = self.store.get_latest_account_snapshot(user_id=user_id)
             account_state = current_snapshot or {"cash": float(capital_base), "positions": {}}
             current_positions = account_state.get("positions", {}) if isinstance(account_state, dict) else {}
 
@@ -204,6 +207,7 @@ class ShadowRunService:
                 reason = decision.reason
 
                 decision_run_id = self.store.insert_decision_run(
+                    user_id=user_id,
                     symbol=symbol,
                     prompt_hash=f"dashboard-{run_context_id}",
                     model_name=model_label,
@@ -232,6 +236,7 @@ class ShadowRunService:
 
             # --- Stage 2: target -------------------------------------------
             self.emit(
+                user_id,
                 run_context_id,
                 "stage.updated",
                 stage="target",
@@ -260,6 +265,7 @@ class ShadowRunService:
                     if row["symbol"] == target["symbol"]
                 )
                 target_position_id = self.store.insert_target_position(
+                    user_id=user_id,
                     decision_run_id=decision_run_id,
                     symbol=target["symbol"],
                     action=target["action"],
@@ -313,6 +319,7 @@ class ShadowRunService:
 
             # --- Stage 3: execute ------------------------------------------
             self.emit(
+                user_id,
                 run_context_id,
                 "stage.updated",
                 stage="execute",
@@ -330,6 +337,7 @@ class ShadowRunService:
                     fee_bps=getattr(self.settings, "strategy_fee_bps", 3.0),
                     slippage_bps=getattr(self.settings, "strategy_slippage_bps", 5.0),
                 ).execute_targets(
+                    user_id=user_id,
                     targets=executable_targets,
                     initial_state=account_state,
                     mark_prices=price_by_symbol,
@@ -346,6 +354,7 @@ class ShadowRunService:
 
             # --- Stage 4: reconcile ---------------------------------------
             self.emit(
+                user_id,
                 run_context_id,
                 "stage.updated",
                 stage="reconcile",
@@ -357,7 +366,7 @@ class ShadowRunService:
             )
 
             previous_nav = float(account_state.get("nav", capital_base))
-            latest_snapshot = self.store.get_latest_account_snapshot(run_context_id=run_context_id) or current_snapshot
+            latest_snapshot = self.store.get_latest_account_snapshot(user_id=user_id, run_context_id=run_context_id) or current_snapshot
             if not decision_only and execution_result is not None:
                 current_nav = float(execution_result.get("nav", previous_nav))
             elif latest_snapshot is not None:
@@ -377,6 +386,7 @@ class ShadowRunService:
                 run_pnl_summary=run_pnl_summary,
             )
             self.emit(
+                user_id,
                 run_context_id,
                 "stage.updated",
                 stage="reconcile",
@@ -393,6 +403,7 @@ class ShadowRunService:
             logger.exception("ShadowRunService.run failed: %s", run_context_id)
             try:
                 self.emit(
+                    user_id,
                     run_context_id,
                     "run.failed",
                     stage="reconcile",
@@ -409,6 +420,7 @@ class ShadowRunService:
             # Always persist the latest_workbench snapshot, even on failure
             try:
                 self._persist_latest_workbench(
+                    user_id=user_id,
                     run_context_id=run_context_id,
                     config=config,
                     started_at=started_at,
@@ -427,6 +439,7 @@ class ShadowRunService:
 
             if run_status == "completed":
                 self.emit(
+                    user_id,
                     run_context_id,
                     "run.completed",
                     stage="reconcile",
@@ -444,6 +457,7 @@ class ShadowRunService:
     def _persist_latest_workbench(
         self,
         *,
+        user_id: str,
         run_context_id: str,
         config: dict,
         started_at: str,
@@ -458,9 +472,9 @@ class ShadowRunService:
         last_error: str | None,
     ) -> None:
         trade_date = datetime.now(_CST).date().isoformat()
-        events = self.store.list_dashboard_run_events(run_context_id)
+        events = self.store.list_dashboard_run_events(user_id=user_id, run_context_id=run_context_id)
         kill_switch_active = bool(self.store.get_kill_switch())
-        reconciliation = self.store.get_reconciliation_status(run_context_id=run_context_id)
+        reconciliation = self.store.get_reconciliation_status(user_id=user_id, run_context_id=run_context_id)
         daily_pnl = float(run_pnl_summary.get("net_pnl", 0.0))
         capital_base = int(config.get("capital_base", 1_000_000))
         decision_mode = str(config.get("decision_mode", "mock"))
@@ -525,6 +539,7 @@ class ShadowRunService:
         }
 
         self.store.upsert_dashboard_run_summary(
+            user_id=user_id,
             run_context_id=run_context_id,
             trade_date=trade_date,
             decision_mode=decision_mode,

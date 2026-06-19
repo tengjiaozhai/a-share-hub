@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 
+from src.api.dependencies import get_current_user_id
 from src.domain.interfaces.decision_run_repository import DecisionRunRepository
 from src.domain.value_objects.symbol import Symbol
 from src.storage.dependencies import get_decision_run_repository
@@ -10,17 +11,19 @@ router = APIRouter(prefix="/api/v1")
 
 @router.get("/decision-runs")
 def list_decision_runs(
-    repository: DecisionRunRepository = Depends(get_decision_run_repository)
+    user_id: str = Depends(get_current_user_id),  # noqa: B008
+    repository: DecisionRunRepository = Depends(get_decision_run_repository),  # noqa: B008
 ) -> list[dict]:
-    return repository.list_decision_runs()
+    return repository.list_decision_runs(user_id=user_id)
 
 
 @router.get("/decision-runs/{decision_run_id}")
 def get_decision_run(
     decision_run_id: str,
-    repository: DecisionRunRepository = Depends(get_decision_run_repository)
+    user_id: str = Depends(get_current_user_id),  # noqa: B008
+    repository: DecisionRunRepository = Depends(get_decision_run_repository),  # noqa: B008
 ) -> dict:
-    record = repository.get_decision_run(decision_run_id)
+    record = repository.get_decision_run(user_id=user_id, decision_run_id=decision_run_id)
     if record is None:
         raise HTTPException(status_code=404, detail="decision run not found")
     return record
@@ -30,22 +33,21 @@ def get_decision_run(
 def create_decision_run(
     symbol: str,
     mock_llm: bool = False,
-    repository: DecisionRunRepository = Depends(get_decision_run_repository)
+    user_id: str = Depends(get_current_user_id),  # noqa: B008
+    repository: DecisionRunRepository = Depends(get_decision_run_repository),  # noqa: B008
 ) -> dict:
     """创建决策运行"""
     try:
-        # 验证股票代码
         symbol_obj = Symbol(symbol)
 
-        # 创建用例
         use_case = CreateDecisionRunUseCase(
             decision_run_repository=repository,
         )
 
-        # 执行用例
         request = CreateDecisionRunRequest(
             symbol=symbol_obj,
             mock_llm=mock_llm,
+            user_id=user_id,
         )
 
         response = use_case.execute(request)

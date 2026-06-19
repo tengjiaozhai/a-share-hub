@@ -6,6 +6,8 @@ from src.alpha.report_service import AlphaPortfolioReportService
 from src.storage.models import Base
 from src.storage.runtime_store import RuntimeStore
 
+TEST_USER_ID = "test-user"
+
 
 def _bootstrap_store(tmp_path) -> RuntimeStore:
     engine = create_engine(f"sqlite:///{tmp_path}/runtime.db", future=True)
@@ -15,6 +17,7 @@ def _bootstrap_store(tmp_path) -> RuntimeStore:
 
 def _seed_holdings(store: RuntimeStore, price_map: dict[str, float] | None = None) -> None:
     ticket_id = store.insert_alpha_ticket(
+        user_id=TEST_USER_ID,
         asset_symbol="AAPLx",
         underlying_symbol="AAPL",
         action="BUY",
@@ -24,13 +27,14 @@ def _seed_holdings(store: RuntimeStore, price_map: dict[str, float] | None = Non
         expires_at="2026-06-01T16:00:00+08:00",
     )
     store.insert_alpha_manual_fill(
+        user_id=TEST_USER_ID,
         ticket_id=ticket_id,
         operator_id="trader-01",
         executed_quantity=2.0,
         executed_price=200.0,
         notes="buy fill",
     )
-    AlphaPortfolioService(store).rebuild_from_manual_fills(
+    AlphaPortfolioService(store, user_id=TEST_USER_ID).rebuild_from_manual_fills(
         opening_cash=10_000.0,
         price_map=price_map or {"AAPLx": 210.0},
     )
@@ -62,6 +66,7 @@ def test_generate_report_with_held_positions(tmp_path):
 
     service = AlphaPortfolioReportService(
         store=store,
+        user_id=TEST_USER_ID,
         shadow_opinion_provider=_patched_shadow_provider(store),
         backtest_provider=_no_data_backtest_provider(store),
     )
@@ -97,6 +102,7 @@ def test_generate_report_empty_symbols_uses_all_holdings(tmp_path):
     store = _bootstrap_store(tmp_path)
 
     buy_id = store.insert_alpha_ticket(
+        user_id=TEST_USER_ID,
         asset_symbol="AAPLx",
         underlying_symbol="AAPL",
         action="BUY",
@@ -106,6 +112,7 @@ def test_generate_report_empty_symbols_uses_all_holdings(tmp_path):
         expires_at="2026-06-01T16:00:00+08:00",
     )
     other_id = store.insert_alpha_ticket(
+        user_id=TEST_USER_ID,
         asset_symbol="TSLAx",
         underlying_symbol="TSLA",
         action="BUY",
@@ -115,20 +122,23 @@ def test_generate_report_empty_symbols_uses_all_holdings(tmp_path):
         expires_at="2026-06-01T16:00:00+08:00",
     )
     store.insert_alpha_manual_fill(
+        user_id=TEST_USER_ID,
         ticket_id=buy_id, operator_id="trader-01",
         executed_quantity=2.0, executed_price=200.0, notes="buy AAPLx",
     )
     store.insert_alpha_manual_fill(
+        user_id=TEST_USER_ID,
         ticket_id=other_id, operator_id="trader-01",
         executed_quantity=1.0, executed_price=100.0, notes="buy TSLAx",
     )
-    AlphaPortfolioService(store).rebuild_from_manual_fills(
+    AlphaPortfolioService(store, user_id=TEST_USER_ID).rebuild_from_manual_fills(
         opening_cash=10_000.0,
         price_map={"AAPLx": 210.0, "TSLAx": 105.0},
     )
 
     service = AlphaPortfolioReportService(
         store=store,
+        user_id=TEST_USER_ID,
         shadow_opinion_provider=_patched_shadow_provider(store),
         backtest_provider=_no_data_backtest_provider(store),
     )
@@ -144,30 +154,35 @@ def test_generate_report_filters_to_requested_symbols(tmp_path):
     store = _bootstrap_store(tmp_path)
 
     buy_id = store.insert_alpha_ticket(
+        user_id=TEST_USER_ID,
         asset_symbol="AAPLx", underlying_symbol="AAPL",
         action="BUY", thesis="open", suggested_quantity=2.0,
         suggested_limit_price=200.0, expires_at="2026-06-01T16:00:00+08:00",
     )
     other_id = store.insert_alpha_ticket(
+        user_id=TEST_USER_ID,
         asset_symbol="TSLAx", underlying_symbol="TSLA",
         action="BUY", thesis="open", suggested_quantity=1.0,
         suggested_limit_price=100.0, expires_at="2026-06-01T16:00:00+08:00",
     )
     store.insert_alpha_manual_fill(
+        user_id=TEST_USER_ID,
         ticket_id=buy_id, operator_id="trader-01",
         executed_quantity=2.0, executed_price=200.0, notes="buy",
     )
     store.insert_alpha_manual_fill(
+        user_id=TEST_USER_ID,
         ticket_id=other_id, operator_id="trader-01",
         executed_quantity=1.0, executed_price=100.0, notes="buy",
     )
-    AlphaPortfolioService(store).rebuild_from_manual_fills(
+    AlphaPortfolioService(store, user_id=TEST_USER_ID).rebuild_from_manual_fills(
         opening_cash=10_000.0,
         price_map={"AAPLx": 210.0, "TSLAx": 105.0},
     )
 
     service = AlphaPortfolioReportService(
         store=store,
+        user_id=TEST_USER_ID,
         shadow_opinion_provider=_patched_shadow_provider(store),
         backtest_provider=_no_data_backtest_provider(store),
     )
@@ -185,6 +200,7 @@ def test_generate_report_recommendation_action_enum(tmp_path):
 
     service = AlphaPortfolioReportService(
         store=store,
+        user_id=TEST_USER_ID,
         shadow_opinion_provider=_patched_shadow_provider(store),
         backtest_provider=_no_data_backtest_provider(store),
     )
@@ -204,6 +220,7 @@ def test_generate_report_handles_no_backtest_data(tmp_path):
 
     service = AlphaPortfolioReportService(
         store=store,
+        user_id=TEST_USER_ID,
         shadow_opinion_provider=_patched_shadow_provider(store),
         backtest_provider=_no_data_backtest_provider(store),
     )
@@ -220,21 +237,24 @@ def test_generate_report_pnl_calculation(tmp_path):
     store = _bootstrap_store(tmp_path)
 
     ticket_id = store.insert_alpha_ticket(
+        user_id=TEST_USER_ID,
         asset_symbol="AAPLx", underlying_symbol="AAPL",
         action="BUY", thesis="open", suggested_quantity=4.0,
         suggested_limit_price=100.0, expires_at="2026-06-01T16:00:00+08:00",
     )
     store.insert_alpha_manual_fill(
+        user_id=TEST_USER_ID,
         ticket_id=ticket_id, operator_id="trader-01",
         executed_quantity=4.0, executed_price=100.0, notes="buy",
     )
-    AlphaPortfolioService(store).rebuild_from_manual_fills(
+    AlphaPortfolioService(store, user_id=TEST_USER_ID).rebuild_from_manual_fills(
         opening_cash=10_000.0,
         price_map={"AAPLx": 120.0},
     )
 
     service = AlphaPortfolioReportService(
         store=store,
+        user_id=TEST_USER_ID,
         shadow_opinion_provider=_patched_shadow_provider(store),
         backtest_provider=_no_data_backtest_provider(store),
     )
@@ -254,21 +274,24 @@ def test_generate_report_floating_loss_triggers_exit_or_reduce(tmp_path):
     store = _bootstrap_store(tmp_path)
 
     ticket_id = store.insert_alpha_ticket(
+        user_id=TEST_USER_ID,
         asset_symbol="AAPLx", underlying_symbol="AAPL",
         action="BUY", thesis="open", suggested_quantity=2.0,
         suggested_limit_price=200.0, expires_at="2026-06-01T16:00:00+08:00",
     )
     store.insert_alpha_manual_fill(
+        user_id=TEST_USER_ID,
         ticket_id=ticket_id, operator_id="trader-01",
         executed_quantity=2.0, executed_price=200.0, notes="buy",
     )
-    AlphaPortfolioService(store).rebuild_from_manual_fills(
+    AlphaPortfolioService(store, user_id=TEST_USER_ID).rebuild_from_manual_fills(
         opening_cash=10_000.0,
         price_map={"AAPLx": 180.0},
     )
 
     service = AlphaPortfolioReportService(
         store=store,
+        user_id=TEST_USER_ID,
         shadow_opinion_provider=_patched_shadow_provider(store),
         backtest_provider=_no_data_backtest_provider(store),
     )
