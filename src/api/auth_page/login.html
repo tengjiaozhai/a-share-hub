@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>交易助手 - 登录</title>
+  <link rel="icon" href="data:,">
+  <style>
+{{INLINE_STYLES}}
+  </style>
+</head>
+<body>
+  <main class="auth-shell">
+    <section class="auth-hero" aria-label="交易助手介绍">
+      <div class="brand-mark">交易助手</div>
+      <h1>量化交易控制台</h1>
+      <p>连接 A 股、美股、策略回测、模拟账本和风控监控。</p>
+      <div class="feature-row">
+        <span>A股 / 美股</span>
+        <span>自动交易</span>
+        <span>策略回测</span>
+        <span>风控监控</span>
+        <span>模拟账本</span>
+      </div>
+      <div class="metric-strip">
+        <div><strong>09:15</strong><em>A股调度</em></div>
+        <div><strong>21:15</strong><em>美股调度</em></div>
+        <div><strong>FAIL-CLOSED</strong><em>安全模式</em></div>
+      </div>
+    </section>
+
+    <section class="auth-card" aria-label="登录表单">
+      <div class="card-kicker">TRADING ASSISTANT</div>
+      <h2>欢迎回到交易助手</h2>
+      <p class="card-subtitle">进入你的量化交易控制台</p>
+      {{ERROR_BLOCK}}
+      <form method="post" action="/api/v1/auth/login" class="auth-form">
+        <input type="hidden" name="next" value="{{NEXT_VALUE}}">
+        <label>
+          <span>用户名 / 邮箱</span>
+          <input name="account" autocomplete="username" required>
+        </label>
+        <label>
+          <span>密码</span>
+          <input name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <button type="submit">登录</button>
+      </form>
+      <p class="auth-switch">还没有账号？<a href="/register?next={{NEXT_VALUE}}">立即注册</a></p>
+    </section>
+  </main>
+  <script>
+{{INLINE_AUTH_JS}}
+  </script>
+</body>
+</html>

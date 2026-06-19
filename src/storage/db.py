@@ -26,6 +26,8 @@ def ensure_runtime_schema(engine) -> None:
         return
 
     with _runtime_schema_bootstrap_lock:
+        from src.storage import auth_models  # noqa: F401
+
         Base.metadata.create_all(engine)
 
         try:

@@ -3,12 +3,14 @@ import sys
 from datetime import datetime, timedelta
 from hashlib import sha256
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 
 from src.a_stock.routes import router as a_stock_router
 from src.agents.llm_client import LLMClient
+from src.api.auth_security import auth_middleware
 from src.api.routes_alpha import router as alpha_router
+from src.api.routes_auth import router as auth_router
 from src.api.routes_broker_events import router as broker_events_router
 from src.api.routes_crypto import router as crypto_router
 from src.api.routes_dashboard import router as dashboard_router
@@ -93,7 +95,9 @@ def run_halt_command(reason: str, resume: bool, store=None) -> dict:
 
 
 def build_app() -> FastAPI:
-    app = FastAPI(title="a-share-auto-trading-hub")
+    app = FastAPI(title="trading-assistant")
+    app.middleware("http")(auth_middleware)
+    app.include_router(auth_router)
     app.include_router(health_router)
     app.include_router(decision_runs_router)
     app.include_router(portfolio_targets_router)
@@ -109,8 +113,8 @@ def build_app() -> FastAPI:
     app.include_router(a_stock_router)
 
     @app.get("/", include_in_schema=False)
-    def root_redirect():
-        return RedirectResponse(url="/dashboard")
+    def root_redirect(request: Request):
+        return RedirectResponse(url="/dashboard" if getattr(request.state, "user", None) else "/login")
 
     settings = Settings()
     if settings.enable_scheduler or settings.app_role == "scheduler":
