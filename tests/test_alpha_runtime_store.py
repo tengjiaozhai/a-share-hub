@@ -3,6 +3,8 @@ from sqlalchemy import create_engine
 from src.storage.models import Base
 from src.storage.runtime_store import RuntimeStore
 
+TEST_USER_ID = "test-user"
+
 
 def test_runtime_store_persists_alpha_ticket_and_manual_fill(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path}/runtime.db", future=True)
@@ -10,6 +12,7 @@ def test_runtime_store_persists_alpha_ticket_and_manual_fill(tmp_path):
     store = RuntimeStore(engine)
 
     ticket_id = store.insert_alpha_ticket(
+        user_id=TEST_USER_ID,
         asset_symbol="AAPLx",
         underlying_symbol="AAPL",
         action="BUY",
@@ -18,8 +21,9 @@ def test_runtime_store_persists_alpha_ticket_and_manual_fill(tmp_path):
         suggested_limit_price=210.5,
         expires_at="2026-06-01T16:00:00+08:00",
     )
-    store.approve_alpha_ticket(ticket_id=ticket_id, operator_id="trader-01")
+    store.approve_alpha_ticket(user_id=TEST_USER_ID, ticket_id=ticket_id, operator_id="trader-01")
     fill_id = store.insert_alpha_manual_fill(
+        user_id=TEST_USER_ID,
         ticket_id=ticket_id,
         operator_id="trader-01",
         executed_quantity=2.0,
@@ -27,8 +31,8 @@ def test_runtime_store_persists_alpha_ticket_and_manual_fill(tmp_path):
         notes="filled manually in app",
     )
 
-    tickets = store.list_alpha_tickets()
-    fills = store.list_alpha_manual_fills(ticket_id=ticket_id)
+    tickets = store.list_alpha_tickets(user_id=TEST_USER_ID)
+    fills = store.list_alpha_manual_fills(user_id=TEST_USER_ID, ticket_id=ticket_id)
 
     assert tickets[0]["ticket_id"] == ticket_id
     assert tickets[0]["status"] == "APPROVED"
@@ -42,26 +46,29 @@ def test_runtime_store_persists_alpha_portfolio_and_reconciliation_records(tmp_p
     store = RuntimeStore(engine)
 
     store.replace_alpha_positions(
-        [
+        user_id=TEST_USER_ID,
+        positions=[
             {"symbol": "AAPLx", "quantity": 1.2, "avg_cost": 201.0, "mark_price": 225.0},
             {"symbol": "SPYx", "quantity": 2.0, "avg_cost": 500.0, "mark_price": 504.0},
-        ]
+        ],
     )
     snapshot_id = store.insert_alpha_portfolio_snapshot(
+        user_id=TEST_USER_ID,
         cash_balance=8_500.0,
         realized_pnl=20.0,
         unrealized_pnl=36.8,
         nav=10_314.8,
     )
     run_id = store.insert_alpha_reconciliation_run(
+        user_id=TEST_USER_ID,
         source="manual",
         status="MISMATCH",
         discrepancies={"AAPLx": {"internal": 1.2, "external": 1.0}},
     )
 
-    positions = store.list_alpha_positions()
-    snapshot = store.get_latest_alpha_portfolio_snapshot()
-    runs = store.list_alpha_reconciliation_runs()
+    positions = store.list_alpha_positions(user_id=TEST_USER_ID)
+    snapshot = store.get_latest_alpha_portfolio_snapshot(user_id=TEST_USER_ID)
+    runs = store.list_alpha_reconciliation_runs(user_id=TEST_USER_ID)
 
     assert len(positions) == 2
     assert positions[0]["symbol"] in {"AAPLx", "SPYx"}
@@ -94,6 +101,7 @@ def test_runtime_store_persists_alpha_api_order_attempt(tmp_path):
     store = RuntimeStore(engine)
 
     attempt_id = store.insert_alpha_api_order_attempt(
+        user_id=TEST_USER_ID,
         ticket_id="alpha-ticket-001",
         asset_symbol="AAPLx",
         action="BUY",
@@ -105,7 +113,7 @@ def test_runtime_store_persists_alpha_api_order_attempt(tmp_path):
         response_payload={"status": "SUBMITTED"},
     )
 
-    attempts = store.list_alpha_api_order_attempts()
+    attempts = store.list_alpha_api_order_attempts(user_id=TEST_USER_ID)
 
     assert attempts[0]["attempt_id"] == attempt_id
     assert attempts[0]["remote_order_id"] == "remote-001"

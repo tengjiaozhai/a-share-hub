@@ -42,7 +42,7 @@ def parse_sse_chunk(chunk: bytes) -> list[dict]:
 
 
 def _seed_completed_run(store: RuntimeStore) -> None:
-    store.upsert_dashboard_run_summary(
+    store.upsert_dashboard_run_summary(user_id="test-user", 
         run_context_id="wrk-recon-001",
         trade_date="2026-06-16",
         decision_mode="mock",
@@ -68,7 +68,7 @@ def _seed_completed_run(store: RuntimeStore) -> None:
         ],
         start=1,
     ):
-        store.append_dashboard_run_event(
+        store.append_dashboard_run_event(user_id="test-user", 
             run_context_id="wrk-recon-001",
             event_type=etype,
             stage=stage,

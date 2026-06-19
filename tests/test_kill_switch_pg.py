@@ -21,6 +21,6 @@ def test_ready_plans_endpoint_returns_persisted_plans(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path}/runtime_store.db", future=True)
     Base.metadata.create_all(engine)
     store = RuntimeStore(engine)
-    store.insert_execution_plan(symbol="600519.SH", action="BUY", target_value=100000, reason="api-test")
-    payload = get_ready_plans(store=store)
+    store.insert_execution_plan(user_id="test-user", symbol="600519.SH", action="BUY", target_value=100000, reason="api-test")
+    payload = get_ready_plans(user_id="test-user", store=store)
     assert payload[0]["symbol"] == "600519.SH"

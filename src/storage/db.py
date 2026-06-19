@@ -10,15 +10,18 @@ _runtime_schema_bootstrap_lock = Lock()
 
 
 def create_runtime_engine(settings: Settings):
-    return create_engine(
-        settings.database_url,
+    engine_kwargs = dict(
         future=True,
         pool_pre_ping=True,
-        pool_size=settings.db_pool_size,
-        max_overflow=settings.db_max_overflow,
-        pool_timeout=settings.db_pool_timeout_seconds,
         echo=settings.db_echo,
     )
+    # SQLite 的 SingletonThreadPool / NullPool 不接受 QueuePool 专属参数。
+    # 仅在显式配置 pool_size > 0 时才传递 pool 调优参数。
+    if settings.db_pool_size and settings.db_pool_size > 0:
+        engine_kwargs["pool_size"] = settings.db_pool_size
+        engine_kwargs["max_overflow"] = settings.db_max_overflow
+        engine_kwargs["pool_timeout"] = settings.db_pool_timeout_seconds
+    return create_engine(settings.database_url, **engine_kwargs)
 
 
 def ensure_runtime_schema(engine) -> None:

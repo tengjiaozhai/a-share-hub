@@ -135,7 +135,7 @@ def test_dashboard_preferences_and_workbench_stay_server_backed():
         },
     )
 
-    decision_run_id = store.insert_decision_run(
+    decision_run_id = store.insert_decision_run(user_id="test-user", 
         symbol="600519.SH",
         prompt_hash="dashboard-seed",
         model_name="mock",
@@ -146,7 +146,7 @@ def test_dashboard_preferences_and_workbench_stay_server_backed():
         reason="seed decision",
         input_snapshot={"symbol": "600519.SH", "features": {"decision_mode": "mock"}, "market_context": {"mode": "shadow"}},
     )
-    target_position_id = store.insert_target_position(
+    target_position_id = store.insert_target_position(user_id="test-user", 
         decision_run_id=decision_run_id,
         symbol="600519.SH",
         action="BUY",
@@ -154,7 +154,7 @@ def test_dashboard_preferences_and_workbench_stay_server_backed():
         target_position_ratio=0.25,
         expires_at=(datetime.utcnow() + timedelta(hours=1)).isoformat(),
     )
-    execution_order_id = store.insert_execution_order(
+    execution_order_id = store.insert_execution_order(user_id="test-user", 
         target_position_id=target_position_id,
         symbol="600519.SH",
         action="BUY",

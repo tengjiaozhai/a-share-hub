@@ -5,6 +5,8 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'a-share-hub'))
 
+TEST_USER_ID = "test-user"
+
 
 @pytest.fixture
 def repository():
@@ -15,10 +17,12 @@ def repository():
 def client(repository):
     from src.main import build_app
     from src.storage.dependencies import get_decision_run_repository
-    
+    from src.api.dependencies import get_current_user_id
+
     app = build_app()
     app.dependency_overrides[get_decision_run_repository] = lambda: repository
-    
+    app.dependency_overrides[get_current_user_id] = lambda: TEST_USER_ID
+
     return TestClient(app)
 
 
@@ -33,6 +37,7 @@ def test_create_and_list_decision_runs(client, repository):
     """测试创建和列出决策运行记录"""
     # 先插入一条记录
     repository.insert_decision_run(
+        user_id=TEST_USER_ID,
         symbol="600519.SH",
         prompt_hash="abc123",
         model_name="deepseek",
@@ -41,9 +46,9 @@ def test_create_and_list_decision_runs(client, repository):
         confidence=0.8,
         target_position_ratio=0.15,
         reason="Strong signal",
-        input_snapshot={}
+        input_snapshot={},
     )
-    
+
     # 查询列表
     response = client.get("/api/v1/decision-runs")
     assert response.status_code == 200
@@ -56,6 +61,7 @@ def test_get_decision_run(client, repository):
     """测试获取单个决策运行记录"""
     # 先插入一条记录
     decision_run_id = repository.insert_decision_run(
+        user_id=TEST_USER_ID,
         symbol="600519.SH",
         prompt_hash="abc123",
         model_name="deepseek",
@@ -64,9 +70,9 @@ def test_get_decision_run(client, repository):
         confidence=0.8,
         target_position_ratio=0.15,
         reason="Strong signal",
-        input_snapshot={}
+        input_snapshot={},
     )
-    
+
     # 查询单条记录
     response = client.get(f"/api/v1/decision-runs/{decision_run_id}")
     assert response.status_code == 200

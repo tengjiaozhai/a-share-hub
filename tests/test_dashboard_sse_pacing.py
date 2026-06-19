@@ -9,7 +9,7 @@ from src.storage.runtime_store import RuntimeStore
 
 
 def _seed_completed_run(store: RuntimeStore, run_context_id: str = "wrk-pacing-001") -> None:
-    store.upsert_dashboard_run_summary(
+    store.upsert_dashboard_run_summary(user_id="test-user", 
         run_context_id=run_context_id,
         trade_date="2026-06-16",
         decision_mode="mock",
@@ -35,7 +35,7 @@ def _seed_completed_run(store: RuntimeStore, run_context_id: str = "wrk-pacing-0
         ],
         start=1,
     ):
-        store.append_dashboard_run_event(
+        store.append_dashboard_run_event(user_id="test-user", 
             run_context_id=run_context_id,
             event_type=etype,
             stage=stage,

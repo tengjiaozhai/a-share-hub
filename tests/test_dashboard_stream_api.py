@@ -25,21 +25,21 @@ def test_start_run_returns_accepted_and_run_context_id(test_app, monkeypatch):
 
 
 def test_run_events_route_streams_ordered_event_log(test_app, pg_store):
-    pg_store.append_dashboard_run_event(
+    pg_store.append_dashboard_run_event(user_id="test-user", 
         run_context_id="wrk-001",
         event_type="run.accepted",
         stage="decision",
         status="running",
         payload={"message": "accepted"},
     )
-    pg_store.append_dashboard_run_event(
+    pg_store.append_dashboard_run_event(user_id="test-user", 
         run_context_id="wrk-001",
         event_type="run.completed",
         stage="reconcile",
         status="done",
         payload={"message": "completed"},
     )
-    pg_store.upsert_dashboard_run_summary(
+    pg_store.upsert_dashboard_run_summary(user_id="test-user", 
         run_context_id="wrk-001",
         trade_date="2026-06-15",
         decision_mode="real",

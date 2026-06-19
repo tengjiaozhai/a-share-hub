@@ -11,11 +11,13 @@ from src.market_calendar.service import TradingCalendarService
 from src.paper_ledger.models import PaperBase
 from src.paper_ledger.store import PaperLedgerStore
 from src.storage.dependencies import get_runtime_store
+from src.storage.models import SYSTEM_USER_ID
 
 logger = logging.getLogger(__name__)
 
 CN_TZ = ZoneInfo("Asia/Shanghai")
 DAILY_JOB_LOCK_TTL_SECONDS = 2 * 60 * 60
+SCHEDULER_USER_ID = SYSTEM_USER_ID  # 调度器自动任务归属 system 账户
 
 
 class DailyScheduler:
@@ -108,6 +110,7 @@ class DailyScheduler:
                 store = PaperLedgerStore(session)
                 today = datetime.now(CN_TZ).date()
                 job_key = store.acquire_job_lock(
+                    user_id=SCHEDULER_USER_ID,
                     job_name="daily_trading",
                     market=market,
                     trade_date=today,
@@ -117,16 +120,17 @@ class DailyScheduler:
                     logger.info("Daily job lock already exists for market=%s date=%s", market, today)
                     return
 
-                if store.check_run_exists(market, today, "auto"):
+                if store.check_run_exists(SCHEDULER_USER_ID, market, today, "auto"):
                     logger.info("Daily job for %s already has blocking run today", market)
                     store.finish_job_lock(job_key, "skipped", "blocking auto run already exists")
                     return
 
-                account = store.get_or_create_account(market, "auto")
+                account = store.get_or_create_account(SCHEDULER_USER_ID, market, "auto")
                 market_session = self._calendar.get_session(market, today)
                 if not market_session.is_trading_day:
                     reason = market_session.reason or "market closed"
                     run = store.create_run(
+                        user_id=SCHEDULER_USER_ID,
                         account_id=account.account_id,
                         market=market,
                         trade_date=today,
@@ -140,6 +144,7 @@ class DailyScheduler:
                     return
 
                 run = store.create_run(
+                    user_id=SCHEDULER_USER_ID,
                     account_id=account.account_id,
                     market=market,
                     trade_date=today,

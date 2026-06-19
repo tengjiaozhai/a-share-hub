@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import create_engine, func, select
 
 from src.main import build_cli_parser, run_decide_command, run_halt_command
-from src.storage.models import Base, KillSwitchEventRow
+from src.storage.models import SYSTEM_USER_ID, Base, KillSwitchEventRow
 from src.storage.runtime_store import RuntimeStore
 
 
@@ -52,15 +52,15 @@ def test_run_decide_command_persists_decision_and_target_position(runtime_store)
     assert len(summary["decision_run_ids"]) == 1
     assert len(summary["target_position_ids"]) == 1
 
-    decision_runs = runtime_store.list_decision_runs()
+    decision_runs = runtime_store.list_decision_runs(user_id=SYSTEM_USER_ID)
     assert len(decision_runs) == 1
     assert decision_runs[0]["symbol"] == "600519.SH"
 
-    record = runtime_store.get_decision_run(summary["decision_run_ids"][0])
+    record = runtime_store.get_decision_run(user_id=SYSTEM_USER_ID, decision_run_id=summary["decision_run_ids"][0])
     assert record["parsed_action"] == "BUY"
     assert record["snapshot"]["features"]["mock_llm"] is True
 
-    targets = runtime_store.list_active_target_positions()
+    targets = runtime_store.list_active_target_positions(user_id=SYSTEM_USER_ID)
     assert len(targets) == 1
     assert targets[0]["decision_run_id"] == summary["decision_run_ids"][0]
     assert targets[0]["target_value"] == 200000
@@ -73,8 +73,8 @@ def test_run_decide_command_is_blocked_when_kill_switch_active(runtime_store):
 
     assert summary["status"] == "blocked"
     assert summary["reason"] == "kill switch enabled"
-    assert runtime_store.list_decision_runs() == []
-    assert runtime_store.list_active_target_positions() == []
+    assert runtime_store.list_decision_runs(user_id=SYSTEM_USER_ID) == []
+    assert runtime_store.list_active_target_positions(user_id=SYSTEM_USER_ID) == []
 
 
 def test_run_halt_command_records_kill_switch_event(runtime_store):

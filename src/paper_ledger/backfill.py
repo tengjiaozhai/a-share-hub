@@ -1,11 +1,11 @@
 import logging
-from datetime import date
 import math
+from datetime import date
 
 from src.market_calendar import get_trading_calendar
 from src.market_calendar.service import TradingCalendarService
-from src.paper_ledger.models import PaperBase
 from src.paper_ledger.store import PaperLedgerStore
+from src.storage.models import SYSTEM_USER_ID
 
 logger = logging.getLogger(__name__)
 
@@ -15,14 +15,15 @@ def backfill_recent_days(
     market: str,
     days: int = 30,
     daily_return: float = 0.001,
+    user_id: str = SYSTEM_USER_ID,
     calendar: TradingCalendarService | None = None,
 ) -> int:
     """补算最近 N 个交易日的净值（仅生成占位曲线，不执行业务逻辑）。
 
     返回成功补算的交易日数量。如该日已存在 backfill 成功运行则跳过。
     """
-    logger.info(f"Starting backfill for {market}, {days} days")
-    account = store.get_or_create_account(market, "auto")
+    logger.info(f"Starting backfill for user={user_id} market={market}, {days} days")
+    account = store.get_or_create_account(user_id, market, "auto")
     today = date.today()
     initial_capital = float(account.initial_capital)
 
@@ -31,10 +32,11 @@ def backfill_recent_days(
     calendar_service = calendar or get_trading_calendar()
     trade_dates = calendar_service.recent_trading_days(market, today, days)
     for idx, trade_date in enumerate(trade_dates, start=1):
-        if store.check_run_exists(market, trade_date, "backfill"):
+        if store.check_run_exists(user_id, market, trade_date, "backfill"):
             continue
 
         run = store.create_run(
+            user_id=user_id,
             account_id=account.account_id,
             market=market,
             trade_date=trade_date,
@@ -51,6 +53,7 @@ def backfill_recent_days(
             positions_value = nav - cash
 
             store.create_nav_snapshot(
+                user_id=user_id,
                 account_id=account.account_id,
                 trade_date=trade_date,
                 nav=round(nav, 2),
@@ -65,20 +68,26 @@ def backfill_recent_days(
             logger.error(f"Backfill failed for {trade_date}: {e}")
             store.update_run_status(run.run_id, "failed", str(e))
 
-    logger.info(f"Backfill completed for {market}, {completed} days")
+    logger.info(f"Backfill completed for user={user_id} market={market}, {completed} days")
     return completed
 
 
-def needs_backfill(store: PaperLedgerStore, market: str) -> bool:
+def needs_backfill(
+    store: PaperLedgerStore,
+    market: str,
+    user_id: str = SYSTEM_USER_ID,
+) -> bool:
     """是否需要补算：账户无任何 backfill 成功运行"""
     try:
-        from sqlalchemy import select, and_
+        from sqlalchemy import and_, select
+
         from src.paper_ledger.models import PaperRunRow
 
         stmt = (
             select(PaperRunRow.run_id)
             .where(
                 and_(
+                    PaperRunRow.user_id == user_id,
                     PaperRunRow.market == market,
                     PaperRunRow.run_source == "backfill",
                     PaperRunRow.status == "success",

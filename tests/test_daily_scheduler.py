@@ -132,8 +132,16 @@ async def test_existing_skipped_run_blocks_duplicate_daily_job(monkeypatch):
         from src.paper_ledger.store import PaperLedgerStore
 
         store = PaperLedgerStore(session)
-        account = store.get_or_create_account("a", "auto")
-        run = store.create_run(account.account_id, "a", today, "auto", {}, [])
+        account = store.get_or_create_account(user_id="system", market="a", account_kind="auto")
+        run = store.create_run(
+            user_id="system",
+            account_id=account.account_id,
+            market="a",
+            trade_date=today,
+            run_source="auto",
+            params={},
+            watchlist=[],
+        )
         store.update_run_status(run.run_id, "skipped", "A股休市")
 
     scheduler = DailyScheduler(calendar=FakeCalendar(is_trading_day=False, reason="A股休市"))

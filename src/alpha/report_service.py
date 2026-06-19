@@ -198,10 +198,12 @@ class AlphaPortfolioReportService:
     def __init__(
         self,
         store,
+        user_id: str,
         shadow_opinion_provider: ShadowOpinionProvider | None = None,
         backtest_provider: BacktestProvider | None = None,
     ) -> None:
         self._store = store
+        self._user_id = user_id
         self._shadow = shadow_opinion_provider or self._default_shadow_provider
         self._backtest = backtest_provider or self._default_backtest_provider
 
@@ -213,9 +215,9 @@ class AlphaPortfolioReportService:
         backtest_window = _normalize_window(payload.get("backtest_window"))
         opening_cash = float(payload.get("opening_cash", 10_000.0) or 0.0)
 
-        positions = self._store.list_alpha_positions()
-        fills = self._store.list_all_alpha_manual_fills()
-        snapshot = self._store.get_latest_alpha_portfolio_snapshot()
+        positions = self._store.list_alpha_positions(self._user_id)
+        fills = self._store.list_all_alpha_manual_fills(self._user_id)
+        snapshot = self._store.get_latest_alpha_portfolio_snapshot(self._user_id)
         ticket_lookup = self._build_ticket_lookup()
 
         latest_workbench = self._latest_workbench()
@@ -273,7 +275,7 @@ class AlphaPortfolioReportService:
     def _build_ticket_lookup(self) -> dict[str, dict]:
         return {
             ticket["ticket_id"]: ticket
-            for ticket in self._store.list_alpha_tickets()
+            for ticket in self._store.list_alpha_tickets(self._user_id)
         }
 
     @staticmethod
@@ -298,7 +300,7 @@ class AlphaPortfolioReportService:
 
     def _latest_workbench(self) -> dict | None:
         """从最近一次 dashboard run summary 取出 latest_workbench，缺失返回 None。"""
-        summaries = self._store.list_dashboard_run_summaries(limit=1)
+        summaries = self._store.list_dashboard_run_summaries(user_id=self._user_id, limit=1)
         if not summaries:
             return None
         return summaries[0].get("latest_workbench") or None
