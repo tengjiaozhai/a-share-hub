@@ -9,18 +9,19 @@ logger = logging.getLogger(__name__)
 class AShareWatchlistStore:
     """A 股自选列表 CRUD。"""
 
-    def __init__(self, conn: Any):
+    def __init__(self, conn: Any, user_id: str):
         self._conn = conn
+        self._user_id = user_id
 
     def list_items(self, page: int = 1, page_size: int = 20) -> tuple[list[AStockWatchlistItem], int]:
         offset = (page - 1) * page_size
         with self._conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM a_share_watchlist")
+            cur.execute("SELECT COUNT(*) FROM a_share_watchlist WHERE user_id = %s", (self._user_id,))
             total = cur.fetchone()["count"]
             cur.execute(
                 "SELECT id, symbol, name, sort_order, created_at FROM a_share_watchlist "
-                "ORDER BY sort_order, id LIMIT %s OFFSET %s",
-                (page_size, offset),
+                "WHERE user_id = %s ORDER BY sort_order, id LIMIT %s OFFSET %s",
+                (self._user_id, page_size, offset),
             )
             rows = cur.fetchall()
         items = [
@@ -39,9 +40,10 @@ class AShareWatchlistStore:
         try:
             with self._conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO a_share_watchlist (symbol, name, sort_order) VALUES (%s, %s, %s) "
+                    "INSERT INTO a_share_watchlist (user_id, symbol, name, sort_order) "
+                    "VALUES (%s, %s, %s, %s) "
                     "RETURNING id, symbol, name, sort_order, created_at",
-                    (symbol.upper(), name, sort_order),
+                    (self._user_id, symbol.upper(), name, sort_order),
                 )
                 row = cur.fetchone()
                 self._conn.commit()
@@ -61,7 +63,10 @@ class AShareWatchlistStore:
 
     def remove(self, symbol: str) -> bool:
         with self._conn.cursor() as cur:
-            cur.execute("DELETE FROM a_share_watchlist WHERE symbol = %s", (symbol.upper(),))
+            cur.execute(
+                "DELETE FROM a_share_watchlist WHERE user_id = %s AND symbol = %s",
+                (self._user_id, symbol.upper()),
+            )
             deleted = cur.rowcount > 0
             self._conn.commit()
         return deleted
@@ -69,8 +74,9 @@ class AShareWatchlistStore:
     def get_by_symbol(self, symbol: str) -> AStockWatchlistItem | None:
         with self._conn.cursor() as cur:
             cur.execute(
-                "SELECT id, symbol, name, sort_order, created_at FROM a_share_watchlist WHERE symbol = %s",
-                (symbol.upper(),),
+                "SELECT id, symbol, name, sort_order, created_at FROM a_share_watchlist "
+                "WHERE user_id = %s AND symbol = %s",
+                (self._user_id, symbol.upper()),
             )
             row = cur.fetchone()
         if not row:

@@ -4,6 +4,9 @@ from unittest.mock import MagicMock
 from src.a_stock.watchlist import AShareWatchlistStore
 
 
+TEST_USER_ID = "test-user-1"
+
+
 @pytest.fixture
 def mock_db():
     conn = MagicMock()
@@ -19,11 +22,14 @@ def test_list_items(mock_db):
     cursor.fetchall.return_value = [
         {"id": 1, "symbol": "600519.SH", "name": "贵州茅台", "sort_order": 0, "created_at": "2026-01-01"},
     ]
-    store = AShareWatchlistStore(conn)
+    store = AShareWatchlistStore(conn, TEST_USER_ID)
     items, total = store.list_items()
     assert total == 1
     assert len(items) == 1
     assert items[0].symbol == "600519.SH"
+    assert "user_id" in cursor.execute.call_args[0][0].lower() or any(
+        "user_id" in str(arg).lower() for arg in cursor.execute.call_args[0][1]
+    )
 
 
 def test_add_item(mock_db):
@@ -31,15 +37,17 @@ def test_add_item(mock_db):
     cursor.fetchone.return_value = {
         "id": 1, "symbol": "600519.SH", "name": "贵州茅台", "sort_order": 0, "created_at": "2026-01-01",
     }
-    store = AShareWatchlistStore(conn)
+    store = AShareWatchlistStore(conn, TEST_USER_ID)
     item = store.add("600519.SH", "贵州茅台")
     assert item.symbol == "600519.SH"
+    insert_args = cursor.execute.call_args[0][1]
+    assert TEST_USER_ID in insert_args
 
 
 def test_add_duplicate_raises(mock_db):
     conn, cursor = mock_db
     cursor.execute.side_effect = Exception("duplicate key")
-    store = AShareWatchlistStore(conn)
+    store = AShareWatchlistStore(conn, TEST_USER_ID)
     with pytest.raises(ValueError, match="already exists"):
         store.add("600519.SH", "贵州茅台")
 
@@ -47,14 +55,16 @@ def test_add_duplicate_raises(mock_db):
 def test_remove_item(mock_db):
     conn, cursor = mock_db
     cursor.rowcount = 1
-    store = AShareWatchlistStore(conn)
+    store = AShareWatchlistStore(conn, TEST_USER_ID)
     result = store.remove("600519.SH")
     assert result is True
+    delete_args = cursor.execute.call_args[0][1]
+    assert TEST_USER_ID in delete_args
 
 
 def test_remove_not_found(mock_db):
     conn, cursor = mock_db
     cursor.rowcount = 0
-    store = AShareWatchlistStore(conn)
+    store = AShareWatchlistStore(conn, TEST_USER_ID)
     result = store.remove("INVALID")
     assert result is False

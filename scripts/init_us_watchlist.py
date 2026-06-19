@@ -83,9 +83,9 @@ def main():
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO us_watchlist (symbol, name, sort_order) VALUES (%s, %s, %s) "
-                    "ON CONFLICT (symbol) DO NOTHING",
-                    (symbol, name, i),
+                    "INSERT INTO us_watchlist (user_id, symbol, name, sort_order) VALUES (%s, %s, %s, %s) "
+                    "ON CONFLICT (user_id, symbol) DO NOTHING",
+                    ("system", symbol, name, i),
                 )
                 if cur.rowcount > 0:
                     inserted += 1

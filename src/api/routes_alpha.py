@@ -14,6 +14,7 @@ from src.alpha.report_service import AlphaPortfolioReportService
 from src.alpha.research_service import AlphaResearchService
 from src.alpha.service import AlphaMarketService
 from src.alpha.signal_engine import AlphaSignalEngine
+from src.api.dependencies import get_current_user_id
 from src.storage.dependencies import get_runtime_store
 from src.storage.runtime_store import RuntimeStore
 
@@ -211,7 +212,10 @@ def run_alpha_reconciliation(payload: dict, store: RuntimeStore = Depends(get_ru
 
 
 @router.get("/watchlist")
-def list_alpha_watchlist(store: RuntimeStore = Depends(get_runtime_store)) -> dict:
+def list_alpha_watchlist(
+    store: RuntimeStore = Depends(get_runtime_store),
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
     return {"items": store.list_alpha_watchlist_items()}
 
 
@@ -222,7 +226,11 @@ class AddAlphaWatchlistRequest(BaseModel):
 
 
 @router.post("/watchlist")
-def add_alpha_watchlist(payload: AddAlphaWatchlistRequest, store: RuntimeStore = Depends(get_runtime_store)) -> dict:
+def add_alpha_watchlist(
+    payload: AddAlphaWatchlistRequest,
+    store: RuntimeStore = Depends(get_runtime_store),
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
     store.add_alpha_watchlist_item(**payload.model_dump())
     return {"stored": True, "symbol": payload.symbol}
 

@@ -124,6 +124,7 @@ def test_dashboard_preferences_and_workbench_stay_server_backed():
     client, store = build_dashboard_client()
 
     store.set_preference(
+        "test-user-1",
         "dashboard",
         {
             "watchlist": ["600519.SH", "000858.SZ"],
