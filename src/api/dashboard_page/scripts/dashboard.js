@@ -8,6 +8,11 @@ const PERFORMANCE_API = '/api/v1/dashboard/performance';
 const AUTOMATION_API = '/api/v1/dashboard/automation';
 const HISTORY_API = '/api/v1/dashboard/history';
 
+function displayTimeValue(raw) {
+  var formatted = formatTime(raw);
+  return formatted === '--' ? '未记录' : formatted;
+}
+
 function switchTab(btn, paneId) {
   const isCasePane = normalizeText(paneId, '').startsWith('case-pane-');
   const buttonGroup = btn?.parentElement;
@@ -232,7 +237,7 @@ function renderDecisions(list) {
   }
   const page = pagSlice('decisions');
   tb.innerHTML = page.map(item => {
-    const time = formatTime(pickFirst(item, ['created_at', 'timestamp']));
+    const time = displayTimeValue(pickFirst(item, ['created_at', 'timestamp']));
     const symbol = normalizeText(pickFirst(item, ['symbol', 'stock_code']));
     const action = normalizeText(pickFirst(item, ['action', 'parsed_action', 'signal'])).toUpperCase();
     const badge = action === 'BUY' ? 'badge-buy' : action === 'SELL' ? 'badge-sell' : 'badge-hold';
@@ -263,7 +268,7 @@ function renderOrders(list) {
   }
   const page = pagSlice('orders');
   tb.innerHTML = page.map(item => {
-    const time = formatTime(pickFirst(item, ['created_at', 'timestamp']));
+    const time = displayTimeValue(pickFirst(item, ['created_at', 'timestamp']));
     const symbol = normalizeText(pickFirst(item, ['symbol', 'stock_code']));
     const side = normalizeText(pickFirst(item, ['side', 'action', 'parsed_action'])).toUpperCase();
     const badge = side === 'BUY' ? 'badge-buy' : side === 'SELL' ? 'badge-sell' : 'badge-hold';
@@ -586,7 +591,7 @@ function renderErrorEvents(events) {
   }
   const page = pagSlice('errors');
   tb.innerHTML = page.map(item => {
-    const time = formatTime(pickFirst(item, ['created_at', 'timestamp', 'time']));
+    const time = displayTimeValue(pickFirst(item, ['created_at', 'timestamp', 'time']));
     const level = normalizeText(pickFirst(item, ['level', 'severity', 'event_type'])).toUpperCase();
     let messageRaw = pickFirst(item, ['message', 'summary', 'reason'], null);
     if (!messageRaw && item.payload) {
