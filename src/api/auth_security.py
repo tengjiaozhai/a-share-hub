@@ -6,7 +6,7 @@ import secrets
 import time
 from urllib.parse import quote
 
-from fastapi import Request
+from fastapi import HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from src.core.config import Settings
@@ -20,6 +20,13 @@ PROTECTED_PREFIXES = (
     "/api/v1/alpha",
     "/api/v1/us-stock",
     "/api/v1/a-stock",
+    "/api/v1/decision-runs",
+    "/api/v1/execution-plans",
+    "/api/v1/portfolio-targets",
+    "/api/v1/reconciliation",
+    "/api/v1/kill-switch",
+    "/api/v1/broker-events",
+    "/api/v1/crypto",
 )
 PUBLIC_EXACT = {
     "/login",
@@ -116,6 +123,49 @@ def _public_user(user: dict) -> dict:
         "email": user["email"],
         "role": user["role"],
     }
+
+
+def require_role(*allowed_roles: str):
+    """FastAPI 依赖：要求当前用户拥有指定角色之一。"""
+
+    async def _checker(request: Request) -> dict[str, object]:
+        user = request.state.user
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+        if allowed_roles and user.get("role") not in allowed_roles:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role")
+        return user
+
+    return _checker
+
+
+def verify_broker_signature(
+    body: bytes,
+    signature: str | None,
+    timestamp: str | None,
+    secret: str,
+    max_skew_seconds: int = 300,
+) -> bool:
+    """校验券商回调 HMAC 签名。
+
+    约定：
+    - Header `X-Broker-Timestamp`：Unix 秒级时间戳
+    - Header `X-Broker-Signature`：hex(HMAC-SHA256(secret, f"{timestamp}.{body}"))
+    - 时间戳偏差超过 max_skew_seconds 视为重放
+    """
+
+    if not signature or not timestamp:
+        return False
+    try:
+        ts = int(timestamp)
+    except (TypeError, ValueError):
+        return False
+    now = int(time.time())
+    if abs(now - ts) > max_skew_seconds:
+        return False
+    mac = hmac.new(secret.encode(), f"{ts}.".encode() + body, hashlib.sha256)
+    expected = mac.hexdigest()
+    return hmac.compare_digest(expected, signature)
 
 
 def _secret(settings: Settings) -> str:
