@@ -385,6 +385,7 @@ function renderPerformance(performance) {
           </div>
           <div class="range-card-value ${returnClass}">${escapeHtml(returnText)}</div>
           <div class="range-card-sub">${escapeHtml(String(sampleCount))} 个交易日样本</div>
+          ${insufficientDataWarningHtml(sampleCount, selectedPerformanceWindow)}
         </div>
       `;
     } else {
@@ -425,6 +426,13 @@ function formatSignedRateValue(raw) {
   const pct = Math.abs(n) <= 1 ? n * 100 : n;
   const sign = pct > 0 ? '+' : '';
   return `${sign}${pct.toFixed(2)}%`;
+}
+
+function insufficientDataWarningHtml(sampleCount, window) {
+  var expectedDays = { '7d': 7, '30d': 30, '90d': 90, 'ytd': 365 };
+  var threshold = (expectedDays[window] || 30) * 0.8;
+  if (!sampleCount || sampleCount >= threshold) return '';
+  return '<div class="range-card-warning">⚠️ 数据不足 ' + (expectedDays[window] || 30) + ' 天，仅显示最近 ' + sampleCount + ' 天</div>';
 }
 
 function resolvePerformanceCardValue(card) {

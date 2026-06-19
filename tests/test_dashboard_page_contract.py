@@ -295,3 +295,9 @@ def test_render_dashboard_html_sse_timeouts_match_backend_run_time():
     assert hard_timeout_ms >= 120_000, (
         f"hard timeout {hard_timeout_ms}ms too short; 至少要给 LLM 推理 120s"
     )
+
+
+def test_render_dashboard_html_contains_insufficient_data_warning_helper():
+    html = render_dashboard_html()
+    assert "insufficientDataWarningHtml" in html
+    assert "数据不足" in html
