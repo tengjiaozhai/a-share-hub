@@ -18,8 +18,9 @@ def render_register_html(next_url: str = "/dashboard", error: str = "") -> str:
 
 def _render(template: str, next_url: str, error: str) -> str:
     html = _read(template)
+    styles = _read("styles/auth.css") + "\n" + _read("styles/login_bg.css")
     return (
-        html.replace("{{INLINE_STYLES}}", _read("styles/auth.css"))
+        html.replace("{{INLINE_STYLES}}", styles)
         .replace("{{INLINE_AUTH_JS}}", _read("scripts/auth.js"))
         .replace("{{NEXT_VALUE}}", escape(next_url or "/dashboard", quote=True))
         .replace("{{ERROR_BLOCK}}", _error_block(error))
@@ -29,4 +30,4 @@ def _render(template: str, next_url: str, error: str) -> str:
 def _error_block(error: str) -> str:
     if not error:
         return ""
-    return f'<div class="auth-error">{escape(error)}</div>'
+    return '<div class="auth-error">' + escape(error) + '</div>'
