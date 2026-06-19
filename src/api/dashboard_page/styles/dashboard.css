@@ -1901,6 +1901,23 @@ html[data-theme='coinbase-institutional'] {
   padding: var(--space-md);
 }
 
+.case-skeleton-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--panel);
+  z-index: 10;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 40px;
+  animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .case-skeleton-bar {
   height: 12px;
   background: linear-gradient(90deg,

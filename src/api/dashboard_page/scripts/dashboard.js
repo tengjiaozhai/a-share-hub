@@ -16,13 +16,24 @@ function displayTimeValue(raw) {
 function showCaseDrawerSkeleton() {
   var shell = document.getElementById('case-shell');
   if (!shell) return;
-  shell.innerHTML = '<div class="case-skeleton">' +
+  var existing = shell.querySelector('.case-skeleton-overlay');
+  if (existing) return;
+  var overlay = document.createElement('div');
+  overlay.className = 'case-skeleton-overlay';
+  overlay.innerHTML = '<div class="case-skeleton">' +
     '<div class="case-skeleton-bar" style="width: 40%"></div>' +
     '<div class="case-skeleton-bar" style="width: 70%"></div>' +
     '<div class="case-skeleton-bar" style="width: 60%"></div>' +
     '<div class="case-skeleton-bar" style="width: 80%"></div>' +
     '<div class="case-skeleton-bar" style="width: 30%"></div>' +
     '</div>';
+  shell.style.position = 'relative';
+  shell.appendChild(overlay);
+}
+
+function hideCaseDrawerSkeleton() {
+  var overlay = document.querySelector('.case-skeleton-overlay');
+  if (overlay) overlay.remove();
 }
 
 function isCaseDrawerOpen() {
@@ -1697,12 +1708,14 @@ async function selectHistoryRun(runId, options = {}) {
 
   if (!run.supports_case_view || !run.run_context_id) {
     selectedCaseSnapshot = null;
+    hideCaseDrawerSkeleton();
     renderActiveCase();
     return;
   }
 
   const token = ++historySnapshotToken;
   selectedCaseSnapshot = null;
+  hideCaseDrawerSkeleton();
   renderActiveCase();
   try {
     const res = await fetch(`${WORKBENCH_API}?run_context_id=${encodeURIComponent(run.run_context_id)}`);
@@ -1715,10 +1728,12 @@ async function selectHistoryRun(runId, options = {}) {
     syncSnapshotCollectionsFromSteps(selectedCaseSnapshot);
     selectedHistoryRunMeta = mergeRunMeta(selectedHistoryRunMeta, buildRunMetaFromSnapshot(body));
     upsertHistoryRun(selectedHistoryRunMeta, { select: true });
+    hideCaseDrawerSkeleton();
     renderActiveCase();
   } catch (error) {
     if (token !== historySnapshotToken) return;
     selectedCaseSnapshot = null;
+    hideCaseDrawerSkeleton();
     renderCaseEmptyState(error.message);
   }
 }
