@@ -1553,8 +1553,8 @@ function renderRunCenter(runs, options = {}) {
   list.innerHTML = filtered.map(renderRunCard).join('');
   if (footer) {
     footer.innerHTML = historyPanelHasMore
-      ? `<button type="button" class="run-load-more" id="run-history-load-more" onclick="loadMoreHistoryRuns()" ${historyPanelLoading ? 'disabled' : ''}>${historyPanelLoading ? '加载中...' : '加载更多运行记录'}</button>`
-      : `<div class="run-center-status">${historyRuns.length ? `已加载 ${historyRuns.length} 条最近记录` : ''}</div>`;
+      ? `<button type="button" class="run-load-more" id="run-history-load-more" onclick="loadMoreHistoryRuns()" ${historyPanelLoading ? 'disabled' : ''}>${historyPanelLoading ? '加载中...' : '加载更多 (已显示 ' + historyRuns.length + ' 条)'}</button>`
+      : `<div class="run-center-status">已显示全部 ${historyRuns.length} 条记录</div>`;
     setupHistoryScrollObserver(footer);
   }
   if (selectedHistoryRunMeta) {
