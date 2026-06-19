@@ -138,6 +138,11 @@ document.addEventListener('keydown', (event) => {
       triggerRun();
     }
   }
+
+  if (event.key === 'Escape' && isCaseDrawerOpen()) {
+    event.preventDefault();
+    closeCaseDrawer();
+  }
 });
 
 document.getElementById('drawer-backdrop')?.addEventListener('click', closeCaseDrawer);

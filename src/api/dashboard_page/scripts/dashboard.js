@@ -13,6 +13,18 @@ function displayTimeValue(raw) {
   return formatted === '--' ? '未记录' : formatted;
 }
 
+function showCaseDrawerSkeleton() {
+  var shell = document.getElementById('case-shell');
+  if (!shell) return;
+  shell.innerHTML = '<div class="case-skeleton">' +
+    '<div class="case-skeleton-bar" style="width: 40%"></div>' +
+    '<div class="case-skeleton-bar" style="width: 70%"></div>' +
+    '<div class="case-skeleton-bar" style="width: 60%"></div>' +
+    '<div class="case-skeleton-bar" style="width: 80%"></div>' +
+    '<div class="case-skeleton-bar" style="width: 30%"></div>' +
+    '</div>';
+}
+
 function isCaseDrawerOpen() {
   return document.getElementById('case-drawer')?.classList.contains('open');
 }
@@ -29,6 +41,7 @@ function openCaseDrawer(runId) {
   drawer.setAttribute('aria-hidden', 'false');
   backdrop.classList.add('open');
   backdrop.setAttribute('aria-hidden', 'false');
+  showCaseDrawerSkeleton();
 }
 
 function closeCaseDrawer() {
