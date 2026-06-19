@@ -305,6 +305,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   font-size:11px;color:var(--dim);line-height:1.4;min-height:16px;display:none;
 }
 .run-card-note.show{display:block}
+.run-card-hint{display:flex;align-items:center;gap:4px;margin-top:8px;padding-top:6px;border-top:1px dashed var(--stroke);font-size:11px;color:var(--dim);opacity:.5;transition:opacity .2s,color .2s}
+.run-card:hover .run-card-hint{opacity:1;color:var(--accent)}
+.hint-icon{font-size:10px}
+.hint-text{letter-spacing:.3px}
 .run-center-footer{
   display:flex;align-items:center;justify-content:center;min-height:40px;
 }

@@ -301,3 +301,9 @@ def test_render_dashboard_html_contains_insufficient_data_warning_helper():
     html = render_dashboard_html()
     assert "insufficientDataWarningHtml" in html
     assert "数据不足" in html
+
+
+def test_render_dashboard_html_contains_run_card_hint():
+    html = render_dashboard_html()
+    assert "run-card-hint" in html
+    assert "点击查看案件详情" in html

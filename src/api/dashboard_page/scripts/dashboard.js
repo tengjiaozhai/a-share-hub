@@ -1474,6 +1474,9 @@ function renderRunCard(run) {
     `观察 ${run.watchlist_count ?? 0}`,
   ];
   const note = normalizeText(run.error_message, '');
+  const hint = run.supports_case_view
+    ? '<div class="run-card-hint"><span class="hint-icon">👁</span><span class="hint-text">点击查看案件详情</span></div>'
+    : '';
   return `
     <button type="button" class="run-card ${active ? 'active' : ''}" data-run-id="${escapeHtml(run.id)}" onclick="selectHistoryRun('${escapeHtml(run.id)}')">
       <div class="run-card-head">
@@ -1489,6 +1492,7 @@ function renderRunCard(run) {
         <span class="run-mini-chip pnl">${escapeHtml(netPnl)}</span>
       </div>
       <div class="run-card-note ${note ? 'show' : ''}">${escapeHtml(note || (run.decision_mode ? `${run.decision_mode} · ${run.execution_mode || '--'}` : ''))}</div>
+      ${hint}
     </button>
   `;
 }
