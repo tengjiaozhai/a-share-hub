@@ -13,6 +13,54 @@ function displayTimeValue(raw) {
   return formatted === '--' ? '未记录' : formatted;
 }
 
+function animateKPIValue(element, newValue, formatFn, duration) {
+  if (!element || !formatFn) return;
+  duration = duration || 600;
+  var startText = element.textContent;
+  var startMatch = startText.match(/([+-]?\d*\.?\d+)/);
+  var newMatch = String(newValue).match(/([+-]?\d*\.?\d+)/);
+  if (!startMatch || !newMatch) {
+    element.textContent = formatFn(newValue);
+    return;
+  }
+  var startVal = parseFloat(startMatch[1]);
+  var endVal = parseFloat(newMatch[1]);
+  if (startVal === endVal || !isFinite(startVal) || !isFinite(endVal)) {
+    element.textContent = formatFn(newValue);
+    return;
+  }
+  var prefix = startText.substring(0, startMatch.index);
+  var startTime = performance.now();
+  function update(currentTime) {
+    var elapsed = currentTime - startTime;
+    var progress = Math.min(elapsed / duration, 1);
+    var eased = 1 - Math.pow(1 - progress, 4);
+    var current = startVal + (endVal - startVal) * eased;
+    element.textContent = prefix + formatFn(current);
+    if (progress < 1) requestAnimationFrame(update);
+  }
+  requestAnimationFrame(update);
+}
+
+function addRippleToButton(button) {
+  button.addEventListener('click', function(e) {
+    var rect = button.getBoundingClientRect();
+    var x = e.clientX - rect.left;
+    var y = e.clientY - rect.top;
+    var ripple = document.createElement('span');
+    ripple.style.cssText = 'position:absolute;border-radius:50%;background:rgba(255,255,255,0.25);pointer-events:none;transform:scale(0);animation:rippleExpand 0.5s ease-out forwards;';
+    var size = Math.max(rect.width, rect.height) * 2;
+    ripple.style.width = size + 'px';
+    ripple.style.height = size + 'px';
+    ripple.style.left = (x - size / 2) + 'px';
+    ripple.style.top = (y - size / 2) + 'px';
+    button.style.position = 'relative';
+    button.style.overflow = 'hidden';
+    button.appendChild(ripple);
+    setTimeout(function() { ripple.remove(); }, 600);
+  });
+}
+
 function showCaseDrawerSkeleton() {
   var shell = document.getElementById('case-shell');
   if (!shell) return;
@@ -413,15 +461,15 @@ function renderPerformance(performance) {
   }
 
   if (todayEl) {
-    todayEl.textContent = formatPercent(perf.today_return);
+    animateKPIValue(todayEl, perf.today_return, formatPercent);
     todayEl.style.color = (Number(perf.today_return) || 0) >= 0 ? 'var(--green)' : 'var(--red)';
   }
   if (monthEl) {
-    monthEl.textContent = formatPercent(perf.month_return);
+    animateKPIValue(monthEl, perf.month_return, formatPercent);
     monthEl.style.color = (Number(perf.month_return) || 0) >= 0 ? 'var(--green)' : 'var(--red)';
   }
   if (drawdownEl) {
-    drawdownEl.textContent = formatPercent(perf.max_drawdown);
+    animateKPIValue(drawdownEl, perf.max_drawdown, formatPercent);
   }
 
   if (rangeDataEl) {
@@ -579,23 +627,47 @@ function drawNavCurve(canvas, points) {
   const gradient = ctx.createLinearGradient(0, topPadding, 0, height - bottomPadding);
   gradient.addColorStop(0, isPositive ? 'rgba(34,197,94,0.24)' : 'rgba(239,68,68,0.2)');
   gradient.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = gradient;
-  ctx.fill(area);
-
-  ctx.strokeStyle = lineColor;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  coords.forEach(({ x, y }, index) => {
-    if (index === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  });
-  ctx.stroke();
-
   const last = coords[coords.length - 1];
-  ctx.fillStyle = lineColor;
-  ctx.beginPath();
-  ctx.arc(last.x, last.y, 3, 0, Math.PI * 2);
-  ctx.fill();
+  var drawProgress = { value: 0 };
+  var animDuration = 800;
+  var animStart = performance.now();
+
+  function animateCurve(currentTime) {
+    var elapsed = currentTime - animStart;
+    drawProgress.value = Math.min(elapsed / animDuration, 1);
+    var eased = 1 - Math.pow(1 - drawProgress.value, 3);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(leftPadding, 0, plotWidth * eased, height);
+    ctx.clip();
+
+    ctx.fillStyle = gradient;
+    ctx.fill(area);
+
+    ctx.strokeStyle = lineColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    coords.forEach(function(coord, index) {
+      if (index === 0) ctx.moveTo(coord.x, coord.y);
+      else ctx.lineTo(coord.x, coord.y);
+    });
+    ctx.stroke();
+
+    if (eased > 0.95) {
+      ctx.fillStyle = lineColor;
+      ctx.beginPath();
+      ctx.arc(last.x, last.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+
+    if (drawProgress.value < 1) {
+      requestAnimationFrame(animateCurve);
+    }
+  }
+  requestAnimationFrame(animateCurve);
 
   ctx.fillStyle = 'rgba(231,237,245,0.72)';
   ctx.font = '10px SF Mono, ui-monospace, monospace';
@@ -1441,6 +1513,8 @@ async function loadDashboard() {
     }
 
     renderWorkbench(workbenchBody, killStatusBody);
+
+    document.querySelectorAll('.run-btn, .save-btn').forEach(addRippleToButton);
 
     Promise.allSettled(panelLoads).then(() => { clearPanelLoading(); });
 
