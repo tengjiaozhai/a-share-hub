@@ -318,3 +318,35 @@ def test_render_dashboard_html_contains_case_drawer_contract():
     assert 'class="drawer-close"' in html
     assert 'closeCaseDrawer' in html
     assert 'class="case-shell"' in html
+
+
+def test_render_dashboard_html_drawer_not_open_by_default():
+    """验证 drawer 默认状态是关闭的（无 open class，aria-hidden=true）"""
+    html = render_dashboard_html()
+    assert 'id="case-drawer"' in html
+    assert 'id="drawer-backdrop"' in html
+    assert 'class="case-drawer"' in html
+    assert 'class="drawer-backdrop"' in html
+    assert 'aria-hidden="true"' in html
+
+
+def test_render_dashboard_html_contains_close_button():
+    """验证 close 按钮已嵌入"""
+    html = render_dashboard_html()
+    assert 'id="drawer-close"' in html
+    assert 'closeCaseDrawer()' in html
+    assert 'aria-label="关闭案件视图"' in html
+
+
+def test_render_dashboard_html_rail_bottom_removed():
+    """验证 rail-bottom 已被 drawer 取代"""
+    html = render_dashboard_html()
+    assert 'class="rail-bottom"' not in html
+
+
+def test_render_dashboard_html_contains_skeleton_function():
+    """验证 skeleton 函数和样式已嵌入"""
+    html = render_dashboard_html()
+    assert 'showCaseDrawerSkeleton' in html
+    assert 'case-skeleton' in html
+    assert 'skeleton-shimmer' in html
