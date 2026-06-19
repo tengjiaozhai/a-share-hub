@@ -1399,9 +1399,30 @@ async function loadDashboard() {
   }
 }
 
+function showPerformanceLoading() {
+  var canvas = document.getElementById('perf-nav-canvas');
+  var rangeData = document.getElementById('range-data');
+  if (canvas) {
+    var ctx = canvas.getContext('2d');
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = canvas.clientWidth * dpr;
+    canvas.height = canvas.clientHeight * dpr;
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+    ctx.fillStyle = 'rgba(120, 120, 120, 0.5)';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('加载中...', canvas.clientWidth / 2, canvas.clientHeight / 2);
+  }
+  if (rangeData) {
+    rangeData.innerHTML = '<span class="range-placeholder">加载中...</span>';
+  }
+}
+
 async function loadPerformancePanel(market, window) {
   const win = window || selectedPerformanceWindow || '7d';
   selectedPerformanceWindow = win;
+  showPerformanceLoading();
   try {
     const res = await fetch(`${PERFORMANCE_API}?market=${market}&account_kind=auto&window=${win}`);
     if (!res.ok) return;
