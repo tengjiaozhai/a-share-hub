@@ -3,8 +3,212 @@
 **审查日期:** 2026-06-19  
 **审查范围:** 后端日频调度、FastAPI 生命周期、启动 backfill、Dashboard 后台运行、前端刷新计时器  
 **涉及模块:** `src/scheduler/daily_scheduler.py`, `src/main.py`, `src/paper_ledger/store.py`, `src/paper_ledger/backfill.py`, `src/api/routes_dashboard.py`, `src/api/dashboard_page/scripts/*`  
-**状态:** 待处理  
-**结论:** 当前调度能力适合本地 demo 与单进程验证，不适合直接作为生产级自动交易调度执行器。
+**状态:** 部分已处理，交易日历 MVP 已接入  
+**结论:** 当前调度能力已完成 P0/P1 基础治理，并已接入第一版交易日历准入；仍不等于生产级实盘调度，还需要交易日历落库、外部日历同步和实盘执行前置 gate。
+
+---
+
+## 0. AI IDE 快速接手摘要
+
+本节用于让其他 AI IDE 快速理解 `issue-fix` 分支当前已经达到的效果、实现边界和下一步入口。
+
+### 0.1 当前分支与 worktree
+
+```text
+分支: issue-fix
+独立 worktree: /Users/shenmingjie/workSpace/tranding/a-share-hub-issue-fix
+原 master 目录: /Users/shenmingjie/workSpace/tranding/a-share-hub
+```
+
+`a-share-hub-issue-fix` 是独立 git worktree，可与原目录的 `master` 并行开发，避免两个 AI IDE 互相切分支。
+
+### 0.2 本版已达到的效果
+
+#### 调度基础治理
+
+- `pyproject.toml` 已补充 `apscheduler` 依赖。
+- `DailyScheduler` 使用 `AsyncIOScheduler(timezone=Asia/Shanghai)`。
+- A 股 job 保持北京时间工作日 09:15 触发。
+- 美股 job 保持北京时间工作日 21:15 触发。
+- APScheduler job 已配置：
+  - `max_instances=1`
+  - `coalesce=True`
+  - `misfire_grace_time=300`
+- `_execute_daily_trading()` 未实现时会显式失败，不再把空实现误标为 `success`。
+- `scheduled_job_locks` 调度锁已引入，用于防止多 worker / 多实例重复执行。
+- 调度锁支持 `expires_at` 过期后重新抢占，避免进程 crash 后永久死锁。
+- `check_run_exists()` 已从只检查 `success` 扩展为阻断 `running/success/skipped`，`failed` 默认允许重试。
+
+#### 交易日历 MVP
+
+已新增统一模块：
+
+```text
+src/market_calendar/
+├── __init__.py
+├── exceptions.py
+├── models.py
+├── service.py
+└── static_calendars.py
+```
+
+已实现：
+
+- `MarketSession` 领域模型。
+- `TradingCalendarService` 统一服务入口。
+- A 股 / 美股周末判断。
+- A 股 / 美股静态节假日判断。
+- `previous_trading_day()`。
+- `next_trading_day()`。
+- `recent_trading_days()`。
+- `next_trading_run_at()`。
+- `UnsupportedMarketError` fail-fast。
+
+#### Scheduler 接入效果
+
+`src/scheduler/daily_scheduler.py` 已接入 `TradingCalendarService`：
+
+```text
+cron 触发
+↓
+抢 daily_trading:{market}:{date} 调度锁
+↓
+检查已有 running/success/skipped auto run
+↓
+判断交易日
+↓
+非交易日: 创建 auto run，状态 skipped，写入 reason，不进入交易逻辑
+↓
+交易日: 创建 running run，进入 _execute_daily_trading()
+```
+
+非交易日现在是“主动跳过”，不是失败：
+
+```text
+run.status = skipped
+lock.status = skipped
+run.error_message = calendar reason
+```
+
+#### Backfill 接入效果
+
+`src/paper_ledger/backfill.py` 已从“最近 N 个自然日”切换为“最近 N 个交易日”：
+
+```text
+calendar.recent_trading_days(market, today, days)
+```
+
+效果：
+
+- 周末不会生成 backfill nav。
+- 静态节假日不会生成 backfill nav。
+- `days=30` 语义变为最近 30 个交易日。
+- run params 中记录：`calendar_mode=trading_days`。
+
+#### Dashboard 接入效果
+
+`src/api/routes_dashboard.py` 的 automation payload 已扩展：
+
+```json
+{
+  "today_status": "skipped",
+  "last_run_at": "...",
+  "next_run_at": "...",
+  "next_cron_at": "...",
+  "next_trading_run_at": "...",
+  "next_trading_day": "...",
+  "calendar_reason": "..."
+}
+```
+
+语义：
+
+- `next_cron_at`: APScheduler 下一次 cron 叫醒时间。
+- `next_trading_run_at`: 下一个真实交易日运行时间。
+- `calendar_reason`: 非交易日 skipped 的原因。
+
+### 0.3 本版涉及的主要文件
+
+```text
+pyproject.toml
+src/core/config.py
+src/main.py
+src/market_calendar/__init__.py
+src/market_calendar/exceptions.py
+src/market_calendar/models.py
+src/market_calendar/service.py
+src/market_calendar/static_calendars.py
+src/paper_ledger/backfill.py
+src/paper_ledger/models.py
+src/paper_ledger/store.py
+src/scheduler/daily_scheduler.py
+src/api/routes_dashboard.py
+alembic/versions/20260619_000011_add_scheduler_locks_and_paper_uniques.py
+tests/test_market_calendar.py
+tests/test_daily_scheduler.py
+tests/test_paper_ledger_backfill.py
+tests/test_paper_ledger_store.py
+tests/test_dashboard_performance.py
+```
+
+### 0.4 已验收通过的测试
+
+已通过核心验收：
+
+```bash
+/opt/anaconda3/envs/py311/bin/python3 -m pytest \
+  tests/test_market_calendar.py \
+  tests/test_daily_scheduler.py \
+  tests/test_paper_ledger_backfill.py \
+  tests/test_paper_ledger_store.py \
+  tests/test_dashboard_performance.py \
+  -q
+```
+
+结果：
+
+```text
+36 passed
+```
+
+单项结果：
+
+```text
+tests/test_market_calendar.py        8 passed
+tests/test_daily_scheduler.py        7 passed
+tests/test_paper_ledger_backfill.py  5 passed
+tests/test_paper_ledger_store.py     included in core suite
+tests/test_dashboard_performance.py  included in core suite
+```
+
+另跑过：
+
+```bash
+/opt/anaconda3/envs/py311/bin/python3 -m pytest tests/test_dashboard_api.py tests/test_dashboard_page_contract.py -q
+```
+
+其中 `tests/test_dashboard_api.py` 通过；`tests/test_dashboard_page_contract.py::test_dashboard_route_uses_rendered_split_html` 因测试直接连接默认 PostgreSQL `127.0.0.1:5432`，本地 PG 未启动而失败，错误是 `connection refused`，不是交易日历逻辑导致。
+
+### 0.5 当前仍未完成的边界
+
+本版是交易日历 MVP，不包含：
+
+- 未新增 `market_sessions` 落库表。
+- 未做外部交易所日历同步。
+- 未接 AkShare / NYSE calendar provider。
+- 未精确处理美股提前收盘。
+- 未做实盘订单提交前 calendar gate。
+- 未动态调整 APScheduler job 注册时间。
+- 静态节假日表需要后续补全年份并建立维护流程。
+
+### 0.6 下一个 AI IDE 建议继续做什么
+
+建议优先顺序：
+
+1. 补全 / 校验 A 股和美股静态节假日表。
+2. 修复 Dashboard page contract 测试对默认 PG 的依赖，使其走 SQLite fixture 或依赖覆盖。
+3. 为 `market_calendar` 增加 runbook，说明如何维护节假日和 skipped 状态。
+4. 后续再设计 `market_sessions` 落库与外部同步，不要在当前 MVP 内强行引入复杂 provider 链。
 
 ---
 

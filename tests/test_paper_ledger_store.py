@@ -101,6 +101,17 @@ def test_check_run_exists():
     assert store.check_run_exists("a", date(2026, 6, 6), "auto")
 
 
+def test_skipped_run_blocks_retry():
+    session = setup_db()
+    store = PaperLedgerStore(session)
+
+    account = store.get_or_create_account("a", "auto")
+    run = store.create_run(account.account_id, "a", date(2026, 6, 6), "auto", {}, [])
+    store.update_run_status(run.run_id, "skipped", "market closed")
+
+    assert store.check_run_exists("a", date(2026, 6, 6), "auto")
+
+
 def test_failed_run_does_not_block_retry():
     session = setup_db()
     store = PaperLedgerStore(session)

@@ -43,6 +43,8 @@ def test_build_automation_payload_reports_last_run_and_next():
     assert auto["today_status"] == "success"
     assert auto["last_run_at"] == "2026-06-06T09:15:00+08:00"
     assert auto["next_run_at"] == "2026-06-09T09:15:00+08:00"
+    assert auto["next_cron_at"] == "2026-06-09T09:15:00+08:00"
+    assert auto["calendar_reason"] is None
 
 
 def test_build_automation_payload_defaults_when_no_run():
@@ -51,3 +53,22 @@ def test_build_automation_payload_defaults_when_no_run():
     auto = _build_automation_payload()
     assert auto["today_status"] == "pending"
     assert auto["last_run_at"] is None
+    assert auto["calendar_reason"] is None
+
+
+def test_build_automation_payload_reports_skipped_reason_and_next_trading_run():
+    from src.api.routes_dashboard import _build_automation_payload
+
+    auto = _build_automation_payload(
+        last_run_at="2026-06-19T09:15:00+08:00",
+        last_status="skipped",
+        next_run_at="2026-06-22T09:15:00+08:00",
+        calendar_reason="A股端午节休市",
+        next_trading_run_at="2026-06-22T09:15:00+08:00",
+        next_trading_day="2026-06-22",
+    )
+
+    assert auto["today_status"] == "skipped"
+    assert auto["calendar_reason"] == "A股端午节休市"
+    assert auto["next_trading_run_at"] == "2026-06-22T09:15:00+08:00"
+    assert auto["next_trading_day"] == "2026-06-22"

@@ -173,7 +173,7 @@ class PaperLedgerStore:
         market: str,
         trade_date: date,
         run_source: str,
-        blocking_statuses: tuple[str, ...] = ("running", "success"),
+        blocking_statuses: tuple[str, ...] = ("running", "success", "skipped"),
     ) -> bool:
         """检查是否已存在会阻止再次调度的运行。
 
