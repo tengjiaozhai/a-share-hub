@@ -9,12 +9,34 @@ const AUTOMATION_API = '/api/v1/dashboard/automation';
 const HISTORY_API = '/api/v1/dashboard/history';
 
 function switchTab(btn, paneId) {
-  btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  document.querySelectorAll('.case-stage-pane, .tab-pane').forEach(p => p.classList.remove('active'));
+  const isCasePane = normalizeText(paneId, '').startsWith('case-pane-');
+  const buttonGroup = btn?.parentElement;
+  if (buttonGroup) {
+    buttonGroup.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  }
+  if (btn) btn.classList.add('active');
+
+  if (isCasePane) {
+    const caseShell = btn?.closest('.case-shell') || document;
+    caseShell.querySelectorAll('.case-stage-pane').forEach(pane => pane.classList.remove('active'));
+  } else {
+    document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+  }
+
   const pane = document.getElementById(paneId);
   if (pane) pane.classList.add('active');
   selectedCaseStage = paneId;
+}
+
+function setPerformanceWindow(window, btn) {
+  selectedPerformanceWindow = window || '7d';
+  const pills = document.querySelectorAll('#perf-range-pills .pill-btn');
+  pills.forEach(pill => {
+    pill.classList.toggle('active', pill.dataset.window === selectedPerformanceWindow);
+  });
+  if (btn) btn.classList.add('active');
+  const market = document.getElementById('cfg-market')?.value || 'a';
+  loadPerformancePanel(market, selectedPerformanceWindow);
 }
 
 function switchView(btn, viewId) {
@@ -217,7 +239,13 @@ function renderDecisions(list) {
     const confidence = formatConfidence(item.confidence);
     const reasonRaw = pickFirst(item, ['reason', 'rationale', 'message'], '');
     const reason = normalizeText(reasonRaw, '--');
-    return `<tr><td>${escapeHtml(time)}</td><td>${escapeHtml(symbol)}</td><td><span class="badge ${badge}">${escapeHtml(action)}</span></td><td>${escapeHtml(confidence)}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(reason)}">${escapeHtml(reason)}</td></tr>`;
+    return `<tr>
+      <td>${escapeHtml(time)}</td>
+      <td><div class="cell-stack"><span class="cell-primary">${escapeHtml(symbol)}</span><span class="cell-secondary">${escapeHtml(normalizeText(item.model_name, '模型输出'))}</span></div></td>
+      <td><span class="badge ${badge}">${escapeHtml(action)}</span></td>
+      <td>${escapeHtml(confidence)}</td>
+      <td><div class="cell-stack"><span class="cell-primary">${escapeHtml(reason)}</span><span class="cell-secondary wrap">${escapeHtml(normalizeText(item.prompt_hash, ''))}</span></div></td>
+    </tr>`;
   }).join('');
   document.getElementById('pag-decisions').innerHTML = rows.length >= PAGE_SIZE ? renderPagControls('decisions') : '';
 }
@@ -247,7 +275,16 @@ function renderOrders(list) {
     const pnlText = pnl !== 0 ? formatCurrency(pnl) : '-';
     const status = normalizeText(item.status).toUpperCase();
     const statusBadge = status === 'FILLED' ? 'badge-filled' : status === 'PENDING' ? 'badge-pending' : status === 'ERROR' ? 'badge-error' : 'badge-hold';
-    return `<tr><td>${escapeHtml(time)}</td><td>${escapeHtml(symbol)}</td><td><span class="badge ${badge}">${escapeHtml(side)}</span></td><td>${escapeHtml(quantity)}</td><td>${escapeHtml(price)}</td><td>${escapeHtml(fee)}</td><td class="${pnlClass}">${escapeHtml(pnlText)}</td><td><span class="badge ${statusBadge}">${escapeHtml(status)}</span></td></tr>`;
+    return `<tr>
+      <td>${escapeHtml(time)}</td>
+      <td><div class="cell-stack"><span class="cell-primary">${escapeHtml(symbol)}</span><span class="cell-secondary">${escapeHtml(normalizeText(item.execution_order_id, '执行单'))}</span></div></td>
+      <td><span class="badge ${badge}">${escapeHtml(side)}</span></td>
+      <td>${escapeHtml(quantity)}</td>
+      <td>${escapeHtml(price)}</td>
+      <td>${escapeHtml(fee)}</td>
+      <td class="${pnlClass}">${escapeHtml(pnlText)}</td>
+      <td><span class="badge ${statusBadge}">${escapeHtml(status)}</span></td>
+    </tr>`;
   }).join('');
   document.getElementById('pag-orders').innerHTML = rows.length >= PAGE_SIZE ? renderPagControls('orders') : '';
 }
@@ -269,7 +306,12 @@ function renderTargets(list) {
     const quantity = normalizeText(pickFirst(item, ['target_quantity', 'quantity', 'target_value']));
     const weight = formatPercent(pickFirst(item, ['target_weight', 'target_position_ratio'], null));
     const reason = normalizeText(pickFirst(item, ['reason', 'rationale'], '--'));
-    return `<tr><td>${escapeHtml(symbol)}</td><td>${escapeHtml(quantity)}</td><td>${escapeHtml(weight)}</td><td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(reason)}">${escapeHtml(reason)}</td></tr>`;
+    return `<tr>
+      <td><div class="cell-stack"><span class="cell-primary">${escapeHtml(symbol)}</span><span class="cell-secondary">${escapeHtml(normalizeText(item.target_position_id, '目标输出'))}</span></div></td>
+      <td>${escapeHtml(quantity)}</td>
+      <td>${escapeHtml(weight)}</td>
+      <td><div class="cell-stack"><span class="cell-primary">${escapeHtml(reason)}</span><span class="cell-secondary wrap">${escapeHtml(normalizeText(item.expires_at, ''))}</span></div></td>
+    </tr>`;
   }).join('');
   document.getElementById('pag-targets').innerHTML = rows.length >= PAGE_SIZE ? renderPagControls('targets') : '';
 }
@@ -303,6 +345,15 @@ function renderPerformance(performance) {
   const todayEl = document.getElementById('perf-today');
   const monthEl = document.getElementById('perf-month');
   const drawdownEl = document.getElementById('perf-drawdown');
+  const rangeDataEl = document.getElementById('range-data');
+  const curveTitleEl = document.getElementById('nav-curve-title');
+  document.querySelectorAll('#perf-range-pills .pill-btn').forEach(button => {
+    button.classList.toggle('active', button.dataset.window === selectedPerformanceWindow);
+  });
+
+  if (curveTitleEl) {
+    curveTitleEl.textContent = `${normalizeWindowLabel(selectedPerformanceWindow)}净值`;
+  }
 
   if (todayEl) {
     todayEl.textContent = formatPercent(perf.today_return);
@@ -316,12 +367,93 @@ function renderPerformance(performance) {
     drawdownEl.textContent = formatPercent(perf.max_drawdown);
   }
 
+  if (rangeDataEl) {
+    const windowReturn = perf.window_return;
+    const sampleCount = perf.sample_count;
+    const startDate = perf.start_date;
+    const endDate = perf.end_date;
+    if (windowReturn !== undefined && windowReturn !== null && sampleCount) {
+      const returnClass = windowReturn >= 0 ? 'green' : 'red';
+      const returnText = formatSignedRateValue(windowReturn);
+      const startText = startDate ? formatDate(startDate) : '--';
+      const endText = endDate ? formatDate(endDate) : '--';
+      rangeDataEl.innerHTML = `
+        <div class="range-card">
+          <div class="range-card-head">
+            <span class="range-card-label">${escapeHtml(normalizeWindowLabel(selectedPerformanceWindow))}收益</span>
+            <span class="range-card-window">${escapeHtml(startText)} ~ ${escapeHtml(endText)}</span>
+          </div>
+          <div class="range-card-value ${returnClass}">${escapeHtml(returnText)}</div>
+          <div class="range-card-sub">${escapeHtml(String(sampleCount))} 个交易日样本</div>
+        </div>
+      `;
+    } else {
+      const cards = toList(perf.comparison_cards);
+      if (!cards.length) {
+        rangeDataEl.innerHTML = '<span class="range-placeholder">当前区间暂无表现对比数据</span>';
+      } else {
+        rangeDataEl.innerHTML = cards.map(renderPerformanceCard).join('');
+      }
+    }
+  }
+
   const canvas = document.getElementById('perf-nav-canvas');
   if (canvas && toList(perf.nav_curve).length > 0) {
     drawNavCurve(canvas, toList(perf.nav_curve));
   } else if (canvas) {
     drawNavCurve(canvas, []);
   }
+}
+
+function normalizeWindowLabel(window) {
+  const normalized = normalizeText(window, '').toLowerCase();
+  if (normalized === '7d') return '近 7 天';
+  if (normalized === '30d') return '近 30 天';
+  if (normalized === '90d') return '近 90 天';
+  if (normalized === 'ytd') return '今年以来';
+  return normalized.toUpperCase() || '--';
+}
+
+function resolvePerformanceCardLabel(card) {
+  return normalizeText(pickFirst(card, ['label', 'title', 'name', 'metric']), '区间指标');
+}
+
+function formatSignedRateValue(raw) {
+  if (raw === null || raw === undefined || raw === '') return '--';
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return normalizeText(raw);
+  const pct = Math.abs(n) <= 1 ? n * 100 : n;
+  const sign = pct > 0 ? '+' : '';
+  return `${sign}${pct.toFixed(2)}%`;
+}
+
+function resolvePerformanceCardValue(card) {
+  const raw = pickFirst(card, ['value', 'return', 'performance', 'metric_value'], null);
+  return raw === null ? '--' : formatSignedRateValue(raw);
+}
+
+function renderPerformanceCard(card) {
+  const valueRaw = Number(pickFirst(card, ['value', 'return', 'performance', 'metric_value'], NaN));
+  const valueClass = Number.isFinite(valueRaw) ? (valueRaw > 0 ? 'green' : valueRaw < 0 ? 'red' : '') : '';
+  const sub = normalizeText(pickFirst(card, ['description', 'subtitle', 'summary', 'note']), '区间收益与基准对比');
+  const benchmarkLabel = normalizeText(pickFirst(card, ['benchmark_label', 'reference_label']), '基准');
+  const benchmarkValue = pickFirst(card, ['benchmark_value', 'reference_value'], null);
+  const excessValue = pickFirst(card, ['excess_return', 'spread', 'delta'], null);
+
+  return `
+    <div class="range-card">
+      <div class="range-card-head">
+        <span class="range-card-label">${escapeHtml(resolvePerformanceCardLabel(card))}</span>
+        <span class="range-card-window">${escapeHtml(normalizeWindowLabel(selectedPerformanceWindow))}</span>
+      </div>
+      <div class="range-card-value ${valueClass}">${escapeHtml(resolvePerformanceCardValue(card))}</div>
+      <div class="range-card-sub">${escapeHtml(sub)}</div>
+      <div class="range-card-benchmark">
+        <span>${escapeHtml(benchmarkLabel)} ${escapeHtml(benchmarkValue === null ? '--' : formatSignedRateValue(benchmarkValue))}</span>
+        <span>超额 ${escapeHtml(excessValue === null ? '--' : formatSignedRateValue(excessValue))}</span>
+      </div>
+    </div>
+  `;
 }
 
 function drawNavCurve(canvas, points) {
@@ -346,17 +478,73 @@ function drawNavCurve(canvas, points) {
   const min = Math.min(...navs);
   const max = Math.max(...navs);
   const range = max - min || 1;
+  const topPadding = 16;
+  const bottomPadding = 26;
+  const leftPadding = 8;
+  const rightPadding = 8;
+  const plotWidth = width - leftPadding - rightPadding;
+  const plotHeight = height - topPadding - bottomPadding;
+  const isPositive = navs[navs.length - 1] >= navs[0];
+  const lineColor = isPositive ? '#22c55e' : '#ef4444';
 
-  ctx.strokeStyle = '#22c55e';
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 3; i += 1) {
+    const y = topPadding + (plotHeight / 2) * i;
+    ctx.beginPath();
+    ctx.moveTo(leftPadding, y);
+    ctx.lineTo(width - rightPadding, y);
+    ctx.stroke();
+  }
+
+  const coords = points.map((point, index) => {
+    const x = leftPadding + (plotWidth * index) / (points.length - 1);
+    const y = topPadding + plotHeight - (((Number(point.nav) || 0) - min) / range) * plotHeight;
+    return { x, y, point };
+  });
+
+  const area = new Path2D();
+  coords.forEach(({ x, y }, index) => {
+    if (index === 0) area.moveTo(x, y);
+    else area.lineTo(x, y);
+  });
+  area.lineTo(coords[coords.length - 1].x, height - bottomPadding + 4);
+  area.lineTo(coords[0].x, height - bottomPadding + 4);
+  area.closePath();
+  const gradient = ctx.createLinearGradient(0, topPadding, 0, height - bottomPadding);
+  gradient.addColorStop(0, isPositive ? 'rgba(34,197,94,0.24)' : 'rgba(239,68,68,0.2)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = gradient;
+  ctx.fill(area);
+
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = 2;
   ctx.beginPath();
-  points.forEach((p, i) => {
-    const x = (i / (points.length - 1)) * width;
-    const y = height - ((Number(p.nav) - min) / range) * (height - 4) - 2;
-    if (i === 0) ctx.moveTo(x, y);
+  coords.forEach(({ x, y }, index) => {
+    if (index === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   });
   ctx.stroke();
+
+  const last = coords[coords.length - 1];
+  ctx.fillStyle = lineColor;
+  ctx.beginPath();
+  ctx.arc(last.x, last.y, 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(231,237,245,0.72)';
+  ctx.font = '10px SF Mono, ui-monospace, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`MAX ${max.toFixed(3)}`, leftPadding, 10);
+  ctx.textAlign = 'right';
+  ctx.fillText(`MIN ${min.toFixed(3)}`, width - rightPadding, 10);
+
+  const startLabel = normalizeText(pickFirst(points[0], ['date', 'trade_date', 'timestamp']), '').slice(5) || '起点';
+  const endLabel = normalizeText(pickFirst(points[points.length - 1], ['date', 'trade_date', 'timestamp']), '').slice(5) || '最新';
+  ctx.textAlign = 'left';
+  ctx.fillText(startLabel, leftPadding, height - 8);
+  ctx.textAlign = 'right';
+  ctx.fillText(endLabel, width - rightPadding, height - 8);
 }
 
 function renderAutomation(automation) {
@@ -537,6 +725,50 @@ function buildRunMetaFromListItem(run) {
   };
 }
 
+function mergeRunMeta(existing, incoming) {
+  return {
+    ...(existing || {}),
+    ...(incoming || {}),
+    id: normalizeText(incoming?.id || existing?.id, ''),
+    run_context_id: incoming?.run_context_id || existing?.run_context_id || null,
+    supports_case_view: Boolean(
+      incoming?.supports_case_view ?? existing?.supports_case_view ?? incoming?.run_context_id ?? existing?.run_context_id
+    ),
+  };
+}
+
+function replaceHistoryRuns(runs) {
+  historyRuns = toList(runs).map(buildRunMetaFromListItem);
+}
+
+function upsertHistoryRun(runMeta, options = {}) {
+  const incoming = buildRunMetaFromListItem(runMeta);
+  const next = [];
+  let merged = false;
+  historyRuns.forEach(run => {
+    const sameId = normalizeText(run.id, '') === normalizeText(incoming.id, '');
+    const sameContext = normalizeText(run.run_context_id, '') && normalizeText(run.run_context_id, '') === normalizeText(incoming.run_context_id, '');
+    if (sameId || sameContext) {
+      next.push(mergeRunMeta(run, incoming));
+      merged = true;
+    } else {
+      next.push(run);
+    }
+  });
+  if (!merged) {
+    next.unshift(incoming);
+  }
+  historyRuns = next.sort((left, right) => {
+    const leftTime = normalizeText(left.created_at, '');
+    const rightTime = normalizeText(right.created_at, '');
+    return rightTime.localeCompare(leftTime);
+  });
+  if (options.select) {
+    selectedHistoryRunMeta = mergeRunMeta(selectedHistoryRunMeta, incoming);
+  }
+  renderRunCenter(historyRuns, { preserveData: true });
+}
+
 function stagePaneId(stage) {
   return `case-pane-${stage}`;
 }
@@ -679,6 +911,7 @@ function renderCaseEmptyState(message) {
 }
 
 function renderCaseSnapshot(meta, snapshot) {
+  syncSnapshotCollectionsFromSteps(snapshot);
   const titleEl = document.getElementById('case-title');
   const subtitleEl = document.getElementById('case-subtitle');
   const counts = getCaseCounts(snapshot);
@@ -802,6 +1035,36 @@ function renderActiveCase() {
   renderCaseSnapshot(selectedHistoryRunMeta, selectedCaseSnapshot);
 }
 
+function deriveHistoryFromSteps(steps) {
+  const collections = {
+    decisions: [],
+    targets: [],
+    orders: [],
+    reconcile: [],
+  };
+  toList(steps).forEach(step => {
+    const stage = normalizeText(step?.stage || step?.name, '').toLowerCase();
+    const items = toList(step?.items);
+    if (!items.length) return;
+    if (stage === 'decision') collections.decisions = items;
+    if (stage === 'target') collections.targets = items;
+    if (stage === 'execute') collections.orders = items;
+    if (stage === 'reconcile') collections.reconcile = items;
+  });
+  return collections;
+}
+
+function syncSnapshotCollectionsFromSteps(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object') return;
+  const latestRun = snapshot.latest_run || {};
+  const derived = deriveHistoryFromSteps(latestRun.steps);
+  snapshot.history = snapshot.history || {};
+  if (derived.decisions.length && !toList(snapshot.history.decisions).length) snapshot.history.decisions = derived.decisions;
+  if (derived.targets.length && !toList(snapshot.history.targets).length) snapshot.history.targets = derived.targets;
+  if (derived.orders.length && !toList(snapshot.history.orders).length) snapshot.history.orders = derived.orders;
+  if (derived.reconcile.length && !toList(snapshot.history.reconcile).length) snapshot.history.reconcile = derived.reconcile;
+}
+
 function activateLiveRunCase(runContextId) {
   const watchlistValue = document.getElementById('cfg-watchlist')?.value || '';
   selectedHistoryRunMeta = {
@@ -833,6 +1096,7 @@ function activateLiveRunCase(runContextId) {
     history: {},
   };
   selectedCaseStage = stagePaneId('overview');
+  upsertHistoryRun(selectedHistoryRunMeta, { select: true });
   renderActiveCase();
 }
 
@@ -884,12 +1148,29 @@ function renderReconcile(list) {
     const quantity = normalizeText(item.quantity);
     const avgCost = formatCurrency(item.avg_cost);
     const markPrice = formatCurrency(item.mark_price);
+    const changeValue = Number(item.change_pct);
     const change = formatPercent(item.change_pct);
     const pnl = formatCurrency(item.unrealized_pnl);
     const fee = formatCurrency(item.fee_total);
     const markTime = formatTime(item.mark_time);
-    const pnlClass = Number(item.unrealized_pnl) > 0 ? 'green' : Number(item.unrealized_pnl) < 0 ? 'red' : '';
-    return `<tr><td>${escapeHtml(symbol)}</td><td>${escapeHtml(quantity)}</td><td>${escapeHtml(avgCost)}</td><td>${escapeHtml(markPrice)}</td><td>${escapeHtml(change)}</td><td class="${pnlClass}">${escapeHtml(pnl)}</td><td>${escapeHtml(fee)}</td><td>${escapeHtml(markTime)}</td></tr>`;
+    const pnlValue = Number(item.unrealized_pnl);
+    const pnlClass = pnlValue > 0 ? 'green' : pnlValue < 0 ? 'red' : '';
+    const changeClass = Number.isFinite(changeValue) ? (changeValue > 0 ? 'green' : changeValue < 0 ? 'red' : '') : '';
+    return `<tr>
+      <td>
+        <div class="reconcile-symbol">
+          <strong>${escapeHtml(symbol)}</strong>
+          <span>${escapeHtml(markTime === '--' ? '行情时间待更新' : `行情 ${markTime}`)}</span>
+        </div>
+      </td>
+      <td><div class="cell-stack"><span class="cell-primary">${escapeHtml(quantity)}</span><span class="cell-secondary">持仓数量</span></div></td>
+      <td><div class="cell-stack"><span class="cell-primary">${escapeHtml(avgCost)}</span><span class="cell-secondary">成本价</span></div></td>
+      <td><div class="cell-stack"><span class="cell-primary">${escapeHtml(markPrice)}</span><span class="cell-secondary">现价</span></div></td>
+      <td class="reconcile-move ${changeClass}">${escapeHtml(change)}</td>
+      <td class="${pnlClass}">${escapeHtml(pnl)}</td>
+      <td>${escapeHtml(fee)}</td>
+      <td>${escapeHtml(markTime)}</td>
+    </tr>`;
   }).join('');
 }
 
@@ -958,7 +1239,25 @@ function renderTimeline(latestRun) {
     timeline.innerHTML = '<div class="timeline-empty" id="timeline-empty">选择一条运行记录查看链路时间线</div>';
     return;
   }
-  timeline.innerHTML = '';
+  const lastStep = steps[steps.length - 1];
+  const currentStatus = normalizeText(lastStep?.status || latestRun?.status, 'done').toLowerCase();
+  const doneCount = steps.filter(step => normalizeText(step?.status, '').toLowerCase() === 'done').length;
+  timeline.innerHTML = `
+    <div class="timeline-summary">
+      <div class="timeline-stat">
+        <span class="timeline-stat-label">阶段累计</span>
+        <span class="timeline-stat-value">${escapeHtml(String(steps.length))}</span>
+      </div>
+      <div class="timeline-stat">
+        <span class="timeline-stat-label">已完成</span>
+        <span class="timeline-stat-value">${escapeHtml(String(doneCount))}</span>
+      </div>
+      <div class="timeline-stat">
+        <span class="timeline-stat-label">当前状态</span>
+        <span class="timeline-stat-value ${currentStatus === 'failed' || currentStatus === 'error' ? 'error' : currentStatus === 'running' || currentStatus === 'in_progress' ? 'running' : ''}">${escapeHtml(runStatusLabel(currentStatus))}</span>
+      </div>
+    </div>
+  `;
   steps.forEach(step => {
     if (!step) return;
     const stage = normalizeText(step.stage || step.name, 'stage').toLowerCase();
@@ -1037,6 +1336,12 @@ function renderWorkbench(data, killStatus) {
 
 async function loadDashboard() {
   const market = document.getElementById('cfg-market')?.value || 'a';
+  if (historyPanelMarket !== market) {
+    historyPanelMarket = market;
+    historyPanelNextCursor = null;
+    historyPanelHasMore = false;
+    historyPanelLimit = 0;
+  }
   try {
     setPanelLoading('all');
     const panelLoads = [
@@ -1082,7 +1387,8 @@ async function loadDashboard() {
 }
 
 async function loadPerformancePanel(market, window) {
-  const win = window || '30d';
+  const win = window || selectedPerformanceWindow || '7d';
+  selectedPerformanceWindow = win;
   try {
     const res = await fetch(`${PERFORMANCE_API}?market=${market}&account_kind=auto&window=${win}`);
     if (!res.ok) return;
@@ -1100,13 +1406,34 @@ async function loadAutomationPanel(market) {
   } catch (_) {}
 }
 
-async function loadHistoryPanel(market) {
+async function loadHistoryPanel(market, options = {}) {
+  historyPanelLoading = true;
+  historyPanelMarket = market || historyPanelMarket || 'a';
+  const append = Boolean(options.append);
   try {
-    const res = await fetch(`${HISTORY_API}?market=${market}&account_kind=auto&source=all&limit=20`);
+    let url = `${HISTORY_API}?market=${historyPanelMarket}&account_kind=auto&source=all&limit=${HISTORY_PANEL_BATCH}`;
+    if (append && historyPanelNextCursor) {
+      url += `&cursor=${encodeURIComponent(historyPanelNextCursor)}`;
+    }
+    const res = await fetch(url);
     if (!res.ok) return;
     const data = await parseResponseBody(res);
-    renderRunCenter(data.runs || []);
-  } catch (_) {}
+    const runs = toList(data.runs);
+    historyPanelHasMore = Boolean(data.has_more);
+    historyPanelNextCursor = data.next_cursor || null;
+    if (append) {
+      const existingKeys = new Set(historyRuns.map(r => `${r.created_at || ''}::${r.id}`));
+      const newRuns = runs.filter(r => !existingKeys.has(`${r.created_at || ''}::${r.id}`));
+      historyRuns = historyRuns.concat(newRuns.map(buildRunMetaFromListItem));
+    } else {
+      replaceHistoryRuns(runs);
+    }
+    renderRunCenter(historyRuns, { preserveData: true });
+  } catch (_) {
+  } finally {
+    historyPanelLoading = false;
+    renderRunCenter(historyRuns, { preserveData: true });
+  }
 }
 
 function getFilteredHistoryRuns() {
@@ -1158,11 +1485,32 @@ function renderRunCard(run) {
   `;
 }
 
-function renderRunCenter(runs) {
-  historyRuns = toList(runs).map(buildRunMetaFromListItem);
+let _historyScrollObserver = null;
+
+function setupHistoryScrollObserver(footerEl) {
+  if (!_historyScrollObserver) {
+    _historyScrollObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting && historyPanelHasMore && !historyPanelLoading) {
+          loadMoreHistoryRuns();
+        }
+      });
+    }, { rootMargin: '100px' });
+  }
+  _historyScrollObserver.disconnect();
+  if (footerEl) {
+    _historyScrollObserver.observe(footerEl);
+  }
+}
+
+function renderRunCenter(runs, options = {}) {
+  if (!options.preserveData) {
+    replaceHistoryRuns(runs);
+  }
   const filtered = getFilteredHistoryRuns();
   const filters = document.getElementById('run-history-filters');
   const list = document.getElementById('run-center-list');
+  const footer = document.getElementById('run-center-footer');
   const counts = {
     all: historyRuns.length,
     manual: historyRuns.filter(run => run.source === 'manual').length,
@@ -1183,6 +1531,7 @@ function renderRunCenter(runs) {
   if (!list) return;
   if (!filtered.length) {
     list.innerHTML = '<div class="run-center-empty">没有符合当前筛选条件的运行记录</div>';
+    if (footer) footer.innerHTML = '';
     if (!selectedHistoryRunMeta) {
       renderCaseEmptyState('当前筛选下没有可用的运行记录。');
     }
@@ -1190,6 +1539,12 @@ function renderRunCenter(runs) {
   }
 
   list.innerHTML = filtered.map(renderRunCard).join('');
+  if (footer) {
+    footer.innerHTML = historyPanelHasMore
+      ? `<button type="button" class="run-load-more" id="run-history-load-more" onclick="loadMoreHistoryRuns()" ${historyPanelLoading ? 'disabled' : ''}>${historyPanelLoading ? '加载中...' : '加载更多运行记录'}</button>`
+      : `<div class="run-center-status">${historyRuns.length ? `已加载 ${historyRuns.length} 条最近记录` : ''}</div>`;
+    setupHistoryScrollObserver(footer);
+  }
   if (selectedHistoryRunMeta) {
     const current = filtered.find(run => normalizeText(run.id, '') === normalizeText(selectedHistoryRunMeta.id, ''));
     if (!current) {
@@ -1200,7 +1555,12 @@ function renderRunCenter(runs) {
 
 function setHistoryFilter(source) {
   selectedHistorySource = source || 'all';
-  renderRunCenter(historyRuns);
+  renderRunCenter(historyRuns, { preserveData: true });
+}
+
+function loadMoreHistoryRuns() {
+  if (historyPanelLoading || !historyPanelHasMore) return;
+  loadHistoryPanel(historyPanelMarket || (document.getElementById('cfg-market')?.value || 'a'), { append: true });
 }
 
 async function selectHistoryRun(runId, options = {}) {
@@ -1209,7 +1569,7 @@ async function selectHistoryRun(runId, options = {}) {
 
   selectedHistoryRunMeta = { ...run };
   selectedCaseStage = stagePaneId('overview');
-  renderRunCenter(historyRuns);
+  renderRunCenter(historyRuns, { preserveData: true });
 
   if (!run.supports_case_view || !run.run_context_id) {
     selectedCaseSnapshot = null;
@@ -1228,6 +1588,9 @@ async function selectHistoryRun(runId, options = {}) {
     }
     if (token !== historySnapshotToken) return;
     selectedCaseSnapshot = body;
+    syncSnapshotCollectionsFromSteps(selectedCaseSnapshot);
+    selectedHistoryRunMeta = mergeRunMeta(selectedHistoryRunMeta, buildRunMetaFromSnapshot(body));
+    upsertHistoryRun(selectedHistoryRunMeta, { select: true });
     renderActiveCase();
   } catch (error) {
     if (token !== historySnapshotToken) return;

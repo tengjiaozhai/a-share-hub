@@ -15,6 +15,14 @@ let selectedHistoryRunMeta = null;
 let selectedCaseSnapshot = null;
 let selectedCaseStage = 'case-pane-overview';
 let historySnapshotToken = 0;
+let selectedPerformanceWindow = '30d';
+let historyPanelLoading = false;
+let historyPanelHasMore = false;
+let historyPanelNextCursor = null;
+let historyPanelMarket = 'a';
+let historyPanelLimit = 0;
+const HISTORY_PANEL_BATCH = 20;
+const HISTORY_PANEL_LIMIT_CAP = 200;
 
 const PAGE_SIZE = 20;
 const pag = {

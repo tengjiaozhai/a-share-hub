@@ -261,9 +261,12 @@ def test_history_returns_single_canonical_runs_list(test_app, pg_store):
     payload = response.json()
 
     assert response.status_code == 200
-    assert set(payload.keys()) == {"runs"}
+    assert set(payload.keys()) == {"runs", "cursor", "has_more", "next_cursor"}
     assert "auto_runs" not in payload
     assert "manual_runs" not in payload
+    assert payload["cursor"] is None
+    assert payload["has_more"] is False
+    assert payload["next_cursor"] is None
 
     runs = payload["runs"]
     assert len(runs) == 2
@@ -345,6 +348,121 @@ def test_history_manual_runs_link_case_view_by_run_context_id(test_app, pg_store
     workbench_response = client.get("/api/v1/dashboard/workbench?run_context_id=wrk-history-404")
     assert workbench_response.status_code == 200
     assert workbench_response.json()["latest_run"]["run_context_id"] == "wrk-history-404"
+
+
+def test_history_supports_cursor_pagination_for_incremental_loading(test_app, pg_store):
+    ensure_paper_ledger_tables(pg_store.engine)
+    pg_store.upsert_dashboard_run_summary(
+        run_context_id="wrk-history-101",
+        trade_date="2026-06-18",
+        decision_mode="mock",
+        execution_mode="decision",
+        capital_base=500_000,
+        status="completed",
+        execution_fee_total=0.0,
+        realized_pnl=0.0,
+        unrealized_pnl=0.0,
+        net_pnl=1.0,
+        started_at="2026-06-18T10:02:00+08:00",
+        finished_at="2026-06-18T10:03:00+08:00",
+        latest_workbench={"latest_run": {"run_context_id": "wrk-history-101", "watchlist": ["NVDA"]}},
+    )
+    pg_store.upsert_dashboard_run_summary(
+        run_context_id="wrk-history-102",
+        trade_date="2026-06-18",
+        decision_mode="mock",
+        execution_mode="decision",
+        capital_base=500_000,
+        status="completed",
+        execution_fee_total=0.0,
+        realized_pnl=0.0,
+        unrealized_pnl=0.0,
+        net_pnl=2.0,
+        started_at="2026-06-18T10:04:00+08:00",
+        finished_at="2026-06-18T10:05:00+08:00",
+        latest_workbench={"latest_run": {"run_context_id": "wrk-history-102", "watchlist": ["AAPL"]}},
+    )
+    pg_store.upsert_dashboard_run_summary(
+        run_context_id="wrk-history-103",
+        trade_date="2026-06-18",
+        decision_mode="mock",
+        execution_mode="decision",
+        capital_base=500_000,
+        status="completed",
+        execution_fee_total=0.0,
+        realized_pnl=0.0,
+        unrealized_pnl=0.0,
+        net_pnl=3.0,
+        started_at="2026-06-18T10:06:00+08:00",
+        finished_at="2026-06-18T10:07:00+08:00",
+        latest_workbench={"latest_run": {"run_context_id": "wrk-history-103", "watchlist": ["MSFT"]}},
+    )
+
+    client = TestClient(test_app)
+
+    first_page = client.get("/api/v1/dashboard/history?market=us&source=manual&limit=2")
+    assert first_page.status_code == 200
+    first_payload = first_page.json()
+
+    assert [run["id"] for run in first_payload["runs"]] == ["wrk-history-103", "wrk-history-102"]
+    assert first_payload["has_more"] is True
+    assert first_payload["cursor"] is None
+    assert first_payload["next_cursor"]
+
+    second_page = client.get(
+        f"/api/v1/dashboard/history?market=us&source=manual&limit=2&cursor={first_payload['next_cursor']}"
+    )
+    assert second_page.status_code == 200
+    second_payload = second_page.json()
+
+    assert [run["id"] for run in second_payload["runs"]] == ["wrk-history-101"]
+    assert second_payload["has_more"] is False
+    assert second_payload["cursor"] == first_payload["next_cursor"]
+    assert second_payload["next_cursor"] is None
+
+
+def test_performance_includes_window_metadata_and_comparison_cards(test_app, pg_store):
+    from src.paper_ledger.store import PaperLedgerStore
+
+    account_kind = "perf-meta-case"
+    ensure_paper_ledger_tables(pg_store.engine)
+    with Session(pg_store.engine) as session:
+        ledger = PaperLedgerStore(session)
+        account = ledger.get_or_create_account("a", account_kind)
+        ledger.create_nav_snapshot(
+            account_id=account.account_id,
+            trade_date=date(2026, 6, 16),
+            nav=100.0,
+            cash=100.0,
+            positions_value=0.0,
+        )
+        ledger.create_nav_snapshot(
+            account_id=account.account_id,
+            trade_date=date(2026, 6, 17),
+            nav=103.0,
+            cash=103.0,
+            positions_value=0.0,
+        )
+        ledger.create_nav_snapshot(
+            account_id=account.account_id,
+            trade_date=date(2026, 6, 18),
+            nav=108.0,
+            cash=108.0,
+            positions_value=0.0,
+        )
+
+    client = TestClient(test_app)
+    response = client.get(f"/api/v1/dashboard/performance?window=30d&account_kind={account_kind}")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["window"] == "30d"
+    assert payload["start_date"] == "2026-06-16"
+    assert payload["end_date"] == "2026-06-18"
+    assert payload["sample_count"] == 3
+    assert payload["window_return"] == 0.08
+    assert isinstance(payload["comparison_cards"], list)
+    assert {card["window"] for card in payload["comparison_cards"]} == {"7d", "30d", "90d", "ytd"}
 
 
 def test_old_run_endpoint_is_removed(test_app, monkeypatch):

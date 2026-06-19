@@ -96,6 +96,20 @@ def test_render_dashboard_html_contains_reconcile_renderer_hooks():
     assert "duration_ms" in html
 
 
+def test_render_dashboard_html_contains_incremental_history_and_window_switch_contract():
+    html = render_dashboard_html()
+    required_markers = [
+        'id="run-center-footer"',
+        'run-history-load-more',
+        'loadMoreHistoryRuns',
+        'setPerformanceWindow(',
+        "selectedPerformanceWindow = window || '7d'",
+        'timeline-summary',
+    ]
+    for marker in required_markers:
+        assert marker in html
+
+
 def test_dashboard_route_uses_rendered_split_html():
     client = TestClient(build_app())
     response = client.get("/dashboard")

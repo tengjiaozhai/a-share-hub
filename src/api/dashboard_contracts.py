@@ -22,6 +22,11 @@ class DashboardAutomationPayload(BaseModel):
 
 
 class DashboardPerformancePayload(BaseModel):
+    window: str
+    start_date: str | None
+    end_date: str | None
+    sample_count: int
+    window_return: float
     today_return: float
     month_return: float
     max_drawdown: float
@@ -51,6 +56,9 @@ class DashboardRunListItem(BaseModel):
 
 class DashboardHistoryPayload(BaseModel):
     runs: list[DashboardRunListItem]
+    cursor: str | None
+    has_more: bool
+    next_cursor: str | None
 
 
 class DashboardAlertPayload(BaseModel):

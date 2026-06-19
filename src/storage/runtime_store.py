@@ -1094,7 +1094,7 @@ class RuntimeStore:
         with self.engine.begin() as conn:
             rows = conn.execute(
                 select(DashboardRunSummaryRow)
-                .order_by(DashboardRunSummaryRow.started_at.desc())
+                .order_by(DashboardRunSummaryRow.started_at.desc(), DashboardRunSummaryRow.run_context_id.desc())
                 .limit(limit)
             ).fetchall()
         return [

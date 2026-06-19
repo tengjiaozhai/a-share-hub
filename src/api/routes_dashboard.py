@@ -1,5 +1,7 @@
 import ast
 import asyncio
+import base64
+import binascii
 import json
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -75,6 +77,7 @@ def _probe_services() -> dict:
 router = APIRouter()
 
 _HISTORY_LIMIT = 100
+_HISTORY_CURSOR_SEPARATOR = "|"
 
 
 def _build_alpha_panel_payload(store: RuntimeStore) -> dict:
@@ -244,25 +247,29 @@ def get_performance(
     market: str = Query(default="a"),
     account_kind: str = Query(default="auto"),
     window: str = Query(default="30d"),
+    store: RuntimeStore = Depends(get_runtime_store),
 ) -> dict:
     from sqlalchemy.orm import Session as OrmSession
     from src.paper_ledger.store import PaperLedgerStore
-    from src.storage.dependencies import get_runtime_store
 
-    engine = get_runtime_store().engine
+    engine = store.engine
     with OrmSession(engine) as session:
         ledger = PaperLedgerStore(session)
         account = ledger.get_or_create_account(market, account_kind)
-
-        days_map = {"7d": 7, "30d": 30, "90d": 90, "180d": 180, "365d": 365}
-        days = days_map.get(window, 30)
-        nav_rows = ledger.get_nav_history(account.account_id, days=days)
+        latest_rows = ledger.get_nav_history(account.account_id, days=1)
+        latest_trade_date = latest_rows[0].trade_date if latest_rows else None
+        window_start = _resolve_performance_window_start(window, latest_trade_date)
+        nav_rows = (
+            ledger.get_nav_range(account.account_id, start_date=window_start, end_date=latest_trade_date, limit=366)
+            if latest_trade_date is not None
+            else []
+        )
         history = [
             {"trade_date": row.trade_date.isoformat(), "nav": float(row.nav)}
             for row in nav_rows
         ]
 
-        perf = _build_performance_payload(history)
+        perf = _build_performance_payload(history, window=window)
 
         windows = ["7d", "30d", "90d", "ytd"]
         comparison = ledger.get_comparison_windows(account.account_id, windows)
@@ -287,15 +294,17 @@ def get_history(
     account_kind: str = Query(default="auto"),
     source: str = Query(default="all", description="auto, manual, backfill, or all"),
     limit: int = Query(default=20, ge=1, le=100),
+    cursor: str | None = Query(default=None),
     store: RuntimeStore = Depends(get_runtime_store),
 ) -> dict:
     from sqlalchemy.orm import Session as OrmSession
     from src.paper_ledger.store import PaperLedgerStore
 
+    fetch_limit = max(limit * 4, 100)
     engine = store.engine
     with OrmSession(engine) as session:
         ledger = PaperLedgerStore(session)
-        auto_rows = ledger.get_run_history(market, source=source, limit=limit)
+        auto_rows = ledger.get_run_history(market, source=source, limit=fetch_limit)
         auto_runs = [
             {
                 "id": row.run_id,
@@ -320,13 +329,20 @@ def get_history(
             if row.run_source == "auto"
         ]
 
-    manual_runs = _build_manual_history_runs(store, market=market, limit=limit) if source in {"all", "manual"} else []
-    runs = sorted(
-        [*manual_runs, *auto_runs],
-        key=lambda item: item.get("created_at") or "",
-        reverse=True,
-    )[:limit]
-    return {"runs": runs}
+    manual_runs = _build_manual_history_runs(store, market=market, limit=fetch_limit) if source in {"all", "manual"} else []
+    merged_runs = _apply_history_cursor(
+        sorted([*manual_runs, *auto_runs], key=_history_sort_key, reverse=True),
+        cursor,
+    )
+    page_runs = merged_runs[:limit]
+    has_more = len(merged_runs) > limit
+    next_cursor = _encode_history_cursor(page_runs[-1]) if has_more and page_runs else None
+    return {
+        "runs": page_runs,
+        "cursor": cursor,
+        "has_more": has_more,
+        "next_cursor": next_cursor,
+    }
 
 
 def _build_manual_history_runs(store: RuntimeStore, market: str, limit: int) -> list[dict]:
@@ -394,20 +410,35 @@ def _parse_watchlist_count(raw_watchlist: object) -> int:
     return len(parsed) if isinstance(parsed, list) else 0
 
 
-def _build_performance_payload(history: list[dict]) -> dict:
+def _build_performance_payload(history: list[dict], window: str = "30d") -> dict:
     """根据 nav 历史计算今日/月度收益、最大回撤、净值曲线"""
     if not history:
-        return {"today_return": 0.0, "month_return": 0.0, "max_drawdown": 0.0, "nav_curve": []}
+        return {
+            "window": window,
+            "start_date": None,
+            "end_date": None,
+            "sample_count": 0,
+            "window_return": 0.0,
+            "today_return": 0.0,
+            "month_return": 0.0,
+            "max_drawdown": 0.0,
+            "nav_curve": [],
+        }
 
     sorted_history = sorted(history, key=lambda row: row.get("trade_date") or "")
     nav_values = [float(row.get("nav", 0.0)) for row in sorted_history]
+    start_date = sorted_history[0].get("trade_date")
+    end_date = sorted_history[-1].get("trade_date")
+    sample_count = len(sorted_history)
     today_return = 0.0
     month_return = 0.0
     max_drawdown = 0.0
+    window_return = 0.0
 
     if len(nav_values) >= 2:
         today_return = round((nav_values[-1] - nav_values[-2]) / nav_values[-2], 6) if nav_values[-2] else 0.0
         month_return = round((nav_values[-1] - nav_values[0]) / nav_values[0], 6) if nav_values[0] else 0.0
+        window_return = month_return
 
         peak = nav_values[0]
         for nav in nav_values:
@@ -424,11 +455,53 @@ def _build_performance_payload(history: list[dict]) -> dict:
         for row in sorted_history
     ]
     return {
+        "window": window,
+        "start_date": start_date,
+        "end_date": end_date,
+        "sample_count": sample_count,
+        "window_return": window_return,
         "today_return": today_return,
         "month_return": month_return,
         "max_drawdown": max_drawdown,
         "nav_curve": nav_curve,
     }
+
+
+def _resolve_performance_window_start(window: str, latest_trade_date):
+    if latest_trade_date is None:
+        return None
+    if window == "ytd":
+        return latest_trade_date.replace(month=1, day=1)
+    days_map = {"7d": 7, "30d": 30, "90d": 90, "180d": 180, "365d": 365}
+    days = days_map.get(window, 30)
+    return latest_trade_date - timedelta(days=days - 1)
+
+
+def _history_sort_key(item: dict) -> tuple[str, str]:
+    return (item.get("created_at") or "", item.get("id") or "")
+
+
+def _encode_history_cursor(item: dict) -> str:
+    raw_cursor = f"{item.get('created_at') or ''}{_HISTORY_CURSOR_SEPARATOR}{item.get('id') or ''}"
+    return base64.urlsafe_b64encode(raw_cursor.encode("utf-8")).decode("ascii")
+
+
+def _decode_history_cursor(cursor: str) -> tuple[str, str]:
+    try:
+        decoded = base64.urlsafe_b64decode(cursor.encode("ascii")).decode("utf-8")
+    except (binascii.Error, ValueError, UnicodeDecodeError):
+        raise HTTPException(status_code=400, detail="invalid history cursor")
+    parts = decoded.split(_HISTORY_CURSOR_SEPARATOR, 1)
+    if len(parts) != 2:
+        raise HTTPException(status_code=400, detail="invalid history cursor")
+    return parts[0], parts[1]
+
+
+def _apply_history_cursor(runs: list[dict], cursor: str | None) -> list[dict]:
+    if cursor is None:
+        return runs
+    cursor_key = _decode_history_cursor(cursor)
+    return [run for run in runs if _history_sort_key(run) < cursor_key]
 
 
 def _build_automation_payload(

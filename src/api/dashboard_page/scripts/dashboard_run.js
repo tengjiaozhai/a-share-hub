@@ -78,6 +78,62 @@ function buildRunStreamSteps(envelope, payload) {
   return steps;
 }
 
+function mergeRunHistoryCollections(envelope, snapshot, payload, steps) {
+  if (!snapshot || typeof snapshot !== 'object') return;
+  snapshot.history = snapshot.history || {};
+  const derived = typeof deriveHistoryFromSteps === 'function' ? deriveHistoryFromSteps(steps) : {};
+  const mapping = [
+    ['decisions', 'decision_items'],
+    ['targets', 'target_items'],
+    ['orders', 'order_items'],
+    ['reconcile', 'reconcile_items'],
+  ];
+  mapping.forEach(([historyKey, payloadKey]) => {
+    if (Array.isArray(payload[payloadKey])) {
+      snapshot.history[historyKey] = payload[payloadKey];
+      return;
+    }
+    if (Array.isArray(derived[historyKey]) && derived[historyKey].length) {
+      snapshot.history[historyKey] = derived[historyKey];
+    }
+  });
+
+  const nextEvent = {
+    created_at: envelope.created_at,
+    event_type: envelope.event_type,
+    level: normalizeText(envelope.status, '').toLowerCase() === 'failed' ? 'error' : envelope.event_type,
+    message: payload.error || payload.message || '',
+    payload,
+  };
+  const events = Array.isArray(snapshot.history.events) ? snapshot.history.events.slice() : [];
+  if (nextEvent.message || nextEvent.event_type) {
+    snapshot.history.events = [...events, nextEvent];
+  }
+}
+
+function refreshHistoryMetaFromSnapshot(runContextId) {
+  if (!selectedCaseSnapshot || !selectedHistoryRunMeta) return;
+  const counts = getCaseCounts(selectedCaseSnapshot);
+  selectedHistoryRunMeta = mergeRunMeta(selectedHistoryRunMeta, {
+    id: runContextId,
+    run_context_id: runContextId,
+    decision_count: counts.decisions.length,
+    target_count: counts.targets.length,
+    order_count: counts.orders.length,
+    net_pnl: selectedCaseSnapshot.latest_run?.run_pnl_summary?.net_pnl ?? selectedHistoryRunMeta.net_pnl,
+    error_message: selectedCaseSnapshot.latest_run?.error_message || selectedHistoryRunMeta.error_message,
+  });
+  upsertHistoryRun(selectedHistoryRunMeta, { select: true });
+}
+
+function refreshHistoryAfterRun(runContextId) {
+  const market = document.getElementById('cfg-market')?.value || historyPanelMarket || 'a';
+  loadHistoryPanel(market);
+  if (runContextId && normalizeText(selectedHistoryRunMeta?.run_context_id, '') === normalizeText(runContextId, '')) {
+    selectHistoryRun(runContextId).catch(() => {});
+  }
+}
+
 function applyRunStreamEvent(envelope) {
   if (!envelope || typeof envelope !== 'object') return;
   const payload = envelope.payload;
@@ -102,6 +158,7 @@ function applyRunStreamEvent(envelope) {
       run_pnl_summary: payload.run_pnl_summary || selectedCaseSnapshot.latest_run?.run_pnl_summary,
       reconcile_items: payload.reconcile_items || selectedCaseSnapshot.latest_run?.reconcile_items,
     };
+    mergeRunHistoryCollections(envelope, selectedCaseSnapshot, payload, steps);
   }
   if (selectedHistoryRunMeta && normalizeText(selectedHistoryRunMeta.run_context_id, '') === runContextId) {
     selectedHistoryRunMeta.status = envelope.status || selectedHistoryRunMeta.status;
@@ -110,6 +167,11 @@ function applyRunStreamEvent(envelope) {
     }
     if (payload.error) {
       selectedHistoryRunMeta.error_message = payload.error;
+    }
+    if (selectedCaseSnapshot) {
+      refreshHistoryMetaFromSnapshot(runContextId);
+    } else {
+      upsertHistoryRun(selectedHistoryRunMeta, { select: true });
     }
   }
 
@@ -129,8 +191,7 @@ function applyRunStreamEvent(envelope) {
     renderReconcile(payload.reconcile_items);
   }
   if (selectedHistoryRunMeta && normalizeText(selectedHistoryRunMeta.run_context_id, '') === runContextId && selectedCaseSnapshot) {
-    renderCaseOverview(selectedHistoryRunMeta, selectedCaseSnapshot);
-    renderCaseStageRail(selectedHistoryRunMeta, selectedCaseSnapshot);
+    renderActiveCase();
   }
 }
 
@@ -175,6 +236,7 @@ function connectRunStream(runContextId) {
     if (!envelope) return;
     applyRunStreamEvent(envelope);
     try { await loadRunSnapshot(envelope.run_context_id); } catch (_) { /* 快照加载失败也不影响结束 */ }
+    refreshHistoryAfterRun(envelope.run_context_id);
     endRunStream('本轮完成', 'success');
   });
   runEventSource.addEventListener('run.failed', async (event) => {
@@ -182,6 +244,7 @@ function connectRunStream(runContextId) {
     if (!envelope) return;
     applyRunStreamEvent(envelope);
     try { await loadRunSnapshot(envelope.run_context_id); } catch (_) { /* 快照加载失败也不影响结束 */ }
+    refreshHistoryAfterRun(envelope.run_context_id);
     endRunStream(envelope.payload?.message || '运行失败', 'error');
   });
   runEventSource.onerror = () => {

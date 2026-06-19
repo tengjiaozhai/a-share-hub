@@ -103,6 +103,7 @@
     <div class="card">
       <div class="card-head">净值曲线</div>
       <div class="card-body">
+        <div class="nav-curve-title" id="nav-curve-title">净值曲线</div>
         <canvas id="perf-nav-canvas" class="nav-canvas"></canvas>
       </div>
     </div>
@@ -111,10 +112,10 @@
       <div class="card-head">区间表现对比</div>
       <div class="card-body">
         <div class="range-pills" id="perf-range-pills">
-          <button class="pill-btn active" data-window="7d">7天</button>
-          <button class="pill-btn" data-window="30d">30天</button>
-          <button class="pill-btn" data-window="90d">90天</button>
-          <button class="pill-btn" data-window="ytd">YTD</button>
+          <button class="pill-btn active" data-window="7d" onclick="setPerformanceWindow('7d', this)">7天</button>
+          <button class="pill-btn" data-window="30d" onclick="setPerformanceWindow('30d', this)">30天</button>
+          <button class="pill-btn" data-window="90d" onclick="setPerformanceWindow('90d', this)">90天</button>
+          <button class="pill-btn" data-window="ytd" onclick="setPerformanceWindow('ytd', this)">YTD</button>
         </div>
         <div class="range-data" id="range-data">
           <span class="range-placeholder">选择区间查看表现数据</span>
@@ -132,6 +133,7 @@
             <span>运行一次模拟交易后，这里会出现自动和手动记录，点击即可查看案件视图。</span>
           </div>
         </div>
+        <div class="run-center-footer" id="run-center-footer"></div>
       </div>
     </div>
   </main>
