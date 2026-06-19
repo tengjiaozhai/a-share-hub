@@ -12,6 +12,7 @@ SYSTEM_USER_ID = "system"
 
 
 def upgrade() -> None:
+    # a_share_watchlist
     op.add_column(
         "a_share_watchlist",
         sa.Column(
@@ -21,8 +22,9 @@ def upgrade() -> None:
             server_default=SYSTEM_USER_ID,
         ),
     )
-    op.execute("UPDATE a_share_watchlist SET user_id = 'system' WHERE user_id IS NULL")
-    op.drop_index("ix_a_share_watchlist_symbol", table_name="a_share_watchlist")
+    # 先删 unique constraint（顺带删 unique index），再尝试删非唯一索引
+    op.execute("ALTER TABLE a_share_watchlist DROP CONSTRAINT IF EXISTS a_share_watchlist_symbol_key")
+    op.execute("DROP INDEX IF EXISTS ix_a_share_watchlist_symbol")
     op.create_index(
         "ix_a_share_watchlist_user_id", "a_share_watchlist", ["user_id"], unique=False
     )
@@ -32,6 +34,7 @@ def upgrade() -> None:
         ["user_id", "symbol"],
     )
 
+    # us_watchlist
     op.add_column(
         "us_watchlist",
         sa.Column(
@@ -41,8 +44,8 @@ def upgrade() -> None:
             server_default=SYSTEM_USER_ID,
         ),
     )
-    op.execute("UPDATE us_watchlist SET user_id = 'system' WHERE user_id IS NULL")
-    op.drop_index("ix_us_watchlist_symbol", table_name="us_watchlist")
+    op.execute("ALTER TABLE us_watchlist DROP CONSTRAINT IF EXISTS us_watchlist_symbol_key")
+    op.execute("DROP INDEX IF EXISTS ix_us_watchlist_symbol")
     op.create_index(
         "ix_us_watchlist_user_id", "us_watchlist", ["user_id"], unique=False
     )
@@ -52,6 +55,7 @@ def upgrade() -> None:
         ["user_id", "symbol"],
     )
 
+    # alpha_watchlist_items
     op.add_column(
         "alpha_watchlist_items",
         sa.Column(
@@ -61,7 +65,6 @@ def upgrade() -> None:
             server_default=SYSTEM_USER_ID,
         ),
     )
-    op.execute("UPDATE alpha_watchlist_items SET user_id = 'system' WHERE user_id IS NULL")
     op.create_index(
         "ix_alpha_watchlist_items_user_id",
         "alpha_watchlist_items",
@@ -74,6 +77,7 @@ def upgrade() -> None:
         ["user_id", "symbol"],
     )
 
+    # user_preferences: 改主键为 (user_id, key)
     op.add_column(
         "user_preferences",
         sa.Column(
@@ -83,7 +87,6 @@ def upgrade() -> None:
             server_default=SYSTEM_USER_ID,
         ),
     )
-    op.execute("UPDATE user_preferences SET user_id = 'system' WHERE user_id IS NULL")
     op.drop_constraint("user_preferences_pkey", "user_preferences", type_="primary")
     op.create_primary_key(
         "user_preferences_pkey", "user_preferences", ["user_id", "key"]
