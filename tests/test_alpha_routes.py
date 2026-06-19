@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from src.alpha.portfolio_service import AlphaPortfolioService
 from src.api import routes_alpha
 from src.main import build_app
 
@@ -337,6 +338,68 @@ def test_alpha_capabilities_report_manual_mode(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["mode"] == "manual"
+
+
+def test_generate_portfolio_report_endpoint(test_app, pg_store):
+    ticket_id = pg_store.insert_alpha_ticket(
+        asset_symbol="AAPLx",
+        underlying_symbol="AAPL",
+        action="BUY",
+        thesis="open position",
+        suggested_quantity=2.0,
+        suggested_limit_price=200.0,
+        expires_at="2026-06-01T16:00:00+08:00",
+    )
+    pg_store.insert_alpha_manual_fill(
+        ticket_id=ticket_id,
+        operator_id="trader-01",
+        executed_quantity=2.0,
+        executed_price=200.0,
+        notes="buy fill",
+    )
+    AlphaPortfolioService(pg_store).rebuild_from_manual_fills(
+        opening_cash=10_000.0,
+        price_map={"AAPLx": 210.0},
+    )
+    client = _authenticated_client(test_app)
+
+    response = client.post(
+        "/api/v1/alpha/portfolio/report",
+        json={"symbols": [], "opening_cash": 10_000.0},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "generated_at" in body
+    assert "portfolio_snapshot" in body
+    assert len(body["items"]) == 1
+    item = body["items"][0]
+    assert item["symbol"] == "AAPLx"
+    assert item["unrealized_pnl"] == 20.0
+    assert item["recommendation"]["action"] in {"HOLD", "ADD", "REDUCE", "EXIT", "WATCH"}
+
+
+def _authenticated_client(test_app):
+    from src.core.config import Settings
+
+    client = TestClient(test_app)
+    register = client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "reporter01",
+            "email": "reporter01@example.com",
+            "password": "TestPass123!",
+        },
+    )
+    assert register.status_code in (200, 201, 409)
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"account": "reporter01", "password": "TestPass123!"},
+    )
+    assert login.status_code == 200
+    cookie_name = Settings().auth_cookie_name
+    assert cookie_name in client.cookies
+    return client
 
 
 def test_alpha_submit_returns_409_when_capability_disabled(monkeypatch):

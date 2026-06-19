@@ -5,6 +5,8 @@ const ALPHA_CAPABILITIES_API = '/api/v1/alpha/capabilities';
 const ALPHA_PORTFOLIO_API = '/api/v1/alpha/portfolio';
 const ALPHA_SCAN_API = '/api/v1/alpha/research/scan';
 const ALPHA_PROPOSE_API = '/api/v1/alpha/research/propose-top-ticket';
+const ALPHA_REPORT_API = '/api/v1/alpha/portfolio/report';
+const VALID_REPORT_ACTIONS = ['HOLD', 'ADD', 'REDUCE', 'EXIT', 'WATCH'];
 
 let alphaTicketCache = [];
 
@@ -32,6 +34,24 @@ function alphaGuidanceLabel(guidance) {
       return '空仓忽略';
     default:
       return '继续观察';
+  }
+}
+
+function alphaReportActionLabel(action) {
+  const normalized = String(action || '').toUpperCase();
+  switch (normalized) {
+    case 'HOLD':
+      return '继续持有';
+    case 'ADD':
+      return '加仓观察';
+    case 'REDUCE':
+      return '减仓';
+    case 'EXIT':
+      return '止损/退出';
+    case 'WATCH':
+      return '观察';
+    default:
+      return action || '--';
   }
 }
 
@@ -483,3 +503,125 @@ async function proposeTopAlphaTicket() {
     alert('生成建议单失败: ' + error.message);
   }
 }
+
+function renderAlphaReport(report) {
+  const body = document.getElementById('alpha-report-body');
+  if (!body) return;
+  const items = toList(report?.items);
+  if (!items.length) {
+    body.innerHTML = '<div class="alpha-report-empty">当前无持仓可分析</div>';
+    return;
+  }
+  const windowLabel = normalizeText(report?.backtest_window, '60d');
+  const list = items.map((item) => {
+    const symbol = normalizeText(item.symbol, '--');
+    const position = item.position || item;
+    const shadow = item.shadow || {};
+    const backtest = item.backtest || {};
+    const recommendation = item.recommendation || {};
+    const riskNotes = toList(item.risk_notes);
+
+    const action = String(recommendation.action || 'WATCH').toUpperCase();
+    const actionClass = VALID_REPORT_ACTIONS.includes(action) ? action.toLowerCase() : 'watch';
+    const actionLabel = alphaReportActionLabel(action);
+    const recConfidence = formatConfidence(recommendation.confidence);
+    const shadowAction = String(shadow.action || 'UNKNOWN').toUpperCase();
+    const shadowConfidence = formatConfidence(shadow.confidence);
+
+    const quantity = normalizeText(position.quantity, '--');
+    const avgCost = formatNumber(position.avg_cost, 4);
+    const markPrice = formatNumber(position.mark_price, 4);
+    const pnl = Number(position.unrealized_pnl);
+    const pnlClass = Number.isFinite(pnl) && pnl >= 0 ? 'green' : 'red';
+    const pnlText = formatCurrency(pnl);
+
+    const btStatus = normalizeText(backtest.status, 'no_data');
+    const btScore = normalizeText(backtest.score, 'N/A');
+    const recReason = normalizeText(recommendation.reason, '无明确建议');
+
+    let riskNotesHtml = '';
+    if (riskNotes.length) {
+      riskNotesHtml = `<ul>${riskNotes
+        .map((note) => `<li>${escapeHtml(String(note))}</li>`)
+        .join('')}</ul>`;
+    }
+
+    return `<div class="alpha-report-item" data-symbol="${escapeHtml(symbol)}">
+      <div class="alpha-report-item-head">
+        <span class="alpha-report-symbol">${escapeHtml(symbol)}</span>
+        <span class="alpha-report-recommendation ${actionClass}">${escapeHtml(actionLabel)}</span>
+      </div>
+      <div class="alpha-report-grid">
+        <span class="alpha-report-grid-label">当前仓位</span><span class="alpha-report-grid-value">${escapeHtml(quantity)}</span>
+        <span class="alpha-report-grid-label">成本</span><span class="alpha-report-grid-value">${escapeHtml(avgCost)}</span>
+        <span class="alpha-report-grid-label">现价</span><span class="alpha-report-grid-value">${escapeHtml(markPrice)}</span>
+        <span class="alpha-report-grid-label">浮盈</span><span class="alpha-report-grid-value ${pnlClass}">${escapeHtml(pnlText)}</span>
+      </div>
+      <div class="alpha-report-grid">
+        <span class="alpha-report-grid-label">模拟建议</span><span class="alpha-report-grid-value">${escapeHtml(shadowAction)} (${escapeHtml(shadowConfidence)})</span>
+        <span class="alpha-report-grid-label">综合建议</span><span class="alpha-report-grid-value">${escapeHtml(actionLabel)} (${escapeHtml(recConfidence)})</span>
+      </div>
+      <div class="alpha-report-backtest">
+        <span>回测 (${escapeHtml(windowLabel)}): ${escapeHtml(btStatus)}</span>
+        <span class="alpha-report-score">${escapeHtml(btScore)}</span>
+      </div>
+      <div class="alpha-report-risk">
+        <strong>${escapeHtml(actionLabel)}:</strong> ${escapeHtml(recReason)}
+        ${riskNotesHtml}
+      </div>
+    </div>`;
+  }).join('');
+  body.innerHTML = `<div class="alpha-report-list">${list}</div>`;
+}
+
+function showAlphaReportLoading() {
+  const body = document.getElementById('alpha-report-body');
+  if (!body) return;
+  body.innerHTML = '<div class="alpha-report-loading">正在生成持仓分析报告…</div>';
+}
+
+function hideAlphaReportLoading() {
+  const body = document.getElementById('alpha-report-body');
+  if (!body) return;
+  body.innerHTML = '';
+}
+
+async function loadAlphaReport() {
+  const windowSelect = document.getElementById('alpha-report-window');
+  const shadowToggle = document.getElementById('alpha-report-include-shadow');
+  const backtestToggle = document.getElementById('alpha-report-include-backtest');
+  const body = document.getElementById('alpha-report-body');
+  if (!body) return;
+
+  const payload = {
+    symbols: [],
+    include_shadow: shadowToggle?.checked !== false,
+    include_backtest: backtestToggle?.checked !== false,
+    backtest_window: windowSelect?.value || '60d',
+    opening_cash: 10000,
+  };
+
+  const btn = document.getElementById('alpha-report-generate');
+  if (btn) btn.disabled = true;
+  showAlphaReportLoading();
+
+  try {
+    const res = await fetch(ALPHA_REPORT_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await parseResponseBody(res);
+    if (!res.ok) {
+      throw new Error(extractErrorMessage(data, `报告生成失败 (${res.status})`));
+    }
+    renderAlphaReport(data);
+  } catch (error) {
+    body.innerHTML = `<div class="alpha-report-empty" style="color:var(--danger)">报告生成失败: ${escapeHtml(error.message)}</div>`;
+    addAlert('err', `持仓分析报告失败: ${error.message}`);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+document.getElementById('alpha-report-generate')?.addEventListener('click', loadAlphaReport);

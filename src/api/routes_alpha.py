@@ -10,6 +10,7 @@ from src.alpha.execution_models import AlphaExecutionRequest
 from src.alpha.execution_service import AlphaExecutionService
 from src.alpha.portfolio_service import AlphaPortfolioService
 from src.alpha.reconciliation import reconcile_alpha_positions
+from src.alpha.report_service import AlphaPortfolioReportService
 from src.alpha.research_service import AlphaResearchService
 from src.alpha.service import AlphaMarketService
 from src.alpha.signal_engine import AlphaSignalEngine
@@ -50,6 +51,14 @@ class RecordAlphaFillRequest(BaseModel):
 class RebuildAlphaPortfolioRequest(BaseModel):
     opening_cash: float
     price_map: dict[str, float] = {}
+
+
+class GeneratePortfolioReportRequest(BaseModel):
+    symbols: list[str] = []
+    include_shadow: bool = True
+    include_backtest: bool = True
+    backtest_window: str = "60d"
+    opening_cash: float = 10_000.0
 
 
 async def get_alpha_service() -> AsyncGenerator[AlphaMarketService, None]:
@@ -172,6 +181,15 @@ def rebuild_alpha_portfolio(
         opening_cash=payload.opening_cash,
         price_map=payload.price_map,
     )
+
+
+@router.post("/portfolio/report")
+def generate_portfolio_report(
+    payload: GeneratePortfolioReportRequest,
+    store: RuntimeStore = Depends(get_runtime_store),
+) -> dict:
+    service = AlphaPortfolioReportService(store=store)
+    return service.generate_report(payload.model_dump())
 
 
 @router.post("/reconciliation/run")

@@ -91,6 +91,35 @@
       </div>
     </article>
 
+    <div class="card alpha-report-card" id="alpha-report-card">
+      <div class="card-head alpha-report-head">
+        <span>持仓分析报告</span>
+        <div class="alpha-report-controls">
+          <select id="alpha-report-window" class="alpha-report-select">
+            <option value="30d">30日</option>
+            <option value="60d" selected>60日</option>
+            <option value="120d">120日</option>
+          </select>
+          <label class="alpha-report-toggle">
+            <input type="checkbox" id="alpha-report-include-shadow" checked>
+            <span>包含模拟交易</span>
+          </label>
+          <label class="alpha-report-toggle">
+            <input type="checkbox" id="alpha-report-include-backtest" checked>
+            <span>包含历史回测</span>
+          </label>
+          <button type="button" id="alpha-report-generate" class="run-btn accent">
+            生成持仓分析报告
+          </button>
+        </div>
+      </div>
+      <div class="card-body alpha-report-body" id="alpha-report-body">
+        <div class="alpha-report-empty">
+          点击右上角按钮生成持仓分析报告
+        </div>
+      </div>
+    </div>
+
     <article class="alpha-panel alpha-panel-history">
       <div class="alpha-panel-head">成交 / Multi-leg 历史</div>
       <div class="alpha-panel-body">
