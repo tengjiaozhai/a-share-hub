@@ -2,7 +2,6 @@
 .env
 .env.local
 .env.*.local
-alembic.ini
 
 # Python
 **/__pycache__/
