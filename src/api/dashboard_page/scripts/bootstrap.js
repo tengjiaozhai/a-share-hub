@@ -140,6 +140,8 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
+document.getElementById('drawer-backdrop')?.addEventListener('click', closeCaseDrawer);
+
 loadDashboard();
 updateModeStatus();
 usInit();

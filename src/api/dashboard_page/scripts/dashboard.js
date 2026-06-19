@@ -13,6 +13,34 @@ function displayTimeValue(raw) {
   return formatted === '--' ? '未记录' : formatted;
 }
 
+function isCaseDrawerOpen() {
+  return document.getElementById('case-drawer')?.classList.contains('open');
+}
+
+function openCaseDrawer(runId) {
+  var drawer = document.getElementById('case-drawer');
+  var backdrop = document.getElementById('drawer-backdrop');
+  if (!drawer || !backdrop) return;
+  if (drawer.dataset.activeRun === runId && drawer.classList.contains('open')) {
+    return;
+  }
+  drawer.dataset.activeRun = runId;
+  drawer.classList.add('open');
+  drawer.setAttribute('aria-hidden', 'false');
+  backdrop.classList.add('open');
+  backdrop.setAttribute('aria-hidden', 'false');
+}
+
+function closeCaseDrawer() {
+  var drawer = document.getElementById('case-drawer');
+  var backdrop = document.getElementById('drawer-backdrop');
+  if (!drawer || !backdrop) return;
+  drawer.classList.remove('open');
+  drawer.setAttribute('aria-hidden', 'true');
+  backdrop.classList.remove('open');
+  backdrop.setAttribute('aria-hidden', 'true');
+}
+
 function switchTab(btn, paneId) {
   const isCasePane = normalizeText(paneId, '').startsWith('case-pane-');
   const buttonGroup = btn?.parentElement;
@@ -1609,6 +1637,7 @@ async function selectHistoryRun(runId, options = {}) {
   selectedHistoryRunMeta = { ...run };
   selectedCaseStage = stagePaneId('overview');
   renderRunCenter(historyRuns, { preserveData: true });
+  openCaseDrawer(runId);
 
   if (!run.supports_case_view || !run.run_context_id) {
     selectedCaseSnapshot = null;
