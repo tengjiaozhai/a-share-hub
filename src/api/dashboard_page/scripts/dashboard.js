@@ -1488,6 +1488,7 @@ function renderRunCard(run) {
   const active = selectedHistoryRunMeta && normalizeText(selectedHistoryRunMeta.id, '') === normalizeText(run.id, '');
   const statusClass = runStatusClass(run.status);
   const netPnl = formatSignedCurrency(run.net_pnl);
+  const pnlClass = run.net_pnl > 0 ? 'green' : (run.net_pnl < 0 ? 'red' : '');
   const details = [
     run.trade_date || '--',
     run.market || '--',
@@ -1515,7 +1516,7 @@ function renderRunCard(run) {
       </div>
       <div class="run-card-badges">
         ${counts.map(item => `<span class="run-mini-chip">${escapeHtml(item)}</span>`).join('')}
-        <span class="run-mini-chip pnl">${escapeHtml(netPnl)}</span>
+        <span class="run-mini-chip pnl ${pnlClass}">${escapeHtml(netPnl)}</span>
       </div>
       <div class="run-card-note ${note ? 'show' : ''}">${escapeHtml(note || (run.decision_mode ? `${run.decision_mode} · ${run.execution_mode || '--'}` : ''))}</div>
       ${hint}
