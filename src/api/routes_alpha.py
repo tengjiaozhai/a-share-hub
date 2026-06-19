@@ -41,7 +41,10 @@ class RecordAlphaFillRequest(BaseModel):
     operator_id: str
     executed_quantity: float
     executed_price: float
+    executed_at: str | None = None
     notes: str
+    rebuild_opening_cash: float | None = None
+    rebuild_price_map: dict[str, float] = {}
 
 
 class RebuildAlphaPortfolioRequest(BaseModel):
@@ -141,8 +144,18 @@ def record_alpha_fill(ticket_id: str, payload: RecordAlphaFillRequest, store: Ru
     ticket_exists = any(t["ticket_id"] == ticket_id for t in tickets)
     if not ticket_exists:
         raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} not found")
-    fill_id = store.insert_alpha_manual_fill(ticket_id=ticket_id, **payload.model_dump())
-    return {"ticket_id": ticket_id, "fill_id": fill_id, "recorded": True}
+    payload_dict = payload.model_dump()
+    rebuild_opening_cash = payload_dict.pop("rebuild_opening_cash")
+    rebuild_price_map = payload_dict.pop("rebuild_price_map")
+    fill_id = store.insert_alpha_manual_fill(ticket_id=ticket_id, **payload_dict)
+    response = {"ticket_id": ticket_id, "fill_id": fill_id, "recorded": True, "portfolio_rebuilt": False}
+    if rebuild_opening_cash is not None:
+        response["portfolio"] = AlphaPortfolioService(store).rebuild_portfolio(
+            opening_cash=rebuild_opening_cash,
+            price_map=rebuild_price_map,
+        )
+        response["portfolio_rebuilt"] = True
+    return response
 
 
 @router.get("/portfolio")

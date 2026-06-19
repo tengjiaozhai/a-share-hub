@@ -9,24 +9,26 @@ v1 采用“手动回填”为唯一数据来源，不接 API 自动同步，不
 ## Key Changes
 
 - 后端复用现有 `alpha_manual_fills`、`alpha_positions`、`alpha_portfolio_snapshots`，补齐面向前端的持仓助手接口：记录成交、查看成交历史、重建持仓、查看当前持仓摘要。
-- 每笔真实成交必须记录：标的、方向、数量、成交价、成交时间、备注；同一标的允许多段买入和部分卖出。
+- 成交回填收敛到现有 ticket fill 权威入口，不再新增并行 holdings fill 路径；`alpha_manual_fills` 仍是唯一成交账本来源。
+- 每笔真实成交必须记录：标的、方向、数量、成交价、真实成交时间、备注；同一标的允许多段买入和部分卖出。
+- 成交回填可携带重建参数，录入后立即按所有手工成交重建当前持仓和组合快照。
 - 仪表盘 Alpha 页从“建议单为中心”调整为“我的持仓为中心”：新增成交回填表单、持仓卡片、分批买入明细、均价/现价/盈亏展示。
 - 模拟交易运行时读取当前真实持仓上下文：空仓时建议偏“是否建仓”，已有仓位时建议偏“加仓/减仓/继续持有/止损/止盈”。
 - 对账入口保留为手动输入外部账户快照，用于发现系统持仓和外部账户不一致。
 
 ## Interfaces
 
-- `POST /api/v1/alpha/holdings/fills`：新增真实成交回填入口，写入 canonical 手工成交账本。
-- `GET /api/v1/alpha/holdings`：返回当前持仓、组合快照、按标的聚合的分批成交记录。
-- `POST /api/v1/alpha/holdings/rebuild`：按所有成交重建持仓和组合快照。
+- `POST /api/v1/alpha/tickets/{ticket_id}/fills`：真实成交回填权威入口，写入 canonical 手工成交账本；可选携带 `rebuild_opening_cash` 和 `rebuild_price_map` 立即重建组合。
+- `GET /api/v1/alpha/portfolio`：返回当前持仓、组合快照、按标的聚合的分批成交记录。
+- `POST /api/v1/alpha/portfolio/rebuilds`：按所有成交重建持仓和组合快照。
 - `GET /api/v1/dashboard/workbench` 的 `alpha` 字段增加 holdings summary，供仪表盘一次加载。
 - 不新增 `v2/new/legacy` 路径；若现有 Alpha ticket fill 和新持仓回填语义重复，实施时应收敛成一个权威成交记录入口。
 
 ## Test Plan
 
 - 后端测试：多次买入同一标的后均价正确；部分卖出后剩余数量、实现盈亏正确；超额卖出按现有账本规则处理并验证结果。
-- API 测试：成交回填、持仓查询、重建持仓、dashboard workbench payload 都返回稳定结构。
-- 前端测试：录入两段买入和一段卖出后，页面能展示分批记录、当前持仓、均价、浮盈浮亏。
+- API 测试：成交回填、真实成交时间、成交后重建、持仓查询、重建持仓、dashboard workbench payload 都返回稳定结构。
+- 前端测试：录入两段买入和一段卖出后，页面能展示分批记录、真实成交时间、当前持仓、均价、浮盈浮亏。
 - 集成测试：运行一次模拟交易后，建议内容能区分“空仓”和“已有真实持仓”的语义。
 
 ## Assumptions

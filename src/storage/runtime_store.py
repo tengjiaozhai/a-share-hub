@@ -768,8 +768,10 @@ class RuntimeStore:
         executed_quantity: float,
         executed_price: float,
         notes: str,
+        executed_at: str | None = None,
     ) -> str:
         fill_id = f"alpha-fill-{uuid.uuid4().hex[:12]}"
+        executed_at_dt = _parse_summary_timestamp(executed_at) or datetime.utcnow()
         with self.engine.begin() as conn:
             conn.execute(
                 AlphaManualFillRow.__table__.insert().values(
@@ -778,6 +780,7 @@ class RuntimeStore:
                     operator_id=operator_id,
                     executed_quantity=executed_quantity,
                     executed_price=executed_price,
+                    executed_at=executed_at_dt,
                     notes=notes,
                 )
             )
@@ -808,7 +811,7 @@ class RuntimeStore:
             rows = conn.execute(
                 select(AlphaManualFillRow)
                 .where(AlphaManualFillRow.ticket_id == ticket_id)
-                .order_by(AlphaManualFillRow.created_at.desc())
+                .order_by(AlphaManualFillRow.executed_at.desc())
             ).fetchall()
             return [
                 {
@@ -817,6 +820,7 @@ class RuntimeStore:
                     "operator_id": row.operator_id,
                     "executed_quantity": row.executed_quantity,
                     "executed_price": row.executed_price,
+                    "executed_at": _cst_iso(row.executed_at),
                     "notes": row.notes,
                     "created_at": _cst_iso(row.created_at),
                 }
@@ -826,7 +830,7 @@ class RuntimeStore:
     def list_all_alpha_manual_fills(self) -> list[dict]:
         with self.engine.begin() as conn:
             rows = conn.execute(
-                select(AlphaManualFillRow).order_by(AlphaManualFillRow.created_at)
+                select(AlphaManualFillRow).order_by(AlphaManualFillRow.executed_at)
             ).fetchall()
             return [
                 {
@@ -835,6 +839,7 @@ class RuntimeStore:
                     "operator_id": row.operator_id,
                     "executed_quantity": row.executed_quantity,
                     "executed_price": row.executed_price,
+                    "executed_at": _cst_iso(row.executed_at),
                     "notes": row.notes,
                     "created_at": _cst_iso(row.created_at),
                 }

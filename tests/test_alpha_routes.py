@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
-from src.main import build_app
+
 from src.api import routes_alpha
+from src.main import build_app
 
 
 def test_alpha_assets_endpoint_returns_normalized_rows(monkeypatch):
@@ -65,11 +66,13 @@ def test_alpha_ticket_api_supports_create_approve_and_fill(test_app):
             "operator_id": "trader-01",
             "executed_quantity": 2.0,
             "executed_price": 210.2,
+            "executed_at": "2026-06-01T10:30:00+08:00",
             "notes": "filled manually",
         },
     )
     assert fill_res.status_code == 200
     assert fill_res.json()["recorded"] is True
+    assert fill_res.json()["portfolio_rebuilt"] is False
 
     portfolio_res = client.get("/api/v1/alpha/portfolio")
     assert portfolio_res.status_code == 200
@@ -77,6 +80,7 @@ def test_alpha_ticket_api_supports_create_approve_and_fill(test_app):
     assert portfolio["fills"][0]["ticket_id"] == ticket_id
     assert portfolio["fills"][0]["asset_symbol"] == "AAPLx"
     assert portfolio["fills"][0]["action"] == "BUY"
+    assert portfolio["fills"][0]["executed_at"] == "2026-06-01T10:30:00+08:00"
 
     workbench_res = client.get("/api/v1/dashboard/workbench")
     assert workbench_res.status_code == 200
@@ -250,6 +254,40 @@ def test_alpha_portfolio_rebuild_endpoint_rebuilds_from_all_fills(test_app, pg_s
     assert portfolio["positions"][0]["symbol"] == "AAPLx"
     assert round(portfolio["positions"][0]["quantity"], 2) == 1.5
     assert len(portfolio["fills"]) == 2
+
+
+def test_alpha_fill_can_rebuild_portfolio_immediately(test_app, pg_store):
+    ticket_id = pg_store.insert_alpha_ticket(
+        asset_symbol="AAPLx",
+        underlying_symbol="AAPL",
+        action="BUY",
+        thesis="open position",
+        suggested_quantity=2.0,
+        suggested_limit_price=200.0,
+        expires_at="2026-06-01T16:00:00+08:00",
+    )
+    client = TestClient(test_app)
+
+    response = client.post(
+        f"/api/v1/alpha/tickets/{ticket_id}/fills",
+        json={
+            "operator_id": "trader-01",
+            "executed_quantity": 2.0,
+            "executed_price": 200.0,
+            "executed_at": "2026-06-01T10:30:00+08:00",
+            "notes": "buy fill",
+            "rebuild_opening_cash": 10_000.0,
+            "rebuild_price_map": {"AAPLx": 215.0},
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["recorded"] is True
+    assert body["portfolio_rebuilt"] is True
+    assert round(body["portfolio"]["snapshot"]["nav"], 2) == 10_030.0
+    assert body["portfolio"]["positions"][0]["symbol"] == "AAPLx"
+    assert body["portfolio"]["fills"][0]["executed_at"] == "2026-06-01T10:30:00+08:00"
 
 
 def test_alpha_research_candidate_can_be_promoted_to_ticket(test_app, pg_store, monkeypatch):
