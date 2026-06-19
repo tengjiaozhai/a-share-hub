@@ -3,12 +3,14 @@ import sys
 from datetime import datetime, timedelta
 from hashlib import sha256
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 
 from src.a_stock.routes import router as a_stock_router
 from src.agents.llm_client import LLMClient
+from src.api.auth_security import auth_middleware
 from src.api.routes_alpha import router as alpha_router
+from src.api.routes_auth import router as auth_router
 from src.api.routes_broker_events import router as broker_events_router
 from src.api.routes_crypto import router as crypto_router
 from src.api.routes_dashboard import router as dashboard_router
@@ -93,7 +95,9 @@ def run_halt_command(reason: str, resume: bool, store=None) -> dict:
 
 
 def build_app() -> FastAPI:
-    app = FastAPI(title="a-share-auto-trading-hub")
+    app = FastAPI(title="trading-assistant")
+    app.middleware("http")(auth_middleware)
+    app.include_router(auth_router)
     app.include_router(health_router)
     app.include_router(decision_runs_router)
     app.include_router(portfolio_targets_router)
@@ -109,8 +113,8 @@ def build_app() -> FastAPI:
     app.include_router(a_stock_router)
 
     @app.get("/", include_in_schema=False)
-    def root_redirect():
-        return RedirectResponse(url="/dashboard")
+    def root_redirect(request: Request):
+        return RedirectResponse(url="/dashboard" if getattr(request.state, "user", None) else "/login")
 
     settings = Settings()
     if settings.enable_scheduler or settings.app_role == "scheduler":
@@ -217,70 +221,3 @@ def build_cli_parser() -> argparse.ArgumentParser:
     # evaluate-shadow
     p_eval = subparsers.add_parser("evaluate-shadow", help="运行长期 shadow 评估")
     p_eval.add_argument("--window", choices=["1m", "3m", "1y"], required=True, help="评估窗口")
-
-    # serve
-    subparsers.add_parser("serve", help="启动API服务")
-
-    # scheduler
-    subparsers.add_parser("scheduler", help="启动独立日频调度器")
-
-    return parser
-
-
-def dispatch_command(args: argparse.Namespace) -> None:
-    if args.command == "decide":
-        summary = run_decide_command(args.symbols, args.mock_llm)
-        if summary["status"] == "blocked":
-            print(f"decide: blocked ({summary['reason']})")
-        else:
-            print(
-                f"decide: persisted {len(summary['decision_run_ids'])} runs, "
-                f"{len(summary['target_position_ids'])} targets"
-            )
-    elif args.command == "shadow-execute":
-        print(f"shadow-execute: symbols={args.symbols}, mock_broker={args.mock_broker}")
-    elif args.command == "live-execute":
-        print(f"live-execute: once={args.once}")
-    elif args.command == "reconcile":
-        print(f"reconcile: symbols={args.symbols}")
-    elif args.command == "halt":
-        summary = run_halt_command(args.reason, args.resume)
-        state = "resumed" if summary["active"] is False else "halted"
-        print(f"halt: {state}, reason={summary['reason']}")
-    elif args.command == "backtest":
-        print(f"backtest: symbols={args.symbols} start={args.start} end={args.end}")
-    elif args.command == "evaluate-shadow":
-        from src.evaluation.long_run import run_long_horizon_evaluation
-        store = get_runtime_store()
-        result = run_long_horizon_evaluation(store=store, window=args.window, mode="shadow")
-        import json
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-    elif args.command == "scheduler":
-        import asyncio
-        import logging
-
-        logging.basicConfig(level=logging.INFO)
-        asyncio.run(run_scheduler_forever())
-    elif args.command == "serve" or args.command is None:
-        import logging
-
-        import uvicorn
-        logging.basicConfig(level=logging.INFO)
-        app = build_app()
-        uvicorn.run(app, host="0.0.0.0", port=8000)
-    else:
-        print(f"未知命令: {args.command}", file=sys.stderr)
-        sys.exit(1)
-
-
-def main() -> None:
-    parser = build_cli_parser()
-    args = parser.parse_args()
-    dispatch_command(args)
-
-
-if __name__ == "__main__":
-    main()
-
-# ASGI app for uvicorn
-app = build_app()
