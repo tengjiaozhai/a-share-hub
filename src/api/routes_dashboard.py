@@ -14,6 +14,7 @@ from src.agents.llm_client import LLMClient
 from src.alpha.execution_service import AlphaExecutionService
 from src.alpha.portfolio_service import AlphaPortfolioService
 from src.api.dashboard_page.render import render_dashboard_html
+from src.api.dependencies import get_current_user_id
 from src.core.config import Settings
 from src.core.market_rules import resolve_lot_size
 from src.data.providers.akshare_provider import AkshareProvider
@@ -112,8 +113,11 @@ def _compute_order_pnl(action: str, quantity: int, fill_price: float, current_pr
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
-def get_dashboard(store: RuntimeStore = Depends(get_runtime_store)):
-    prefs = store.get_preference("dashboard") or {}
+def get_dashboard(
+    store: RuntimeStore = Depends(get_runtime_store),
+    user_id: str = Depends(get_current_user_id),
+):
+    prefs = store.get_preference(user_id, "dashboard") or {}
     theme_id = prefs.get("theme_id", "trading-terminal")
     return render_dashboard_html(theme_id=theme_id)
 
@@ -1216,7 +1220,10 @@ def scan_stock_pool(config: dict | None = None) -> dict:
 
 
 @router.post("/api/v1/dashboard/scan-us")
-def scan_us_stock_pool(config: dict | None = None) -> dict:
+def scan_us_stock_pool(
+    config: dict | None = None,
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
     """美股全市场自动选股，扫描器预筛 + 历史K线确认。"""
     from src.strategy.stock_scanner import confirm_us_buy_candidates, scan_us_market
     from src.us_stock.watchlist import WatchlistStore
@@ -1225,7 +1232,7 @@ def scan_us_stock_pool(config: dict | None = None) -> dict:
     cfg = config or {}
     top_n = int(cfg.get("top_n", 10))
 
-    # 获取美股watchlist
+    # 获取当前用户的美股 watchlist
     import psycopg
     settings = Settings()
     database_url = settings.database_url
@@ -1234,7 +1241,7 @@ def scan_us_stock_pool(config: dict | None = None) -> dict:
 
     from src.storage.connection_url import build_psycopg_dsn
     conn = psycopg.connect(build_psycopg_dsn(database_url), row_factory=psycopg.rows.dict_row)
-    store = WatchlistStore(conn)
+    store = WatchlistStore(conn, user_id)
     stock_list_items, _ = store.list_items(page=1, page_size=1000)
     conn.close()
 
@@ -1269,9 +1276,12 @@ def scan_us_stock_pool(config: dict | None = None) -> dict:
 
 
 @router.get("/api/v1/dashboard/preferences")
-def get_preferences(store: RuntimeStore = Depends(get_runtime_store)) -> dict:
+def get_preferences(
+    store: RuntimeStore = Depends(get_runtime_store),
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
     """获取用户偏好设置（watchlist 等）。"""
-    prefs = store.get_preference("dashboard") or {}
+    prefs = store.get_preference(user_id, "dashboard") or {}
     if "theme_id" not in prefs:
         prefs["theme_id"] = "trading-terminal"
     return prefs
@@ -1284,7 +1294,11 @@ _THEME_IDS = {
 
 
 @router.put("/api/v1/dashboard/preferences")
-def save_preferences(config: dict, store: RuntimeStore = Depends(get_runtime_store)) -> dict:
+def save_preferences(
+    config: dict,
+    store: RuntimeStore = Depends(get_runtime_store),
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
     """保存用户偏好设置。"""
     allowed_keys = {"watchlist", "market", "capital_base", "max_position_ratio", "stop_loss_ratio",
                     "max_daily_loss_ratio", "execution_mode", "theme_id"}
@@ -1292,7 +1306,7 @@ def save_preferences(config: dict, store: RuntimeStore = Depends(get_runtime_sto
     if "theme_id" in filtered and filtered["theme_id"] not in _THEME_IDS:
         raise HTTPException(status_code=400, detail="invalid theme_id")
     # Merge with existing preferences
-    existing = store.get_preference("dashboard") or {}
+    existing = store.get_preference(user_id, "dashboard") or {}
     merged = {**existing, **filtered}
-    store.set_preference("dashboard", merged)
+    store.set_preference(user_id, "dashboard", merged)
     return {"status": "ok"}

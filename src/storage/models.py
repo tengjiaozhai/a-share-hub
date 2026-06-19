@@ -1,7 +1,10 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+SYSTEM_USER_ID = "system"
 
 
 class Base(DeclarativeBase):
@@ -146,11 +149,40 @@ class AccountSnapshotRow(Base):
 class UserPreferenceRow(Base):
     __tablename__ = "user_preferences"
 
+    user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
     )
+
+
+class AStockWatchlistRow(Base):
+    __tablename__ = "a_share_watchlist"
+    __table_args__ = (UniqueConstraint("user_id", "symbol", name="uq_a_share_watchlist_user_symbol"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(
+        String(64), nullable=False, index=True, default=SYSTEM_USER_ID
+    )
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class USStockWatchlistRow(Base):
+    __tablename__ = "us_watchlist"
+    __table_args__ = (UniqueConstraint("user_id", "symbol", name="uq_us_watchlist_user_symbol"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(
+        String(64), nullable=False, index=True, default=SYSTEM_USER_ID
+    )
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
 class AlphaTicketRow(Base):
@@ -215,8 +247,12 @@ class AlphaReconciliationRunRow(Base):
 
 class AlphaWatchlistItemRow(Base):
     __tablename__ = "alpha_watchlist_items"
+    __table_args__ = (UniqueConstraint("user_id", "symbol", name="uq_alpha_watchlist_user_symbol"),)
 
     symbol: Mapped[str] = mapped_column(String(32), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(64), nullable=False, index=True, default=SYSTEM_USER_ID
+    )
     underlying_symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     priority: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)

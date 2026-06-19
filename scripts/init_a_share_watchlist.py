@@ -92,9 +92,9 @@ def main():
     conn_url = build_psycopg_dsn(database_url)
     conn = psycopg.connect(conn_url, row_factory=psycopg.rows.dict_row)
 
-    # 清空旧数据
+    # 清空旧数据（仅清空 system 用户的）
     with conn.cursor() as cur:
-        cur.execute("DELETE FROM a_share_watchlist")
+        cur.execute("DELETE FROM a_share_watchlist WHERE user_id = 'system'")
     conn.commit()
     print("已清空旧数据")
 
@@ -104,13 +104,13 @@ def main():
 
     for i in range(0, len(ordered_stocks), batch_size):
         batch = ordered_stocks[i:i + batch_size]
-        values = [(s[0], str(s[1]).strip(), i + j) for j, s in enumerate(batch)]
+        values = [("system", s[0], str(s[1]).strip(), i + j) for j, s in enumerate(batch)]
 
         try:
             with conn.cursor() as cur:
                 cur.executemany(
-                    "INSERT INTO a_share_watchlist (symbol, name, sort_order) VALUES (%s, %s, %s) "
-                    "ON CONFLICT (symbol) DO NOTHING",
+                    "INSERT INTO a_share_watchlist (user_id, symbol, name, sort_order) VALUES (%s, %s, %s, %s) "
+                    "ON CONFLICT (user_id, symbol) DO NOTHING",
                     values,
                 )
                 inserted += cur.rowcount
