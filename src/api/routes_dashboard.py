@@ -508,12 +508,19 @@ def _build_automation_payload(
     last_run_at: str | None = None,
     last_status: str | None = None,
     next_run_at: str | None = None,
+    calendar_reason: str | None = None,
+    next_trading_run_at: str | None = None,
+    next_trading_day: str | None = None,
 ) -> dict:
     """构建自动交易状态卡片数据"""
     return {
         "today_status": last_status or "pending",
         "last_run_at": last_run_at,
         "next_run_at": next_run_at,
+        "next_cron_at": next_run_at,
+        "next_trading_run_at": next_trading_run_at,
+        "next_trading_day": next_trading_day,
+        "calendar_reason": calendar_reason,
     }
 
 
@@ -541,6 +548,7 @@ def _load_automation_state(store, market: str = "a") -> dict:
     """从 paper_ledger 加载最新 auto run + 调度器下次时间"""
     last_run_at: str | None = None
     last_status: str | None = None
+    calendar_reason: str | None = None
     try:
         from sqlalchemy import select
         from sqlalchemy.orm import Session
@@ -560,6 +568,8 @@ def _load_automation_state(store, market: str = "a") -> dict:
             if row is not None:
                 last_run_at = row.created_at.isoformat() if row.created_at else None
                 last_status = row.status
+                if row.status == "skipped":
+                    calendar_reason = row.error_message
     except Exception:
         pass
 
@@ -576,10 +586,24 @@ def _load_automation_state(store, market: str = "a") -> dict:
     except Exception:
         pass
 
+    next_trading_run_at: str | None = None
+    next_trading_day: str | None = None
+    try:
+        from src.market_calendar import get_trading_calendar
+
+        trading_run_at = get_trading_calendar().next_trading_run_at(market)
+        next_trading_run_at = trading_run_at.isoformat()
+        next_trading_day = trading_run_at.date().isoformat()
+    except Exception:
+        pass
+
     return _build_automation_payload(
         last_run_at=last_run_at,
         last_status=last_status,
         next_run_at=next_run_at,
+        calendar_reason=calendar_reason,
+        next_trading_run_at=next_trading_run_at,
+        next_trading_day=next_trading_day,
     )
 
 

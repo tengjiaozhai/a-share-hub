@@ -6,6 +6,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy.orm import Session
 
+from src.market_calendar import get_trading_calendar
+from src.market_calendar.service import TradingCalendarService
 from src.paper_ledger.models import PaperBase
 from src.paper_ledger.store import PaperLedgerStore
 from src.storage.dependencies import get_runtime_store
@@ -19,7 +21,8 @@ DAILY_JOB_LOCK_TTL_SECONDS = 2 * 60 * 60
 class DailyScheduler:
     """日频自动调度器"""
 
-    def __init__(self):
+    def __init__(self, calendar: TradingCalendarService | None = None):
+        self._calendar = calendar or get_trading_calendar()
         self._scheduler = AsyncIOScheduler(timezone=CN_TZ)
         self._setup_jobs()
 
@@ -120,6 +123,22 @@ class DailyScheduler:
                     return
 
                 account = store.get_or_create_account(market, "auto")
+                market_session = self._calendar.get_session(market, today)
+                if not market_session.is_trading_day:
+                    reason = market_session.reason or "market closed"
+                    run = store.create_run(
+                        account_id=account.account_id,
+                        market=market,
+                        trade_date=today,
+                        run_source="auto",
+                        params={"calendar_reason": reason},
+                        watchlist=[],
+                    )
+                    store.update_run_status(run.run_id, "skipped", reason)
+                    store.finish_job_lock(job_key, "skipped", reason)
+                    logger.info("Daily job for %s skipped: %s", market, reason)
+                    return
+
                 run = store.create_run(
                     account_id=account.account_id,
                     market=market,

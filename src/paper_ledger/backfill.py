@@ -1,9 +1,11 @@
 import logging
-from datetime import date, timedelta
+from datetime import date
 import math
 
-from src.paper_ledger.store import PaperLedgerStore
+from src.market_calendar import get_trading_calendar
+from src.market_calendar.service import TradingCalendarService
 from src.paper_ledger.models import PaperBase
+from src.paper_ledger.store import PaperLedgerStore
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +15,7 @@ def backfill_recent_days(
     market: str,
     days: int = 30,
     daily_return: float = 0.001,
+    calendar: TradingCalendarService | None = None,
 ) -> int:
     """补算最近 N 个交易日的净值（仅生成占位曲线，不执行业务逻辑）。
 
@@ -25,9 +28,9 @@ def backfill_recent_days(
 
     completed = 0
     nav = initial_capital
-    for i in range(days, 0, -1):
-        trade_date = today - timedelta(days=i)
-
+    calendar_service = calendar or get_trading_calendar()
+    trade_dates = calendar_service.recent_trading_days(market, today, days)
+    for idx, trade_date in enumerate(trade_dates, start=1):
         if store.check_run_exists(market, trade_date, "backfill"):
             continue
 
@@ -36,12 +39,12 @@ def backfill_recent_days(
             market=market,
             trade_date=trade_date,
             run_source="backfill",
-            params={"backfill_days": days, "daily_return": daily_return},
+            params={"backfill_days": days, "calendar_mode": "trading_days", "daily_return": daily_return},
             watchlist=[],
         )
 
         try:
-            oscillation = math.sin(i * 0.5) * (daily_return * 0.3)
+            oscillation = math.sin(idx * 0.5) * (daily_return * 0.3)
             day_return = daily_return + oscillation
             nav = nav * (1.0 + day_return)
             cash = nav * 0.5
