@@ -3,7 +3,8 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.a_stock.watchlist import AShareWatchlistStore
-from src.api.dependencies import get_current_user, get_current_user_id
+from src.api.dependencies import get_current_user, get_tenant_context
+from src.core.tenant import TenantContext
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +19,8 @@ router = APIRouter(
 _watchlist_stores: dict[str, AShareWatchlistStore] = {}
 
 
-def _get_watchlist_store(user_id: str) -> AShareWatchlistStore:
-    cached = _watchlist_stores.get(user_id)
+def _get_watchlist_store(tenant: TenantContext) -> AShareWatchlistStore:
+    cached = _watchlist_stores.get(tenant.user_id)
     if cached is not None:
         return cached
     import psycopg
@@ -31,8 +32,8 @@ def _get_watchlist_store(user_id: str) -> AShareWatchlistStore:
     if not database_url:
         raise HTTPException(status_code=503, detail="DATABASE_URL not configured")
     conn = psycopg.connect(build_psycopg_dsn(database_url), row_factory=psycopg.rows.dict_row)
-    store = AShareWatchlistStore(conn, user_id)
-    _watchlist_stores[user_id] = store
+    store = AShareWatchlistStore(conn, tenant)
+    _watchlist_stores[tenant.user_id] = store
     return store
 
 
@@ -40,9 +41,9 @@ def _get_watchlist_store(user_id: str) -> AShareWatchlistStore:
 def list_watchlist(
     page: int = Query(default=1, ge=1, description="页码"),
     page_size: int = Query(default=20, ge=1, le=100, description="每页条数"),
-    user_id: str = Depends(get_current_user_id),
+    tenant: TenantContext = Depends(get_tenant_context),
 ) -> dict:
-    store = _get_watchlist_store(user_id)
+    store = _get_watchlist_store(tenant)
     items, total = store.list_items(page=page, page_size=page_size)
     return {
         "items": [item.model_dump() for item in items],
@@ -56,14 +57,14 @@ def list_watchlist(
 @router.post("/watchlist")
 def add_to_watchlist(
     body: dict,
-    user_id: str = Depends(get_current_user_id),
+    tenant: TenantContext = Depends(get_tenant_context),
 ) -> dict:
     symbol = body.get("symbol", "").strip().upper()
     name = body.get("name", "").strip()
     sort_order = int(body.get("sort_order", 0))
     if not symbol:
         raise HTTPException(status_code=422, detail="symbol is required")
-    store = _get_watchlist_store(user_id)
+    store = _get_watchlist_store(tenant)
     try:
         item = store.add(symbol, name or symbol, sort_order)
         return item.model_dump()
@@ -74,9 +75,9 @@ def add_to_watchlist(
 @router.delete("/watchlist/{symbol}")
 def remove_from_watchlist(
     symbol: str,
-    user_id: str = Depends(get_current_user_id),
+    tenant: TenantContext = Depends(get_tenant_context),
 ) -> dict:
-    store = _get_watchlist_store(user_id)
+    store = _get_watchlist_store(tenant)
     removed = store.remove(symbol.upper())
     if not removed:
         raise HTTPException(status_code=404, detail=f"Symbol {symbol} not found in watchlist")

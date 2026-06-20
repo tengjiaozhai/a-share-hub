@@ -7,13 +7,13 @@ from src.api.auth_page.render import render_login_html, render_register_html
 from src.api.auth_security import create_auth_token, hash_password, verify_password
 from src.core.config import Settings
 from src.storage.auth_store import AuthStore
-from src.storage.dependencies import get_runtime_store
+from src.storage.dependencies import get_runtime_engine
 
 router = APIRouter()
 
 
 def _auth_store() -> AuthStore:
-    return AuthStore(get_runtime_store().engine)
+    return AuthStore(get_runtime_engine())
 
 
 @router.get("/login", response_class=HTMLResponse)

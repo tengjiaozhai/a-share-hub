@@ -22,20 +22,27 @@ from src.api.routes_market import router as market_router
 from src.api.routes_portfolio_targets import router as portfolio_targets_router
 from src.api.routes_reconciliation import router as reconciliation_router
 from src.core.config import Settings
+from src.core.tenant import SYSTEM_TENANT
 from src.decision.decision_runner import build_decision_run_record
 from src.decision.input_builder import build_decision_input_snapshot
 from src.portfolio.target_planner import build_target_position
-from src.storage.dependencies import get_runtime_store
-from src.storage.models import SYSTEM_USER_ID
+from src.storage.dependencies import get_runtime_engine
+from src.storage.runtime_store import RuntimeStore
+from src.storage.system_runtime_store import SystemRuntimeStore
 from src.us_stock.routes import router as us_stock_router
 
 # CLI 命令在用户未登录时使用 system 账户执行
-CLI_USER_ID = SYSTEM_USER_ID
+CLI_USER_ID = SYSTEM_TENANT.user_id
+
+
+def _system_store() -> SystemRuntimeStore:
+    return SystemRuntimeStore(get_runtime_engine())
 
 
 def run_decide_command(symbols: list[str], mock_llm: bool, store=None) -> dict:
-    runtime_store = store or get_runtime_store()
-    if runtime_store.get_kill_switch():
+    runtime_store = store if isinstance(store, RuntimeStore) else RuntimeStore(get_runtime_engine(), SYSTEM_TENANT)
+    system_store = SystemRuntimeStore(runtime_store.engine)
+    if system_store.get_kill_switch():
         return {"status": "blocked", "reason": "kill switch enabled", "decision_run_ids": [], "target_position_ids": []}
 
     client = LLMClient(Settings(llm_provider="mock", llm_api_key="")) if mock_llm else LLMClient()
@@ -60,7 +67,7 @@ def run_decide_command(symbols: list[str], mock_llm: bool, store=None) -> dict:
             input_snapshot=input_snapshot,
             model_name=client.model,
         )
-        decision_run_id = runtime_store.insert_decision_run(user_id=CLI_USER_ID, **record)
+        decision_run_id = runtime_store.insert_decision_run(**record)
         decision_run_ids.append(decision_run_id)
 
         if record["parsed_action"] in {"BUY", "SELL"} and record["target_position_ratio"] > 0:
@@ -75,7 +82,6 @@ def run_decide_command(symbols: list[str], mock_llm: bool, store=None) -> dict:
                 expires_at=(datetime.utcnow() + timedelta(hours=1)).isoformat(),
             )
             target_position_id = runtime_store.insert_target_position(
-                user_id=CLI_USER_ID,
                 decision_run_id=decision_run_id,
                 symbol=target["symbol"],
                 action=target["action"],
@@ -93,9 +99,9 @@ def run_decide_command(symbols: list[str], mock_llm: bool, store=None) -> dict:
 
 
 def run_halt_command(reason: str, resume: bool, store=None) -> dict:
-    runtime_store = store or get_runtime_store()
+    system_store = store if isinstance(store, SystemRuntimeStore) else _system_store()
     active = not resume
-    runtime_store.insert_kill_switch_event(active=active, reason=reason)
+    system_store.insert_kill_switch_event(active=active, reason=reason)
     return {"status": "ok", "active": active, "reason": reason, "resume": resume}
 
 
@@ -138,7 +144,6 @@ def _register_app_lifespan(app: FastAPI) -> None:
     from contextlib import asynccontextmanager
 
     from src.scheduler.daily_scheduler import get_scheduler
-    from src.storage.dependencies import get_runtime_store
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -154,7 +159,7 @@ def _register_app_lifespan(app: FastAPI) -> None:
                 pass
             # 防御层 3：graceful shutdown 释放所有连接池中的连接
             try:
-                get_runtime_store().engine.dispose()
+                get_runtime_engine().dispose()
             except Exception:
                 pass
 
@@ -173,19 +178,18 @@ def _run_startup_backfill() -> None:
 
         from src.paper_ledger.backfill import backfill_recent_days, needs_backfill
         from src.paper_ledger.store import PaperLedgerStore
-        from src.storage.dependencies import get_runtime_store
 
-        engine = get_runtime_store().engine
+        engine = get_runtime_engine()
         with Session(engine) as session:
-            store = PaperLedgerStore(session)
+            store = PaperLedgerStore(session, SYSTEM_TENANT)
             today = datetime.utcnow().date()
             for market in ("a", "us"):
-                job_key = store.acquire_job_lock(SYSTEM_USER_ID, "startup_backfill", market, today, ttl_seconds=3600)
+                job_key = store.acquire_job_lock("startup_backfill", market, today, ttl_seconds=3600)
                 if job_key is None:
                     continue
                 try:
-                    if needs_backfill(store, market, user_id=SYSTEM_USER_ID):
-                        backfill_recent_days(store, market, days=30, user_id=SYSTEM_USER_ID)
+                    if needs_backfill(store, market):
+                        backfill_recent_days(store, market, days=30)
                     store.finish_job_lock(job_key, "success")
                 except Exception as e:
                     store.finish_job_lock(job_key, "failed", str(e))
@@ -285,7 +289,8 @@ def dispatch_command(args: argparse.Namespace) -> None:
         print(f"backtest: symbols={args.symbols} start={args.start} end={args.end}")
     elif args.command == "evaluate-shadow":
         from src.evaluation.long_run import run_long_horizon_evaluation
-        store = get_runtime_store()
+
+        store = RuntimeStore(get_runtime_engine(), SYSTEM_TENANT)
         result = run_long_horizon_evaluation(store=store, window=args.window, mode="shadow")
         import json
         print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -298,7 +303,7 @@ def dispatch_command(args: argparse.Namespace) -> None:
     elif args.command == "set-user-role":
         from src.storage.auth_store import AuthStore
 
-        store = AuthStore(get_runtime_store().engine)
+        store = AuthStore(get_runtime_engine())
         if not store.set_role(args.user_id, args.role):
             raise SystemExit(f"user not found: {args.user_id}")
         print(f"updated {args.user_id} role to {args.role}")

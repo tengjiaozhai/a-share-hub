@@ -11,11 +11,12 @@ os.environ.setdefault("DB_MAX_OVERFLOW", "0")
 os.environ.setdefault("DB_POOL_TIMEOUT_SECONDS", "0")
 
 from src.api.dependencies import get_current_user_id
+from src.core.tenant import SYSTEM_TENANT
 from src.main import build_app, build_cli_parser
 from src.storage.models import Base
 from src.storage.runtime_store import RuntimeStore
+from src.api.dependencies import get_user_runtime_store
 from src.storage.dependencies import (
-    get_runtime_store,
     get_decision_run_repository,
     get_settings,
 )
@@ -55,13 +56,13 @@ def test_engine(tmp_path):
 
 @pytest.fixture
 def test_store(test_engine):
-    return RuntimeStore(test_engine)
+    return RuntimeStore(test_engine, SYSTEM_TENANT)
 
 
 @pytest.fixture
 def test_app(test_store):
     app = build_app()
-    app.dependency_overrides[get_runtime_store] = lambda: test_store
+    app.dependency_overrides[get_user_runtime_store] = lambda: test_store
     app.dependency_overrides[get_decision_run_repository] = lambda: SQLAlchemyDecisionRunRepository(test_store.engine)
     app.dependency_overrides[get_current_user_id] = lambda: TEST_USER_ID
     return app
@@ -73,10 +74,8 @@ def _wire_test_store(test_store):
     from src.api import auth_security
     from src.storage import dependencies as dep_mod
 
-    deps._runtime_store_instance = test_store
     deps._decision_run_repo_instance = SQLAlchemyDecisionRunRepository(test_store.engine)
-    auth_security.get_runtime_store = deps.get_runtime_store
-    dep_mod.get_runtime_store = deps.get_runtime_store
+    deps._decision_run_repo_instance = SQLAlchemyDecisionRunRepository(test_store.engine)
 
 
 def _unwire_test_store():
@@ -85,14 +84,11 @@ def _unwire_test_store():
     from src.api import auth_security
     from src.storage import dependencies as dep_mod
 
-    deps._runtime_store_instance = None
     deps._decision_run_repo_instance = None
     # 重新 import 原始函数（带 lru_cache 的旧版本）并复位
     import importlib
     # 重新创建最纯净的 get_runtime_store 引用
     from src.storage.dependencies import get_runtime_store as original
-    auth_security.get_runtime_store = original
-    dep_mod.get_runtime_store = original
 
 
 def test_cli_exposes_evalution_commands():

@@ -5,7 +5,7 @@ import time
 import httpx
 import pytest
 
-from src.storage.dependencies import get_runtime_store
+from src.api.dependencies import get_user_runtime_store
 from src.storage.runtime_store import RuntimeStore
 
 
@@ -80,7 +80,7 @@ def _seed_completed_run(store: RuntimeStore) -> None:
 @pytest.mark.asyncio
 async def test_reconnect_with_last_event_id_starts_after_seq(test_app, pg_store):
     _seed_completed_run(pg_store)
-    test_app.dependency_overrides[get_runtime_store] = lambda: pg_store
+    test_app.dependency_overrides[get_user_runtime_store] = lambda: pg_store
     transport = httpx.ASGITransport(app=test_app)
     received: list[dict] = []
 

@@ -1,19 +1,18 @@
 from sqlalchemy import create_engine
 
 from src.alpha.portfolio_service import AlphaPortfolioService
+from src.core.tenant import TenantContext
 from src.storage.models import Base
 from src.storage.runtime_store import RuntimeStore
 
 TEST_USER_ID = "test-user"
 
-
 def test_portfolio_service_rebuilds_positions_from_manual_fills(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path}/runtime.db", future=True)
     Base.metadata.create_all(engine)
-    store = RuntimeStore(engine)
+    store = RuntimeStore(engine, TenantContext("test-user"))
 
     ticket_id = store.insert_alpha_ticket(
-        user_id=TEST_USER_ID,
         asset_symbol="AAPLx",
         underlying_symbol="AAPL",
         action="BUY",
@@ -23,7 +22,6 @@ def test_portfolio_service_rebuilds_positions_from_manual_fills(tmp_path):
         expires_at="2026-06-01T16:00:00+08:00",
     )
     store.insert_alpha_manual_fill(
-        user_id=TEST_USER_ID,
         ticket_id=ticket_id,
         operator_id="trader-01",
         executed_quantity=2.0,
@@ -31,7 +29,7 @@ def test_portfolio_service_rebuilds_positions_from_manual_fills(tmp_path):
         notes="buy fill",
     )
 
-    service = AlphaPortfolioService(store, user_id=TEST_USER_ID)
+    service = AlphaPortfolioService(store)
     summary = service.rebuild_from_manual_fills(
         opening_cash=10_000.0,
         price_map={"AAPLx": 210.0},
@@ -43,14 +41,12 @@ def test_portfolio_service_rebuilds_positions_from_manual_fills(tmp_path):
     assert round(summary["nav"], 2) == 10_020.0
     assert summary["positions"][0]["symbol"] == "AAPLx"
 
-
 def test_portfolio_service_loads_enriched_fill_history(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path}/runtime.db", future=True)
     Base.metadata.create_all(engine)
-    store = RuntimeStore(engine)
+    store = RuntimeStore(engine, TenantContext("test-user"))
 
     ticket_id = store.insert_alpha_ticket(
-        user_id=TEST_USER_ID,
         asset_symbol="AAPLx",
         underlying_symbol="AAPL",
         action="BUY",
@@ -60,7 +56,6 @@ def test_portfolio_service_loads_enriched_fill_history(tmp_path):
         expires_at="2026-06-01T16:00:00+08:00",
     )
     store.insert_alpha_manual_fill(
-        user_id=TEST_USER_ID,
         ticket_id=ticket_id,
         operator_id="trader-01",
         executed_quantity=2.0,
@@ -69,18 +64,16 @@ def test_portfolio_service_loads_enriched_fill_history(tmp_path):
         notes="buy fill",
     )
     store.replace_alpha_positions(
-        user_id=TEST_USER_ID,
         positions=[{"symbol": "AAPLx", "quantity": 2.0, "avg_cost": 200.0, "mark_price": 210.0}],
     )
     store.insert_alpha_portfolio_snapshot(
-        user_id=TEST_USER_ID,
         cash_balance=9_600.0,
         realized_pnl=0.0,
         unrealized_pnl=20.0,
         nav=10_020.0,
     )
 
-    service = AlphaPortfolioService(store, user_id=TEST_USER_ID)
+    service = AlphaPortfolioService(store)
     portfolio = service.load_portfolio()
 
     assert portfolio["snapshot"]["nav"] == 10_020.0

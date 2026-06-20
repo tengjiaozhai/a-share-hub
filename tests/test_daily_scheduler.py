@@ -129,12 +129,12 @@ async def test_existing_skipped_run_blocks_duplicate_daily_job(monkeypatch):
 
     today = datetime.now(CN_TZ).date()
     with Session(engine) as session:
+        from src.core.tenant import SYSTEM_TENANT, TenantContext
         from src.paper_ledger.store import PaperLedgerStore
 
-        store = PaperLedgerStore(session)
-        account = store.get_or_create_account(user_id="system", market="a", account_kind="auto")
+        store = PaperLedgerStore(session, SYSTEM_TENANT)
+        account = store.get_or_create_account(market="a", account_kind="auto")
         run = store.create_run(
-            user_id="system",
             account_id=account.account_id,
             market="a",
             trade_date=today,

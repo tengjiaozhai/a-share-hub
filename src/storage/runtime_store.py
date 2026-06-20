@@ -2,6 +2,30 @@ import json
 import uuid
 from datetime import UTC, datetime, timedelta, timezone
 
+from sqlalchemy import func, select
+
+from src.core.tenant import TenantContext
+from src.storage.models import (
+    AccountSnapshotRow,
+    AlphaApiOrderAttemptRow,
+    AlphaManualFillRow,
+    AlphaPortfolioSnapshotRow,
+    AlphaPositionRow,
+    AlphaReconciliationRunRow,
+    AlphaTicketRow,
+    AlphaWatchlistItemRow,
+    BrokerEventRow,
+    DashboardRunEventRow,
+    DashboardRunSummaryRow,
+    DecisionInputSnapshotRow,
+    DecisionRunRow,
+    ExecutionOrderRow,
+    ExecutionPlanRow,
+    RiskGateEventRow,
+    TargetPositionRow,
+    UserPreferenceRow,
+)
+
 _CST = timezone(timedelta(hours=8))
 
 
@@ -24,39 +48,18 @@ def _parse_summary_timestamp(value: str | None) -> datetime | None:
         return parsed
     return parsed.astimezone(UTC).replace(tzinfo=None)
 
-from sqlalchemy import func, select
-
-from src.storage.models import (
-    AccountSnapshotRow,
-    AlphaApiOrderAttemptRow,
-    AlphaManualFillRow,
-    AlphaPortfolioSnapshotRow,
-    AlphaPositionRow,
-    AlphaReconciliationRunRow,
-    AlphaTicketRow,
-    AlphaWatchlistItemRow,
-    BrokerEventRow,
-    DashboardRunEventRow,
-    DashboardRunSummaryRow,
-    DecisionInputSnapshotRow,
-    DecisionRunRow,
-    ExecutionOrderRow,
-    ExecutionPlanRow,
-    KillSwitchEventRow,
-    KillSwitchRow,
-    RiskGateEventRow,
-    TargetPositionRow,
-    UserPreferenceRow,
-)
-
 
 class RuntimeStore:
-    def __init__(self, engine) -> None:
+    def __init__(self, engine, tenant: TenantContext) -> None:
         self.engine = engine
+        self.tenant = tenant
+
+    @property
+    def user_id(self) -> str:
+        return self.tenant.user_id
 
     def insert_execution_plan(
         self,
-        user_id: str,
         symbol: str,
         action: str,
         target_value: int,
@@ -67,7 +70,7 @@ class RuntimeStore:
             conn.execute(
                 ExecutionPlanRow.__table__.insert().values(
                     plan_id=plan_id,
-                    user_id=user_id,
+                    user_id=self.user_id,
                     symbol=symbol,
                     action=action,
                     target_value=target_value,
@@ -77,11 +80,11 @@ class RuntimeStore:
             )
         return plan_id
 
-    def list_ready_execution_plans(self, user_id: str) -> list[dict]:
+    def list_ready_execution_plans(self) -> list[dict]:
         with self.engine.begin() as conn:
             result = conn.execute(
                 select(ExecutionPlanRow)
-                .where(ExecutionPlanRow.user_id == user_id)
+                .where(ExecutionPlanRow.user_id == self.user_id)
                 .where(ExecutionPlanRow.status == "READY")
                 .order_by(ExecutionPlanRow.created_at)
             )
@@ -98,17 +101,17 @@ class RuntimeStore:
                 for row in rows
             ]
 
-    def mark_plan_acknowledged(self, user_id: str, plan_id: str) -> None:
+    def mark_plan_acknowledged(self, plan_id: str) -> None:
         with self.engine.begin() as conn:
             conn.execute(
                 ExecutionPlanRow.__table__.update()
                 .where(ExecutionPlanRow.plan_id == plan_id)
-                .where(ExecutionPlanRow.user_id == user_id)
+                .where(ExecutionPlanRow.user_id == self.user_id)
                 .values(status="ACKNOWLEDGED")
             )
 
     def insert_broker_event(self, event_id: str, order_id: str, event_type: str, payload: dict) -> None:
-        # 全局表（HMAC 验签），不带 user_id
+        # 全局表（HMAC 验签），Task 6 才会按 owner 写入
         with self.engine.begin() as conn:
             conn.execute(
                 BrokerEventRow.__table__.insert().values(
@@ -119,25 +122,31 @@ class RuntimeStore:
                 )
             )
 
-    def set_kill_switch(self, active: bool) -> None:
-        # 全局系统状态，不带 user_id
+    def insert_broker_order_event(
+        self,
+        execution_order_id: str,
+        event_id: str,
+        event_type: str,
+        payload: dict,
+        run_context_id: str | None = None,
+    ) -> None:
+        # 全局表（HMAC 验签），Task 6 才会按 owner 写入
         with self.engine.begin() as conn:
-            existing = conn.execute(select(KillSwitchRow).where(KillSwitchRow.id == 1)).scalar_one_or_none()
-            if existing is None:
-                conn.execute(KillSwitchRow.__table__.insert().values(id=1, active=active))
-            else:
-                conn.execute(KillSwitchRow.__table__.update().where(KillSwitchRow.id == 1).values(active=active))
-
-    def get_kill_switch(self) -> bool:
-        # 全局系统状态，不带 user_id
-        with self.engine.begin() as conn:
-            result = conn.execute(select(KillSwitchRow).where(KillSwitchRow.id == 1))
-            row = result.one_or_none()
-            return bool(row.active) if row is not None else False
+            effective_run_context_id = run_context_id or conn.execute(
+                select(ExecutionOrderRow.run_context_id).where(ExecutionOrderRow.execution_order_id == execution_order_id)
+            ).scalar_one()
+            conn.execute(
+                BrokerEventRow.__table__.insert().values(
+                    event_id=event_id,
+                    order_id=execution_order_id,
+                    run_context_id=effective_run_context_id,
+                    event_type=event_type,
+                    payload_json=json.dumps(payload, ensure_ascii=True, sort_keys=True),
+                )
+            )
 
     def insert_decision_run(
         self,
-        user_id: str,
         symbol: str,
         prompt_hash: str,
         model_name: str,
@@ -156,7 +165,7 @@ class RuntimeStore:
             conn.execute(
                 DecisionRunRow.__table__.insert().values(
                     decision_run_id=decision_run_id,
-                    user_id=user_id,
+                    user_id=self.user_id,
                     symbol=symbol,
                     prompt_hash=prompt_hash,
                     run_context_id=effective_run_context_id,
@@ -171,19 +180,19 @@ class RuntimeStore:
             conn.execute(
                 DecisionInputSnapshotRow.__table__.insert().values(
                     snapshot_id=snapshot_id,
-                    user_id=user_id,
+                    user_id=self.user_id,
                     decision_run_id=decision_run_id,
                     payload_json=json.dumps(input_snapshot, ensure_ascii=True, sort_keys=True),
                 )
             )
         return decision_run_id
 
-    def get_decision_run(self, user_id: str, decision_run_id: str) -> dict | None:
+    def get_decision_run(self, decision_run_id: str) -> dict | None:
         with self.engine.begin() as conn:
             run_result = conn.execute(
                 select(DecisionRunRow)
                 .where(DecisionRunRow.decision_run_id == decision_run_id)
-                .where(DecisionRunRow.user_id == user_id)
+                .where(DecisionRunRow.user_id == self.user_id)
             )
             run_row = run_result.fetchone()
             if run_row is None:
@@ -191,7 +200,7 @@ class RuntimeStore:
             snapshot_result = conn.execute(
                 select(DecisionInputSnapshotRow.payload_json)
                 .where(DecisionInputSnapshotRow.decision_run_id == decision_run_id)
-                .where(DecisionInputSnapshotRow.user_id == user_id)
+                .where(DecisionInputSnapshotRow.user_id == self.user_id)
             )
             snapshot_row = snapshot_result.one_or_none()
             return {
@@ -206,14 +215,13 @@ class RuntimeStore:
 
     def list_decision_runs(
         self,
-        user_id: str,
         limit: int | None = None,
         offset: int = 0,
     ) -> list[dict]:
         with self.engine.begin() as conn:
             stmt = (
                 select(DecisionRunRow)
-                .where(DecisionRunRow.user_id == user_id)
+                .where(DecisionRunRow.user_id == self.user_id)
                 .order_by(DecisionRunRow.created_at.desc())
             )
             if limit is not None:
@@ -228,26 +236,26 @@ class RuntimeStore:
                     "confidence": row.confidence,
                     "target_position_ratio": row.target_position_ratio,
                     "reason": row.reason,
-                    "input_snapshot": self._get_decision_input_snapshot(conn, user_id, row.decision_run_id),
+                    "input_snapshot": self._get_decision_input_snapshot(conn, row.decision_run_id),
                     "created_at": _cst_iso(row.created_at),
                 }
                 for row in rows
             ]
 
-    def count_decision_runs(self, user_id: str) -> int:
+    def count_decision_runs(self) -> int:
         with self.engine.begin() as conn:
             stmt = (
                 select(func.count())
                 .select_from(DecisionRunRow)
-                .where(DecisionRunRow.user_id == user_id)
+                .where(DecisionRunRow.user_id == self.user_id)
             )
             return conn.execute(stmt).scalar()
 
-    def _get_decision_input_snapshot(self, conn, user_id: str, decision_run_id: str) -> dict:
+    def _get_decision_input_snapshot(self, conn, decision_run_id: str) -> dict:
         snapshot_row = conn.execute(
             select(DecisionInputSnapshotRow.payload_json)
             .where(DecisionInputSnapshotRow.decision_run_id == decision_run_id)
-            .where(DecisionInputSnapshotRow.user_id == user_id)
+            .where(DecisionInputSnapshotRow.user_id == self.user_id)
         ).one_or_none()
         if snapshot_row is None:
             return {}
@@ -255,7 +263,6 @@ class RuntimeStore:
 
     def insert_target_position(
         self,
-        user_id: str,
         decision_run_id: str,
         symbol: str,
         action: str,
@@ -276,12 +283,12 @@ class RuntimeStore:
             effective_run_context_id = run_context_id or conn.execute(
                 select(DecisionRunRow.run_context_id)
                 .where(DecisionRunRow.decision_run_id == decision_run_id)
-                .where(DecisionRunRow.user_id == user_id)
+                .where(DecisionRunRow.user_id == self.user_id)
             ).scalar_one()
             conn.execute(
                 TargetPositionRow.__table__.insert().values(
                     target_position_id=target_position_id,
-                    user_id=user_id,
+                    user_id=self.user_id,
                     decision_run_id=decision_run_id,
                     run_context_id=effective_run_context_id,
                     symbol=symbol,
@@ -302,7 +309,6 @@ class RuntimeStore:
 
     def list_active_target_positions(
         self,
-        user_id: str,
         limit: int | None = None,
         offset: int = 0,
     ) -> list[dict]:
@@ -310,7 +316,7 @@ class RuntimeStore:
             now = datetime.utcnow()
             stmt = (
                 select(TargetPositionRow)
-                .where(TargetPositionRow.user_id == user_id)
+                .where(TargetPositionRow.user_id == self.user_id)
                 .where(TargetPositionRow.status == "ACTIVE")
                 .where(TargetPositionRow.expires_at > now)
                 .order_by(TargetPositionRow.created_at.desc())
@@ -342,7 +348,6 @@ class RuntimeStore:
 
     def list_target_positions(
         self,
-        user_id: str,
         limit: int | None = None,
         offset: int = 0,
         run_context_id: str | None = None,
@@ -350,7 +355,7 @@ class RuntimeStore:
         with self.engine.begin() as conn:
             stmt = (
                 select(TargetPositionRow)
-                .where(TargetPositionRow.user_id == user_id)
+                .where(TargetPositionRow.user_id == self.user_id)
                 .order_by(TargetPositionRow.created_at.desc())
             )
             if run_context_id is not None:
@@ -380,25 +385,25 @@ class RuntimeStore:
                 for row in rows
             ]
 
-    def count_active_target_positions(self, user_id: str) -> int:
+    def count_active_target_positions(self) -> int:
         with self.engine.begin() as conn:
             now = datetime.utcnow()
             stmt = (
                 select(func.count())
                 .select_from(TargetPositionRow)
-                .where(TargetPositionRow.user_id == user_id)
+                .where(TargetPositionRow.user_id == self.user_id)
                 .where(TargetPositionRow.status == "ACTIVE")
                 .where(TargetPositionRow.expires_at > now)
             )
             return conn.execute(stmt).scalar()
 
-    def deactivate_expired_targets(self, user_id: str) -> int:
-        """将属于指定用户且已过期的 ACTIVE 目标标记为 EXPIRED，返回更新数量。"""
+    def deactivate_expired_targets(self) -> int:
+        """将属于当前用户且已过期的 ACTIVE 目标标记为 EXPIRED，返回更新数量。"""
         now = datetime.utcnow()
         with self.engine.begin() as conn:
             result = conn.execute(
                 TargetPositionRow.__table__.update()
-                .where(TargetPositionRow.user_id == user_id)
+                .where(TargetPositionRow.user_id == self.user_id)
                 .where(TargetPositionRow.status == "ACTIVE")
                 .where(TargetPositionRow.expires_at <= now)
                 .values(status="EXPIRED")
@@ -407,7 +412,6 @@ class RuntimeStore:
 
     def insert_execution_order(
         self,
-        user_id: str,
         target_position_id: str,
         symbol: str,
         action: str,
@@ -425,12 +429,12 @@ class RuntimeStore:
             effective_run_context_id = run_context_id or conn.execute(
                 select(TargetPositionRow.run_context_id)
                 .where(TargetPositionRow.target_position_id == target_position_id)
-                .where(TargetPositionRow.user_id == user_id)
+                .where(TargetPositionRow.user_id == self.user_id)
             ).scalar_one()
             conn.execute(
                 ExecutionOrderRow.__table__.insert().values(
                     execution_order_id=execution_order_id,
-                    user_id=user_id,
+                    user_id=self.user_id,
                     target_position_id=target_position_id,
                     run_context_id=effective_run_context_id,
                     symbol=symbol,
@@ -447,32 +451,8 @@ class RuntimeStore:
             )
         return execution_order_id
 
-    def insert_broker_order_event(
-        self,
-        execution_order_id: str,
-        event_id: str,
-        event_type: str,
-        payload: dict,
-        run_context_id: str | None = None,
-    ) -> None:
-        # 全局表（HMAC 验签），不带 user_id
-        with self.engine.begin() as conn:
-            effective_run_context_id = run_context_id or conn.execute(
-                select(ExecutionOrderRow.run_context_id).where(ExecutionOrderRow.execution_order_id == execution_order_id)
-            ).scalar_one()
-            conn.execute(
-                BrokerEventRow.__table__.insert().values(
-                    event_id=event_id,
-                    order_id=execution_order_id,
-                    run_context_id=effective_run_context_id,
-                    event_type=event_type,
-                    payload_json=json.dumps(payload, ensure_ascii=True, sort_keys=True),
-                )
-            )
-
     def update_execution_order_status(
         self,
-        user_id: str,
         execution_order_id: str,
         status: str,
         *,
@@ -509,13 +489,12 @@ class RuntimeStore:
             conn.execute(
                 ExecutionOrderRow.__table__.update()
                 .where(ExecutionOrderRow.execution_order_id == execution_order_id)
-                .where(ExecutionOrderRow.user_id == user_id)
+                .where(ExecutionOrderRow.user_id == self.user_id)
                 .values(**values)
             )
 
     def list_execution_orders(
         self,
-        user_id: str,
         limit: int | None = None,
         offset: int = 0,
         run_context_id: str | None = None,
@@ -523,7 +502,7 @@ class RuntimeStore:
         with self.engine.begin() as conn:
             stmt = (
                 select(ExecutionOrderRow)
-                .where(ExecutionOrderRow.user_id == user_id)
+                .where(ExecutionOrderRow.user_id == self.user_id)
                 .order_by(ExecutionOrderRow.created_at.desc())
             )
             if run_context_id is not None:
@@ -557,17 +536,17 @@ class RuntimeStore:
                 for row in rows
             ]
 
-    def count_execution_orders(self, user_id: str) -> int:
+    def count_execution_orders(self) -> int:
         with self.engine.begin() as conn:
             stmt = (
                 select(func.count())
                 .select_from(ExecutionOrderRow)
-                .where(ExecutionOrderRow.user_id == user_id)
+                .where(ExecutionOrderRow.user_id == self.user_id)
             )
             return conn.execute(stmt).scalar()
 
     def list_broker_events(self, limit: int | None = None) -> list[dict]:
-        # 全局表（HMAC 验签），不带 user_id
+        # 全局表（HMAC 验签），Task 6 才会按 owner 过滤
         with self.engine.begin() as conn:
             stmt = select(BrokerEventRow).order_by(BrokerEventRow.created_at.desc())
             if limit is not None:
@@ -587,7 +566,6 @@ class RuntimeStore:
 
     def insert_risk_gate_event(
         self,
-        user_id: str,
         run_context_id: str,
         target_position_id: str | None,
         symbol: str,
@@ -601,7 +579,7 @@ class RuntimeStore:
             conn.execute(
                 RiskGateEventRow.__table__.insert().values(
                     risk_gate_event_id=risk_gate_event_id,
-                    user_id=user_id,
+                    user_id=self.user_id,
                     run_context_id=run_context_id,
                     target_position_id=target_position_id,
                     symbol=symbol,
@@ -613,35 +591,16 @@ class RuntimeStore:
             )
         return risk_gate_event_id
 
-    def list_kill_switch_events(self, limit: int | None = None) -> list[dict]:
-        # 全局系统状态，不带 user_id
-        with self.engine.begin() as conn:
-            stmt = select(KillSwitchEventRow).order_by(KillSwitchEventRow.created_at.desc())
-            if limit is not None:
-                stmt = stmt.limit(limit)
-            rows = conn.execute(stmt).fetchall()
-            return [
-                {
-                    "kill_switch_event_id": row.kill_switch_event_id,
-                    "active": row.active,
-                     "reason": row.reason,
-                     "created_at": _cst_iso(row.created_at),
-                }
-                for row in rows
-            ]
-
     def get_reconciliation_status(
         self,
-        user_id: str,
         run_context_id: str | None = None,
     ) -> dict:
-        # user_id 限定用户维度的 execution_orders / account_snapshots；
-        # broker_events 是全局表，不带 user_id
+        # Task 7 才会把 broker_events 改为按 owner 过滤；Task 4 保持现有调用形状
         with self.engine.begin() as conn:
             open_orders_stmt = (
                 select(func.count())
                 .select_from(ExecutionOrderRow)
-                .where(ExecutionOrderRow.user_id == user_id)
+                .where(ExecutionOrderRow.user_id == self.user_id)
                 .where(ExecutionOrderRow.status != "FILLED")
             )
             broker_events_stmt = select(func.count()).select_from(BrokerEventRow)
@@ -651,8 +610,8 @@ class RuntimeStore:
             open_orders = conn.execute(open_orders_stmt).scalar_one()
             broker_event_count = conn.execute(broker_events_stmt).scalar_one()
 
-        snapshot = self.get_latest_account_snapshot(user_id=user_id, run_context_id=run_context_id)
-        orders = self.list_execution_orders(user_id=user_id, limit=500, run_context_id=run_context_id)
+        snapshot = self.get_latest_account_snapshot(run_context_id=run_context_id)
+        orders = self.list_execution_orders(limit=500, run_context_id=run_context_id)
         fee_by_symbol: dict[str, float] = {}
         order_ids_by_symbol: dict[str, list[str]] = {}
         for order in orders:
@@ -686,7 +645,7 @@ class RuntimeStore:
         }
 
     def sum_daily_pnl(self, trade_date: str | None = None) -> float:
-        # 全局表（HMAC 验签），不带 user_id
+        # Task 7 才会按 owner 过滤 broker_events
         if trade_date:
             cst_today = datetime.fromisoformat(trade_date).replace(tzinfo=_CST)
         else:
@@ -714,27 +673,8 @@ class RuntimeStore:
                 continue
         return round(total, 2)
 
-    def insert_kill_switch_event(self, active: bool, reason: str | None = None) -> None:
-        # 全局系统状态，不带 user_id
-        event_id = f"kse-{uuid.uuid4().hex[:12]}"
-        event_reason = reason or ""
-        with self.engine.begin() as conn:
-            conn.execute(
-                KillSwitchEventRow.__table__.insert().values(
-                    kill_switch_event_id=event_id,
-                    active=active,
-                    reason=event_reason,
-                )
-            )
-            existing = conn.execute(select(KillSwitchRow).where(KillSwitchRow.id == 1)).scalar_one_or_none()
-            if existing is None:
-                conn.execute(KillSwitchRow.__table__.insert().values(id=1, active=active))
-            else:
-                conn.execute(KillSwitchRow.__table__.update().where(KillSwitchRow.id == 1).values(active=active))
-
     def insert_account_snapshot(
         self,
-        user_id: str,
         cash: float,
         nav: float,
         positions: dict,
@@ -746,7 +686,7 @@ class RuntimeStore:
             conn.execute(
                 AccountSnapshotRow.__table__.insert().values(
                     snapshot_id=snapshot_id,
-                    user_id=user_id,
+                    user_id=self.user_id,
                     cash=cash,
                     nav=nav,
                     run_context_id=effective_run_context_id,
@@ -757,13 +697,12 @@ class RuntimeStore:
 
     def get_latest_account_snapshot(
         self,
-        user_id: str,
         run_context_id: str | None = None,
     ) -> dict | None:
         with self.engine.begin() as conn:
             stmt = (
                 select(AccountSnapshotRow)
-                .where(AccountSnapshotRow.user_id == user_id)
+                .where(AccountSnapshotRow.user_id == self.user_id)
                 .order_by(AccountSnapshotRow.created_at.desc())
                 .limit(1)
             )
@@ -783,13 +722,12 @@ class RuntimeStore:
 
     def list_account_snapshots(
         self,
-        user_id: str,
         since: datetime | None = None,
     ) -> list[dict]:
         with self.engine.begin() as conn:
             stmt = (
                 select(AccountSnapshotRow)
-                .where(AccountSnapshotRow.user_id == user_id)
+                .where(AccountSnapshotRow.user_id == self.user_id)
                 .order_by(AccountSnapshotRow.created_at)
             )
             if since is not None:
@@ -806,11 +744,11 @@ class RuntimeStore:
             for row in rows
         ]
 
-    def get_preference(self, user_id: str, key: str) -> dict | None:
+    def get_preference(self, key: str) -> dict | None:
         with self.engine.begin() as conn:
             row = conn.execute(
                 select(UserPreferenceRow).where(
-                    UserPreferenceRow.user_id == user_id,
+                    UserPreferenceRow.user_id == self.user_id,
                     UserPreferenceRow.key == key,
                 )
             ).fetchone()
@@ -818,11 +756,11 @@ class RuntimeStore:
             return None
         return json.loads(row.value)
 
-    def set_preference(self, user_id: str, key: str, value: dict) -> None:
+    def set_preference(self, key: str, value: dict) -> None:
         with self.engine.begin() as conn:
             existing = conn.execute(
                 select(UserPreferenceRow).where(
-                    UserPreferenceRow.user_id == user_id,
+                    UserPreferenceRow.user_id == self.user_id,
                     UserPreferenceRow.key == key,
                 )
             ).fetchone()
@@ -830,7 +768,7 @@ class RuntimeStore:
                 conn.execute(
                     UserPreferenceRow.__table__.update()
                     .where(
-                        UserPreferenceRow.user_id == user_id,
+                        UserPreferenceRow.user_id == self.user_id,
                         UserPreferenceRow.key == key,
                     )
                     .values(value=json.dumps(value, ensure_ascii=True))
@@ -838,7 +776,7 @@ class RuntimeStore:
             else:
                 conn.execute(
                     UserPreferenceRow.__table__.insert().values(
-                        user_id=user_id,
+                        user_id=self.user_id,
                         key=key,
                         value=json.dumps(value, ensure_ascii=True),
                     )
@@ -846,7 +784,6 @@ class RuntimeStore:
 
     def insert_alpha_ticket(
         self,
-        user_id: str,
         asset_symbol: str,
         underlying_symbol: str,
         action: str,
@@ -860,7 +797,7 @@ class RuntimeStore:
             conn.execute(
                 AlphaTicketRow.__table__.insert().values(
                     ticket_id=ticket_id,
-                    user_id=user_id,
+                    user_id=self.user_id,
                     asset_symbol=asset_symbol,
                     underlying_symbol=underlying_symbol,
                     action=action,
@@ -873,18 +810,17 @@ class RuntimeStore:
             )
         return ticket_id
 
-    def approve_alpha_ticket(self, user_id: str, ticket_id: str, operator_id: str) -> None:
+    def approve_alpha_ticket(self, ticket_id: str, operator_id: str) -> None:
         with self.engine.begin() as conn:
             conn.execute(
                 AlphaTicketRow.__table__.update()
                 .where(AlphaTicketRow.ticket_id == ticket_id)
-                .where(AlphaTicketRow.user_id == user_id)
+                .where(AlphaTicketRow.user_id == self.user_id)
                 .values(status="APPROVED", approved_by=operator_id)
             )
 
     def insert_alpha_manual_fill(
         self,
-        user_id: str,
         ticket_id: str,
         operator_id: str,
         executed_quantity: float,
@@ -898,7 +834,7 @@ class RuntimeStore:
             conn.execute(
                 AlphaManualFillRow.__table__.insert().values(
                     fill_id=fill_id,
-                    user_id=user_id,
+                    user_id=self.user_id,
                     ticket_id=ticket_id,
                     operator_id=operator_id,
                     executed_quantity=executed_quantity,
@@ -909,11 +845,11 @@ class RuntimeStore:
             )
         return fill_id
 
-    def list_alpha_tickets(self, user_id: str) -> list[dict]:
+    def list_alpha_tickets(self) -> list[dict]:
         with self.engine.begin() as conn:
             rows = conn.execute(
                 select(AlphaTicketRow)
-                .where(AlphaTicketRow.user_id == user_id)
+                .where(AlphaTicketRow.user_id == self.user_id)
                 .order_by(AlphaTicketRow.created_at.desc())
             ).fetchall()
             return [
@@ -933,11 +869,11 @@ class RuntimeStore:
                 for row in rows
             ]
 
-    def list_alpha_manual_fills(self, user_id: str, ticket_id: str) -> list[dict]:
+    def list_alpha_manual_fills(self, ticket_id: str) -> list[dict]:
         with self.engine.begin() as conn:
             rows = conn.execute(
                 select(AlphaManualFillRow)
-                .where(AlphaManualFillRow.user_id == user_id)
+                .where(AlphaManualFillRow.user_id == self.user_id)
                 .where(AlphaManualFillRow.ticket_id == ticket_id)
                 .order_by(AlphaManualFillRow.executed_at.desc())
             ).fetchall()
@@ -955,11 +891,11 @@ class RuntimeStore:
                 for row in rows
             ]
 
-    def list_all_alpha_manual_fills(self, user_id: str) -> list[dict]:
+    def list_all_alpha_manual_fills(self) -> list[dict]:
         with self.engine.begin() as conn:
             rows = conn.execute(
                 select(AlphaManualFillRow)
-                .where(AlphaManualFillRow.user_id == user_id)
+                .where(AlphaManualFillRow.user_id == self.user_id)
                 .order_by(AlphaManualFillRow.executed_at)
             ).fetchall()
             return [
@@ -976,16 +912,15 @@ class RuntimeStore:
                 for row in rows
             ]
 
-    def replace_alpha_positions(self, user_id: str, positions: list[dict]) -> None:
+    def replace_alpha_positions(self, positions: list[dict]) -> None:
         with self.engine.begin() as conn:
-            # 只删除该用户的持仓
             conn.execute(
-                AlphaPositionRow.__table__.delete().where(AlphaPositionRow.user_id == user_id)
+                AlphaPositionRow.__table__.delete().where(AlphaPositionRow.user_id == self.user_id)
             )
             for position in positions:
                 conn.execute(
                     AlphaPositionRow.__table__.insert().values(
-                        user_id=user_id,
+                        user_id=self.user_id,
                         symbol=position["symbol"],
                         quantity=position["quantity"],
                         avg_cost=position["avg_cost"],
@@ -993,11 +928,11 @@ class RuntimeStore:
                     )
                 )
 
-    def list_alpha_positions(self, user_id: str) -> list[dict]:
+    def list_alpha_positions(self) -> list[dict]:
         with self.engine.begin() as conn:
             rows = conn.execute(
                 select(AlphaPositionRow)
-                .where(AlphaPositionRow.user_id == user_id)
+                .where(AlphaPositionRow.user_id == self.user_id)
                 .order_by(AlphaPositionRow.symbol)
             ).fetchall()
             return [
@@ -1013,7 +948,6 @@ class RuntimeStore:
 
     def insert_alpha_portfolio_snapshot(
         self,
-        user_id: str,
         cash_balance: float,
         realized_pnl: float,
         unrealized_pnl: float,
@@ -1024,7 +958,7 @@ class RuntimeStore:
             conn.execute(
                 AlphaPortfolioSnapshotRow.__table__.insert().values(
                     snapshot_id=snapshot_id,
-                    user_id=user_id,
+                    user_id=self.user_id,
                     cash_balance=cash_balance,
                     realized_pnl=realized_pnl,
                     unrealized_pnl=unrealized_pnl,
@@ -1033,11 +967,11 @@ class RuntimeStore:
             )
         return snapshot_id
 
-    def get_latest_alpha_portfolio_snapshot(self, user_id: str) -> dict | None:
+    def get_latest_alpha_portfolio_snapshot(self) -> dict | None:
         with self.engine.begin() as conn:
             row = conn.execute(
                 select(AlphaPortfolioSnapshotRow)
-                .where(AlphaPortfolioSnapshotRow.user_id == user_id)
+                .where(AlphaPortfolioSnapshotRow.user_id == self.user_id)
                 .order_by(AlphaPortfolioSnapshotRow.created_at.desc())
                 .limit(1)
             ).one_or_none()
@@ -1054,7 +988,6 @@ class RuntimeStore:
 
     def insert_alpha_reconciliation_run(
         self,
-        user_id: str,
         source: str,
         status: str,
         discrepancies: dict,
@@ -1064,7 +997,7 @@ class RuntimeStore:
             conn.execute(
                 AlphaReconciliationRunRow.__table__.insert().values(
                     run_id=run_id,
-                    user_id=user_id,
+                    user_id=self.user_id,
                     source=source,
                     status=status,
                     discrepancies_json=json.dumps(discrepancies, ensure_ascii=True, sort_keys=True),
@@ -1072,11 +1005,11 @@ class RuntimeStore:
             )
         return run_id
 
-    def list_alpha_reconciliation_runs(self, user_id: str) -> list[dict]:
+    def list_alpha_reconciliation_runs(self) -> list[dict]:
         with self.engine.begin() as conn:
             rows = conn.execute(
                 select(AlphaReconciliationRunRow)
-                .where(AlphaReconciliationRunRow.user_id == user_id)
+                .where(AlphaReconciliationRunRow.user_id == self.user_id)
                 .order_by(AlphaReconciliationRunRow.created_at.desc())
             ).fetchall()
             return [
@@ -1090,30 +1023,30 @@ class RuntimeStore:
                 for row in rows
             ]
 
-    def add_alpha_watchlist_item(self, user_id: str, symbol: str, underlying_symbol: str, priority: int) -> None:
+    def add_alpha_watchlist_item(self, symbol: str, underlying_symbol: str, priority: int) -> None:
         with self.engine.begin() as conn:
             conn.execute(
                 AlphaWatchlistItemRow.__table__.insert().values(
-                    user_id=user_id,
+                    user_id=self.user_id,
                     symbol=symbol,
                     underlying_symbol=underlying_symbol,
                     priority=priority,
                 )
             )
 
-    def remove_alpha_watchlist_item(self, user_id: str, symbol: str) -> None:
+    def remove_alpha_watchlist_item(self, symbol: str) -> None:
         with self.engine.begin() as conn:
             conn.execute(
                 AlphaWatchlistItemRow.__table__.delete().where(
-                    (AlphaWatchlistItemRow.user_id == user_id) & (AlphaWatchlistItemRow.symbol == symbol)
+                    (AlphaWatchlistItemRow.user_id == self.user_id) & (AlphaWatchlistItemRow.symbol == symbol)
                 )
             )
 
-    def list_alpha_watchlist_items(self, user_id: str) -> list[dict]:
+    def list_alpha_watchlist_items(self) -> list[dict]:
         with self.engine.begin() as conn:
             rows = conn.execute(
                 select(AlphaWatchlistItemRow)
-                .where(AlphaWatchlistItemRow.user_id == user_id)
+                .where(AlphaWatchlistItemRow.user_id == self.user_id)
                 .order_by(AlphaWatchlistItemRow.priority, AlphaWatchlistItemRow.symbol)
             ).fetchall()
             return [
@@ -1126,12 +1059,8 @@ class RuntimeStore:
                 for row in rows
             ]
 
-
-
-
     def insert_alpha_api_order_attempt(
         self,
-        user_id: str,
         ticket_id: str,
         asset_symbol: str,
         action: str,
@@ -1147,7 +1076,7 @@ class RuntimeStore:
             conn.execute(
                 AlphaApiOrderAttemptRow.__table__.insert().values(
                     attempt_id=attempt_id,
-                    user_id=user_id,
+                    user_id=self.user_id,
                     ticket_id=ticket_id,
                     asset_symbol=asset_symbol,
                     action=action,
@@ -1161,11 +1090,11 @@ class RuntimeStore:
             )
         return attempt_id
 
-    def list_alpha_api_order_attempts(self, user_id: str) -> list[dict]:
+    def list_alpha_api_order_attempts(self) -> list[dict]:
         with self.engine.begin() as conn:
             rows = conn.execute(
                 select(AlphaApiOrderAttemptRow)
-                .where(AlphaApiOrderAttemptRow.user_id == user_id)
+                .where(AlphaApiOrderAttemptRow.user_id == self.user_id)
                 .order_by(AlphaApiOrderAttemptRow.created_at.desc())
             ).fetchall()
             return [
@@ -1187,7 +1116,6 @@ class RuntimeStore:
 
     def upsert_dashboard_run_summary(
         self,
-        user_id: str,
         run_context_id: str,
         trade_date: str,
         decision_mode: str,
@@ -1204,7 +1132,7 @@ class RuntimeStore:
     ) -> None:
         values = {
             "run_context_id": run_context_id,
-            "user_id": user_id,
+            "user_id": self.user_id,
             "trade_date": trade_date,
             "decision_mode": decision_mode,
             "execution_mode": execution_mode,
@@ -1223,7 +1151,7 @@ class RuntimeStore:
             existing = conn.execute(
                 select(DashboardRunSummaryRow)
                 .where(DashboardRunSummaryRow.run_context_id == run_context_id)
-                .where(DashboardRunSummaryRow.user_id == user_id)
+                .where(DashboardRunSummaryRow.user_id == self.user_id)
             ).fetchone()
             if existing is None:
                 conn.execute(
@@ -1235,16 +1163,16 @@ class RuntimeStore:
                 conn.execute(
                     DashboardRunSummaryRow.__table__.update()
                     .where(DashboardRunSummaryRow.run_context_id == run_context_id)
-                    .where(DashboardRunSummaryRow.user_id == user_id)
+                    .where(DashboardRunSummaryRow.user_id == self.user_id)
                     .values(**values)
                 )
 
-    def get_dashboard_run_summary(self, user_id: str, run_context_id: str) -> dict | None:
+    def get_dashboard_run_summary(self, run_context_id: str) -> dict | None:
         with self.engine.begin() as conn:
             row = conn.execute(
                 select(DashboardRunSummaryRow)
                 .where(DashboardRunSummaryRow.run_context_id == run_context_id)
-                .where(DashboardRunSummaryRow.user_id == user_id)
+                .where(DashboardRunSummaryRow.user_id == self.user_id)
             ).fetchone()
         if row is None:
             return None
@@ -1264,11 +1192,11 @@ class RuntimeStore:
             "latest_workbench": json.loads(row.latest_workbench_json or "{}"),
         }
 
-    def list_dashboard_run_summaries(self, user_id: str, limit: int = 50) -> list[dict]:
+    def list_dashboard_run_summaries(self, limit: int = 50) -> list[dict]:
         with self.engine.begin() as conn:
             rows = conn.execute(
                 select(DashboardRunSummaryRow)
-                .where(DashboardRunSummaryRow.user_id == user_id)
+                .where(DashboardRunSummaryRow.user_id == self.user_id)
                 .order_by(DashboardRunSummaryRow.started_at.desc(), DashboardRunSummaryRow.run_context_id.desc())
                 .limit(limit)
             ).fetchall()
@@ -1295,7 +1223,6 @@ class RuntimeStore:
 
     def append_dashboard_run_event(
         self,
-        user_id: str,
         run_context_id: str,
         event_type: str,
         stage: str,
@@ -1307,13 +1234,13 @@ class RuntimeStore:
             current_seq = conn.execute(
                 select(func.max(DashboardRunEventRow.seq))
                 .where(DashboardRunEventRow.run_context_id == run_context_id)
-                .where(DashboardRunEventRow.user_id == user_id)
+                .where(DashboardRunEventRow.user_id == self.user_id)
             ).scalar_one()
             next_seq = int(current_seq or 0) + 1
             conn.execute(
                 DashboardRunEventRow.__table__.insert().values(
                     event_id=event_id,
-                    user_id=user_id,
+                    user_id=self.user_id,
                     run_context_id=run_context_id,
                     seq=next_seq,
                     event_type=event_type,
@@ -1326,14 +1253,13 @@ class RuntimeStore:
 
     def list_dashboard_run_events(
         self,
-        user_id: str,
         run_context_id: str,
         after_seq: int = 0,
     ) -> list[dict]:
         with self.engine.begin() as conn:
             rows = conn.execute(
                 select(DashboardRunEventRow)
-                .where(DashboardRunEventRow.user_id == user_id)
+                .where(DashboardRunEventRow.user_id == self.user_id)
                 .where(DashboardRunEventRow.run_context_id == run_context_id)
                 .where(DashboardRunEventRow.seq > after_seq)
                 .order_by(DashboardRunEventRow.seq.asc())

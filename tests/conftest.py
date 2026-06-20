@@ -1,7 +1,7 @@
 import os
 
 # 在导入任何 src.* 模块前设置默认的 SQLite 数据库与池参数
-# （避免 auth_security 内部直接调用 get_runtime_store() 时拿到默认
+# （避免 auth_security 内部直接调用 get_runtime_engine() 时拿到默认
 #  postgresql:// URL + 默认 pool_size=5 组合，导致 SQLite 测试连接失败）
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("DB_POOL_SIZE", "0")
@@ -13,29 +13,30 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 
 from src.api.auth_security import create_auth_token
-from src.api.dependencies import get_current_user_id
+from src.api.dependencies import get_current_user_id, get_user_runtime_store
 from src.core.config import Settings
+from src.core.tenant import TenantContext
 from src.infrastructure.event_bus.in_memory_event_bus import InMemoryEventBus
 from src.main import build_app
 from src.storage.dependencies import (
     get_decision_run_repository,
-    get_runtime_store,
+    get_runtime_engine,
     get_settings,
+    get_system_runtime_store,
 )
 from src.storage.models import Base
 from src.storage.runtime_store import RuntimeStore
+from src.storage.system_runtime_store import SystemRuntimeStore
 from tests.unit.repositories.in_memory_decision_run_repository import InMemoryDecisionRunRepository
 
-# 清掉 lru_cache 让测试用的 env（DATABASE_URL/DB_POOL_*）生效
 get_settings.cache_clear()
-# get_runtime_store / get_decision_run_repository 改为基于全局变量，
-# 测试可通过 _runtime_store_instance / _decision_run_repo_instance 覆盖
+get_decision_run_repository.__wrapped__ = None  # type: ignore[attr-defined]
 import src.storage.dependencies as _deps  # noqa: E402
 
-_deps._runtime_store_instance = None
-_deps._decision_run_repo_instance = None
+_decision_run_repo_instance = None
 
 TEST_USER_ID = "test-user"
+TEST_TENANT = TenantContext(TEST_USER_ID)
 
 
 @pytest.fixture
@@ -58,8 +59,7 @@ def pg_store(pg_engine):
     from sqlalchemy import insert
     from src.storage.auth_models import AppUserRow
 
-    store = RuntimeStore(pg_engine)
-    # 直接用 TEST_USER_ID 插入（create_user 会生成随机 ID，与 cookie 的 user_id 不匹配）
+    store = RuntimeStore(pg_engine, TEST_TENANT)
     try:
         with pg_engine.begin() as conn:
             conn.execute(insert(AppUserRow.__table__).values(
@@ -89,15 +89,12 @@ def event_bus():
 
 @pytest.fixture
 def auth_token():
-    """生成一个有效的认证 token。"""
     settings = Settings()
     return create_auth_token(TEST_USER_ID, settings)
 
 
 @pytest.fixture
 def test_app(pg_store, in_memory_decision_run_repository, event_bus, auth_token, monkeypatch):
-    # 关键：auth_middleware 直接调用 get_runtime_store()，绕过 FastAPI DI override。
-    # 用 monkeypatch 让 middleware 直接读 request.state（由我们自己塞 user）。
     import src.api.auth_security as _auth_security
     _original = _auth_security.get_current_user_from_request
 
@@ -105,7 +102,6 @@ def test_app(pg_store, in_memory_decision_run_repository, event_bus, auth_token,
         user = getattr(request.state, "user", None)
         if user:
             return user
-        # 第一次：从 cookie 解码 user_id，然后查 pg_store 拿完整 user dict
         settings = Settings()
         token = request.cookies.get(settings.auth_cookie_name)
         if not token:
@@ -127,7 +123,8 @@ def test_app(pg_store, in_memory_decision_run_repository, event_bus, auth_token,
     monkeypatch.setattr(_auth_security, "get_current_user_from_request", _patched)
 
     app = build_app()
-    app.dependency_overrides[get_runtime_store] = lambda: pg_store
+    app.dependency_overrides[get_user_runtime_store] = lambda: pg_store
+    app.dependency_overrides[get_system_runtime_store] = lambda: SystemRuntimeStore(pg_store.engine)
     app.dependency_overrides[get_decision_run_repository] = lambda: in_memory_decision_run_repository
     app.dependency_overrides[get_current_user_id] = lambda: TEST_USER_ID
     yield app
@@ -136,7 +133,6 @@ def test_app(pg_store, in_memory_decision_run_repository, event_bus, auth_token,
 
 @pytest.fixture
 def authenticated_client(test_app, auth_token):
-    """提供已认证的 TestClient。"""
     settings = Settings()
     client = TestClient(test_app)
     client.cookies.set(settings.auth_cookie_name, auth_token)

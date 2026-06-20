@@ -2,19 +2,20 @@ from dataclasses import dataclass
 from hashlib import sha256
 
 from src.agents.llm_client import LLMClient
+from src.core.tenant import SYSTEM_TENANT
 from src.domain.events.decision_events import DecisionRunCreated, DecisionRunFailed
 from src.domain.interfaces.decision_run_repository import DecisionRunRepository
 from src.domain.value_objects.symbol import Symbol
 from src.infrastructure.event_bus.event_bus import EventBus
-from src.storage.models import SYSTEM_USER_ID
 
 
 @dataclass
 class CreateDecisionRunRequest:
     """创建决策运行请求"""
+
     symbol: Symbol
     mock_llm: bool = False
-    user_id: str = SYSTEM_USER_ID
+    user_id: str = SYSTEM_TENANT.user_id
 
 
 @dataclass

@@ -3,7 +3,6 @@ from datetime import date, datetime, timedelta
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-
 class FakeLLM:
     model = "deepseek-v4-pro"
 
@@ -18,10 +17,8 @@ class FakeLLM:
             f'"target_position_ratio":0.1,"reason":"real-mode"}}'
         )
 
-
 def seed_dashboard_records(store):
-    decision_run_id = store.insert_decision_run(user_id="test-user", 
-        symbol="600519.SH",
+    decision_run_id = store.insert_decision_run(symbol="600519.SH",
         prompt_hash="hash-001",
         model_name="mock",
         raw_output='{"action":"BUY","confidence":80}',
@@ -35,16 +32,14 @@ def seed_dashboard_records(store):
             "market_context": {"mode": "shadow"},
         },
     )
-    target_position_id = store.insert_target_position(user_id="test-user", 
-        decision_run_id=decision_run_id,
+    target_position_id = store.insert_target_position(decision_run_id=decision_run_id,
         symbol="600519.SH",
         action="BUY",
         target_value=100000,
         target_position_ratio=0.1,
         expires_at=(datetime.utcnow() + timedelta(hours=1)).isoformat(),
     )
-    execution_order_id = store.insert_execution_order(user_id="test-user", 
-        target_position_id=target_position_id,
+    execution_order_id = store.insert_execution_order(target_position_id=target_position_id,
         symbol="600519.SH",
         action="BUY",
         quantity=100,
@@ -58,18 +53,15 @@ def seed_dashboard_records(store):
     )
     return decision_run_id, target_position_id, execution_order_id
 
-
 def ensure_paper_ledger_tables(engine) -> None:
     from src.paper_ledger.models import PaperBase
 
     PaperBase.metadata.create_all(engine)
 
-
 def test_dashboard_workbench_route_exists(authenticated_client, test_app):
     client = authenticated_client
     response = client.get("/api/v1/dashboard/workbench")
     assert response.status_code == 200
-
 
 def test_workbench_payload_has_stable_contract(authenticated_client, test_app, pg_store):
     decision_run_id, target_position_id, execution_order_id = seed_dashboard_records(pg_store)
@@ -106,7 +98,6 @@ def test_workbench_payload_has_stable_contract(authenticated_client, test_app, p
     assert order["execution_order_id"] == execution_order_id
     assert {"symbol", "action", "quantity", "limit_price", "status", "created_at"}.issubset(order.keys())
 
-
 def test_kill_switch_events_are_visible_in_workbench_history(authenticated_client, test_app):
     client = authenticated_client
 
@@ -132,10 +123,8 @@ def test_kill_switch_events_are_visible_in_workbench_history(authenticated_clien
         for event in payload["history"]["events"]
     )
 
-
 def test_workbench_payload_includes_alpha_panel(authenticated_client, test_app, pg_store):
-    ticket_id = pg_store.insert_alpha_ticket(user_id="test-user", 
-        asset_symbol="AAPLx",
+    ticket_id = pg_store.insert_alpha_ticket(asset_symbol="AAPLx",
         underlying_symbol="AAPL",
         action="BUY",
         thesis="discount to reference",
@@ -152,10 +141,8 @@ def test_workbench_payload_includes_alpha_panel(authenticated_client, test_app, 
     assert "alpha" in payload
     assert payload["alpha"]["tickets"][0]["ticket_id"] == ticket_id
 
-
 def test_workbench_payload_includes_alpha_portfolio_and_exceptions(authenticated_client, test_app, pg_store):
-    ticket_id = pg_store.insert_alpha_ticket(user_id="test-user", 
-        asset_symbol="AAPLx",
+    ticket_id = pg_store.insert_alpha_ticket(asset_symbol="AAPLx",
         underlying_symbol="AAPL",
         action="BUY",
         thesis="portfolio seed",
@@ -163,26 +150,22 @@ def test_workbench_payload_includes_alpha_portfolio_and_exceptions(authenticated
         suggested_limit_price=201.0,
         expires_at="2026-06-01T16:00:00+08:00",
     )
-    pg_store.insert_alpha_manual_fill(user_id="test-user", 
-        ticket_id=ticket_id,
+    pg_store.insert_alpha_manual_fill(ticket_id=ticket_id,
         operator_id="trader-01",
         executed_quantity=1.2,
         executed_price=201.0,
         notes="seed fill",
     )
     pg_store.replace_alpha_positions(
-        user_id="test-user",
         positions=[{"symbol": "AAPLx", "quantity": 1.2, "avg_cost": 201.0, "mark_price": 225.0}],
     )
     pg_store.insert_alpha_portfolio_snapshot(
-        user_id="test-user",
         cash_balance=8_500.0,
         realized_pnl=20.0,
         unrealized_pnl=28.8,
         nav=8_798.8,
     )
-    pg_store.insert_alpha_reconciliation_run(user_id="test-user", 
-        source="manual",
+    pg_store.insert_alpha_reconciliation_run(source="manual",
         status="MISMATCH",
         discrepancies={"positions": {"AAPLx": {"internal": 1.2, "external": 1.0}}},
     )
@@ -197,10 +180,8 @@ def test_workbench_payload_includes_alpha_portfolio_and_exceptions(authenticated
     assert "fills" not in payload["alpha"]
     assert payload["alpha"]["exceptions"]["latest_status"] == "MISMATCH"
 
-
 def test_workbench_uses_authoritative_target_quantity_and_reconcile_items(authenticated_client, test_app, pg_store):
-    pg_store.upsert_dashboard_run_summary(user_id="test-user", 
-        run_context_id="wrk-001",
+    pg_store.upsert_dashboard_run_summary(run_context_id="wrk-001",
         trade_date="2026-06-15",
         decision_mode="real",
         execution_mode="full",
@@ -231,15 +212,16 @@ def test_workbench_uses_authoritative_target_quantity_and_reconcile_items(authen
     assert payload["latest_run"]["reconcile_items"][0]["mark_price"] == 99.90
     assert payload["latest_run"]["run_pnl_summary"]["net_pnl"] == -0.96
 
-
 def test_history_returns_single_canonical_runs_list(authenticated_client, test_app, pg_store):
+    from src.core.tenant import TenantContext
     from src.paper_ledger.store import PaperLedgerStore
 
     ensure_paper_ledger_tables(pg_store.engine)
     with Session(pg_store.engine) as session:
-        ledger = PaperLedgerStore(session)
-        account = ledger.get_or_create_account("test-user", "a", "auto")
-        auto_run = ledger.create_run(user_id="test-user", account_id=account.account_id,
+        ledger = PaperLedgerStore(session, TenantContext("test-user"))
+        account = ledger.get_or_create_account(market="a", account_kind="auto")
+        auto_run = ledger.create_run(
+            account_id=account.account_id,
             market="a",
             trade_date=date(2026, 6, 16),
             run_source="auto",
@@ -249,7 +231,7 @@ def test_history_returns_single_canonical_runs_list(authenticated_client, test_a
         ledger.update_run_status(auto_run.run_id, "success")
         auto_run_id = auto_run.run_id
 
-    pg_store.upsert_dashboard_run_summary(user_id="test-user", 
+    pg_store.upsert_dashboard_run_summary(
         run_context_id="wrk-history-001",
         trade_date="2026-06-17",
         decision_mode="real",
@@ -329,11 +311,9 @@ def test_history_returns_single_canonical_runs_list(authenticated_client, test_a
     assert auto_history_run["run_context_id"] is None
     assert auto_history_run["supports_case_view"] is False
 
-
 def test_history_manual_runs_link_case_view_by_run_context_id(authenticated_client, test_app, pg_store):
     ensure_paper_ledger_tables(pg_store.engine)
-    pg_store.upsert_dashboard_run_summary(user_id="test-user", 
-        run_context_id="wrk-history-404",
+    pg_store.upsert_dashboard_run_summary(run_context_id="wrk-history-404",
         trade_date="2026-06-18",
         decision_mode="mock",
         execution_mode="decision",
@@ -368,11 +348,9 @@ def test_history_manual_runs_link_case_view_by_run_context_id(authenticated_clie
     assert workbench_response.status_code == 200
     assert workbench_response.json()["latest_run"]["run_context_id"] == "wrk-history-404"
 
-
 def test_history_supports_cursor_pagination_for_incremental_loading(authenticated_client, test_app, pg_store):
     ensure_paper_ledger_tables(pg_store.engine)
-    pg_store.upsert_dashboard_run_summary(user_id="test-user", 
-        run_context_id="wrk-history-101",
+    pg_store.upsert_dashboard_run_summary(run_context_id="wrk-history-101",
         trade_date="2026-06-18",
         decision_mode="mock",
         execution_mode="decision",
@@ -386,8 +364,7 @@ def test_history_supports_cursor_pagination_for_incremental_loading(authenticate
         finished_at="2026-06-18T10:03:00+08:00",
         latest_workbench={"latest_run": {"run_context_id": "wrk-history-101", "watchlist": ["NVDA"]}},
     )
-    pg_store.upsert_dashboard_run_summary(user_id="test-user", 
-        run_context_id="wrk-history-102",
+    pg_store.upsert_dashboard_run_summary(run_context_id="wrk-history-102",
         trade_date="2026-06-18",
         decision_mode="mock",
         execution_mode="decision",
@@ -401,8 +378,7 @@ def test_history_supports_cursor_pagination_for_incremental_loading(authenticate
         finished_at="2026-06-18T10:05:00+08:00",
         latest_workbench={"latest_run": {"run_context_id": "wrk-history-102", "watchlist": ["AAPL"]}},
     )
-    pg_store.upsert_dashboard_run_summary(user_id="test-user", 
-        run_context_id="wrk-history-103",
+    pg_store.upsert_dashboard_run_summary(run_context_id="wrk-history-103",
         trade_date="2026-06-18",
         decision_mode="mock",
         execution_mode="decision",
@@ -439,17 +415,16 @@ def test_history_supports_cursor_pagination_for_incremental_loading(authenticate
     assert second_payload["cursor"] == first_payload["next_cursor"]
     assert second_payload["next_cursor"] is None
 
-
 def test_performance_includes_window_metadata_and_comparison_cards(authenticated_client, test_app, pg_store):
+    from src.core.tenant import TenantContext
     from src.paper_ledger.store import PaperLedgerStore
 
     account_kind = "perf-meta-case"
     ensure_paper_ledger_tables(pg_store.engine)
     with Session(pg_store.engine) as session:
-        ledger = PaperLedgerStore(session)
-        account = ledger.get_or_create_account("test-user", "a", account_kind)
+        ledger = PaperLedgerStore(session, TenantContext("test-user"))
+        account = ledger.get_or_create_account(market="a", account_kind=account_kind)
         ledger.create_nav_snapshot(
-            user_id="test-user",
             account_id=account.account_id,
             trade_date=date(2026, 6, 16),
             nav=100.0,
@@ -457,7 +432,6 @@ def test_performance_includes_window_metadata_and_comparison_cards(authenticated
             positions_value=0.0,
         )
         ledger.create_nav_snapshot(
-            user_id="test-user",
             account_id=account.account_id,
             trade_date=date(2026, 6, 17),
             nav=103.0,
@@ -465,7 +439,6 @@ def test_performance_includes_window_metadata_and_comparison_cards(authenticated
             positions_value=0.0,
         )
         ledger.create_nav_snapshot(
-            user_id="test-user",
             account_id=account.account_id,
             trade_date=date(2026, 6, 18),
             nav=108.0,
@@ -486,7 +459,6 @@ def test_performance_includes_window_metadata_and_comparison_cards(authenticated
     assert isinstance(payload["comparison_cards"], list)
     assert {card["window"] for card in payload["comparison_cards"]} == {"7d", "30d", "90d", "ytd"}
 
-
 def test_old_run_endpoint_is_removed(authenticated_client, test_app, monkeypatch):
     """旧阻塞式 /api/v1/dashboard/run 必须删除（No Legacy By Default）。
 
@@ -504,7 +476,6 @@ def test_old_run_endpoint_is_removed(authenticated_client, test_app, monkeypatch
     assert res.status_code == 404, (
         f"legacy /api/v1/dashboard/run must be gone, got {res.status_code}: {res.text}"
     )
-
 
 def test_new_runs_endpoint_remains(authenticated_client, test_app, monkeypatch):
     """新流式 endpoint /api/v1/dashboard/runs 必须保留为唯一入口。"""

@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 from src.main import build_app
-from src.storage.dependencies import get_runtime_store
+from src.api.dependencies import get_user_runtime_store
 from src.storage.runtime_store import RuntimeStore
 
 
@@ -107,7 +107,7 @@ def seeded_store(pg_store: RuntimeStore):
 
 @pytest.mark.asyncio
 async def test_sse_response_streams_all_six_events_for_completed_run(test_app, seeded_store):
-    test_app.dependency_overrides[get_runtime_store] = lambda: seeded_store
+    test_app.dependency_overrides[get_user_runtime_store] = lambda: seeded_store
     transport = httpx.ASGITransport(app=test_app)
     received: list[dict] = []
     chunk_timestamps: list[float] = []

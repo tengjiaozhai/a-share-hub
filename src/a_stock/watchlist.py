@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from src.a_stock.models import AStockWatchlistItem
+from src.core.tenant import TenantContext
 
 logger = logging.getLogger(__name__)
 
@@ -9,9 +10,13 @@ logger = logging.getLogger(__name__)
 class AShareWatchlistStore:
     """A 股自选列表 CRUD。"""
 
-    def __init__(self, conn: Any, user_id: str):
+    def __init__(self, conn: Any, tenant: TenantContext):
         self._conn = conn
-        self._user_id = user_id
+        self._tenant = tenant
+
+    @property
+    def _user_id(self) -> str:
+        return self._tenant.user_id
 
     def list_items(self, page: int = 1, page_size: int = 20) -> tuple[list[AStockWatchlistItem], int]:
         offset = (page - 1) * page_size

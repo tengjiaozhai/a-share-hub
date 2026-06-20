@@ -3,8 +3,9 @@ import json
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
 from src.api.auth_security import verify_broker_signature
+from src.api.dependencies import get_user_runtime_store
 from src.core.config import Settings
-from src.storage.dependencies import get_runtime_store
+from src.storage.runtime_store import RuntimeStore
 
 router = APIRouter(prefix="/api/v1")
 
@@ -12,7 +13,7 @@ router = APIRouter(prefix="/api/v1")
 @router.post("/broker-events")
 async def receive_broker_event(
     request: Request,
-    store=Depends(get_runtime_store),
+    store: RuntimeStore = Depends(get_user_runtime_store),  # noqa: B008 - Task 6 才会改用 SystemRuntimeStore
     x_broker_signature: str | None = Header(default=None, alias="X-Broker-Signature"),
     x_broker_timestamp: str | None = Header(default=None, alias="X-Broker-Timestamp"),
 ) -> dict:

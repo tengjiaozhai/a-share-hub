@@ -41,8 +41,7 @@ class PaperExecutionService:
             submitted_at = _now_cst_iso()
 
             execution_order_id = self.store.insert_execution_order(
-                user_id=user_id,
-                target_position_id=target["target_position_id"],
+                                target_position_id=target["target_position_id"],
                 run_context_id=target.get("run_context_id"),
                 symbol=target["symbol"],
                 action=action,
@@ -75,8 +74,7 @@ class PaperExecutionService:
             pnl_delta = fill_state["realized_pnl"]
             filled_at = _now_cst_iso()
             self.store.update_execution_order_status(
-                user_id,
-                execution_order_id,
+                execution_order_id=execution_order_id,
                 status="FILLED",
                 status_code="FILLED",
                 status_reason="paper_filled",
@@ -126,8 +124,7 @@ class PaperExecutionService:
         nav = compute_nav(state, mark_prices)
         positions = self._decorate_positions(state["positions"], mark_prices, quote_meta_by_symbol or {})
         snapshot_id = self.store.insert_account_snapshot(
-            user_id=user_id,
-            cash=state["cash"],
+                        cash=state["cash"],
             nav=nav,
             positions=positions,
             run_context_id=targets[0].get("run_context_id") if targets else "wrk-empty",

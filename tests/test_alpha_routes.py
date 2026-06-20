@@ -112,11 +112,9 @@ def test_alpha_ticket_api_returns_404_for_nonexistent_ticket(authenticated_clien
 
 def test_alpha_reconciliation_route_returns_run_id(authenticated_client, test_app, pg_store):
     pg_store.replace_alpha_positions(
-        user_id="test-user",
         positions=[{"symbol": "AAPLx", "quantity": 1.2, "avg_cost": 201.0, "mark_price": 225.0}],
     )
     pg_store.insert_alpha_portfolio_snapshot(
-        user_id="test-user",
         cash_balance=8_500.0,
         realized_pnl=20.0,
         unrealized_pnl=28.8,
@@ -155,7 +153,7 @@ def test_alpha_watchlist_api_supports_list_and_add(authenticated_client, ):
     assert add_res.status_code == 200
     assert add_res.json()["stored"] is True
     assert add_res.json()["symbol"] == "AAPLx"
-    mock_store.add_alpha_watchlist_item.assert_called_once_with(user_id="test-user", symbol="AAPLx", underlying_symbol="AAPL", priority=1)
+    mock_store.add_alpha_watchlist_item.assert_called_once_with(symbol="AAPLx", underlying_symbol="AAPL", priority=1)
 
     list_res = client.get("/api/v1/alpha/watchlist")
     assert list_res.status_code == 200
@@ -210,7 +208,6 @@ def test_alpha_research_scan_endpoint_returns_ranked_candidates(authenticated_cl
 
 def test_alpha_portfolio_rebuild_endpoint_rebuilds_from_all_fills(authenticated_client, test_app, pg_store):
     buy_ticket_id = pg_store.insert_alpha_ticket(
-        user_id="test-user",
         asset_symbol="AAPLx",
         underlying_symbol="AAPL",
         action="BUY",
@@ -220,7 +217,6 @@ def test_alpha_portfolio_rebuild_endpoint_rebuilds_from_all_fills(authenticated_
         expires_at="2026-06-01T16:00:00+08:00",
     )
     sell_ticket_id = pg_store.insert_alpha_ticket(
-        user_id="test-user",
         asset_symbol="AAPLx",
         underlying_symbol="AAPL",
         action="SELL",
@@ -230,7 +226,6 @@ def test_alpha_portfolio_rebuild_endpoint_rebuilds_from_all_fills(authenticated_
         expires_at="2026-06-01T16:30:00+08:00",
     )
     pg_store.insert_alpha_manual_fill(
-        user_id="test-user",
         ticket_id=buy_ticket_id,
         operator_id="trader-01",
         executed_quantity=2.0,
@@ -238,7 +233,6 @@ def test_alpha_portfolio_rebuild_endpoint_rebuilds_from_all_fills(authenticated_
         notes="buy fill",
     )
     pg_store.insert_alpha_manual_fill(
-        user_id="test-user",
         ticket_id=sell_ticket_id,
         operator_id="trader-01",
         executed_quantity=0.5,
@@ -265,7 +259,6 @@ def test_alpha_portfolio_rebuild_endpoint_rebuilds_from_all_fills(authenticated_
 
 def test_alpha_fill_can_rebuild_portfolio_immediately(authenticated_client, test_app, pg_store):
     ticket_id = pg_store.insert_alpha_ticket(
-        user_id="test-user",
         asset_symbol="AAPLx",
         underlying_symbol="AAPL",
         action="BUY",
@@ -319,7 +312,7 @@ def test_alpha_research_candidate_can_be_promoted_to_ticket(authenticated_client
         yield FakeResearchService()
 
     test_app.dependency_overrides[routes_alpha.get_alpha_research_service] = override_get_alpha_research_service
-    pg_store.add_alpha_watchlist_item(user_id="test-user", symbol="AAPLx", underlying_symbol="AAPL", priority=1)
+    pg_store.add_alpha_watchlist_item(symbol="AAPLx", underlying_symbol="AAPL", priority=1)
     client = authenticated_client
 
     response = client.post("/api/v1/alpha/research/propose-top-ticket", json={"thesis_prefix": "auto"})
@@ -349,7 +342,6 @@ def test_alpha_capabilities_report_manual_mode(authenticated_client, monkeypatch
 
 def test_generate_portfolio_report_endpoint(authenticated_client, test_app, pg_store):
     ticket_id = pg_store.insert_alpha_ticket(
-        user_id="test-user",
         asset_symbol="AAPLx",
         underlying_symbol="AAPL",
         action="BUY",
@@ -359,7 +351,6 @@ def test_generate_portfolio_report_endpoint(authenticated_client, test_app, pg_s
         expires_at="2026-06-01T16:00:00+08:00",
     )
     pg_store.insert_alpha_manual_fill(
-        user_id="test-user",
         ticket_id=ticket_id,
         operator_id="trader-01",
         executed_quantity=2.0,

@@ -2,7 +2,12 @@ from src.alpha.ledger import AlphaPortfolioState, apply_manual_fill, mark_to_mar
 
 
 class AlphaPortfolioService:
-    def __init__(self, store, user_id: str) -> None:
+    """Alpha 组合服务，租户身份由绑定到 store 的 TenantContext 决定。
+
+    构造签名保留 user_id 以兼容旧调用方，但不再用于 store 调用——store 已经绑定租户。
+    """
+
+    def __init__(self, store, user_id: str | None = None) -> None:
         self._store = store
         self._user_id = user_id
 
@@ -10,11 +15,11 @@ class AlphaPortfolioService:
         ticket_lookup = self._build_ticket_lookup()
         fills = [
             self._enrich_fill(fill, ticket_lookup[fill["ticket_id"]])
-            for fill in reversed(self._store.list_all_alpha_manual_fills(self._user_id))
+            for fill in reversed(self._store.list_all_alpha_manual_fills())
         ]
         return {
-            "snapshot": self._store.get_latest_alpha_portfolio_snapshot(self._user_id),
-            "positions": self._store.list_alpha_positions(self._user_id),
+            "snapshot": self._store.get_latest_alpha_portfolio_snapshot(),
+            "positions": self._store.list_alpha_positions(),
             "fills": fills,
         }
 
@@ -26,7 +31,7 @@ class AlphaPortfolioService:
     ) -> dict:
         resolved_ticket_lookup = ticket_lookup or self._build_ticket_lookup()
         state = AlphaPortfolioState(cash_balance=opening_cash, realized_pnl=0.0, positions={})
-        for fill in self._store.list_all_alpha_manual_fills(self._user_id):
+        for fill in self._store.list_all_alpha_manual_fills():
             ticket = resolved_ticket_lookup[fill["ticket_id"]]
             state = apply_manual_fill(
                 state,
@@ -47,8 +52,8 @@ class AlphaPortfolioService:
             for position in state.positions.values()
             if position.quantity > 0
         ]
-        self._store.replace_alpha_positions(self._user_id, positions)
-        self._store.insert_alpha_portfolio_snapshot(self._user_id, **summary)
+        self._store.replace_alpha_positions(positions)
+        self._store.insert_alpha_portfolio_snapshot(**summary)
         summary["positions"] = positions
         return summary
 
@@ -59,7 +64,7 @@ class AlphaPortfolioService:
     def _build_ticket_lookup(self) -> dict[str, dict]:
         return {
             ticket["ticket_id"]: ticket
-            for ticket in self._store.list_alpha_tickets(self._user_id)
+            for ticket in self._store.list_alpha_tickets()
         }
 
     def _enrich_fill(self, fill: dict, ticket: dict) -> dict:

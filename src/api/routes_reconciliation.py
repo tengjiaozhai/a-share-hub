@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 
-from src.api.dependencies import get_current_user, get_current_user_id
-from src.storage.dependencies import get_runtime_store
+from src.api.dependencies import get_current_user, get_user_runtime_store
+from src.storage.runtime_store import RuntimeStore
 
 router = APIRouter(prefix="/api/v1", dependencies=[Depends(get_current_user)])
 
@@ -9,7 +9,6 @@ router = APIRouter(prefix="/api/v1", dependencies=[Depends(get_current_user)])
 @router.get("/reconciliation/status")
 def get_reconciliation_status(
     run_context_id: str | None = Query(default=None),
-    user_id: str = Depends(get_current_user_id),  # noqa: B008
-    store=Depends(get_runtime_store),  # noqa: B008
+    store: RuntimeStore = Depends(get_user_runtime_store),
 ) -> dict:
-    return store.get_reconciliation_status(user_id=user_id, run_context_id=run_context_id)
+    return store.get_reconciliation_status(run_context_id=run_context_id)

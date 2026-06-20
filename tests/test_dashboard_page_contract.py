@@ -6,10 +6,10 @@ from sqlalchemy.pool import StaticPool
 
 from src.api.dashboard_page.render import render_dashboard_html
 from src.main import build_app
-from src.storage.dependencies import get_runtime_store
+from src.api.dependencies import get_user_runtime_store
 from src.storage.models import Base
+from src.core.tenant import TenantContext
 from src.storage.runtime_store import RuntimeStore
-
 
 def build_dashboard_client():
     engine = create_engine(
@@ -19,11 +19,10 @@ def build_dashboard_client():
         future=True,
     )
     Base.metadata.create_all(engine)
-    store = RuntimeStore(engine)
+    store = RuntimeStore(engine, TenantContext("test-user"))
     app = build_app()
-    app.dependency_overrides[get_runtime_store] = lambda: store
+    app.dependency_overrides[get_user_runtime_store] = lambda: store
     return TestClient(app), store
-
 
 def test_dashboard_is_only_html_entrypoint():
     client, _ = build_dashboard_client()
@@ -31,7 +30,6 @@ def test_dashboard_is_only_html_entrypoint():
     assert client.get("/dashboard").status_code == 200
     assert client.get("/new").status_code == 404
     assert client.get("/static/index.html").status_code == 404
-
 
 def test_render_dashboard_html_contains_alpha_contract():
     html = render_dashboard_html()
@@ -45,13 +43,11 @@ def test_render_dashboard_html_contains_alpha_contract():
     assert "runAlphaScan" in html
     assert "proposeTopAlphaTicket" in html
 
-
 def test_render_dashboard_html_contains_market_contract():
     html = render_dashboard_html()
     assert "view-market" in html
     assert "A 股工作台" in html
     assert "aLoadQuotes" in html
-
 
 def test_render_dashboard_html_contains_strategy_workbench_contract():
     html = render_dashboard_html()
@@ -64,7 +60,6 @@ def test_render_dashboard_html_contains_strategy_workbench_contract():
         'id="risk-pnl"',
     ]:
         assert marker in html
-
 
 def test_render_dashboard_html_contains_streaming_run_markers():
     html = render_dashboard_html()
@@ -83,7 +78,6 @@ def test_render_dashboard_html_contains_streaming_run_markers():
     for marker in required_markers:
         assert marker in html
 
-
 def test_render_dashboard_html_contains_streaming_run_javascript_contract():
     html = render_dashboard_html()
     assert "const RUNS_API = '/api/v1/dashboard/runs';" in html
@@ -91,13 +85,11 @@ def test_render_dashboard_html_contains_streaming_run_javascript_contract():
     assert "new EventSource" in html
     assert "connectRunStream" in html
 
-
 def test_render_dashboard_html_contains_reconcile_renderer_hooks():
     html = render_dashboard_html()
     assert "renderReconcile(" in html
     assert "renderRunPnlSummary(" in html
     assert "duration_ms" in html
-
 
 def test_render_dashboard_html_contains_incremental_history_and_window_switch_contract():
     html = render_dashboard_html()
@@ -112,21 +104,16 @@ def test_render_dashboard_html_contains_incremental_history_and_window_switch_co
     for marker in required_markers:
         assert marker in html
 
-
 def test_dashboard_route_uses_rendered_split_html():
     client = TestClient(build_app())
     response = client.get("/dashboard")
     assert response.status_code == 200
     assert response.text == render_dashboard_html()
 
-
 def test_dashboard_preferences_and_workbench_stay_server_backed():
     client, store = build_dashboard_client()
 
-    store.set_preference(
-        "test-user-1",
-        "dashboard",
-        {
+    store.set_preference("dashboard", {
             "watchlist": ["600519.SH", "000858.SZ"],
             "capital_base": 1200000,
             "max_position_ratio": 0.25,
@@ -136,8 +123,7 @@ def test_dashboard_preferences_and_workbench_stay_server_backed():
         },
     )
 
-    decision_run_id = store.insert_decision_run(user_id="test-user", 
-        symbol="600519.SH",
+    decision_run_id = store.insert_decision_run(symbol="600519.SH",
         prompt_hash="dashboard-seed",
         model_name="mock",
         raw_output='{"action":"BUY","confidence":80}',
@@ -147,16 +133,14 @@ def test_dashboard_preferences_and_workbench_stay_server_backed():
         reason="seed decision",
         input_snapshot={"symbol": "600519.SH", "features": {"decision_mode": "mock"}, "market_context": {"mode": "shadow"}},
     )
-    target_position_id = store.insert_target_position(user_id="test-user", 
-        decision_run_id=decision_run_id,
+    target_position_id = store.insert_target_position(decision_run_id=decision_run_id,
         symbol="600519.SH",
         action="BUY",
         target_value=300000,
         target_position_ratio=0.25,
         expires_at=(datetime.utcnow() + timedelta(hours=1)).isoformat(),
     )
-    execution_order_id = store.insert_execution_order(user_id="test-user", 
-        target_position_id=target_position_id,
+    execution_order_id = store.insert_execution_order(target_position_id=target_position_id,
         symbol="600519.SH",
         action="BUY",
         quantity=100,
@@ -179,7 +163,6 @@ def test_dashboard_preferences_and_workbench_stay_server_backed():
     assert workbench["history"]["decisions"][0]["decision_run_id"] == decision_run_id
     assert workbench["history"]["targets"][0]["target_position_id"] == target_position_id
     assert workbench["history"]["orders"][0]["execution_order_id"] == execution_order_id
-
 
 def test_render_dashboard_html_contains_market_and_alpha_controls():
     html = render_dashboard_html()
@@ -206,7 +189,6 @@ def test_render_dashboard_html_contains_market_and_alpha_controls():
     for marker in required_markers:
         assert marker in html
 
-
 def test_dashboard_split_has_no_legacy_frontend_paths():
     from pathlib import Path
 
@@ -219,7 +201,6 @@ def test_dashboard_split_has_no_legacy_frontend_paths():
     assert "StaticFiles" not in main_py
     assert '/new' not in routes_py
     assert 'dashboard.html' not in routes_py
-
 
 def test_render_dashboard_html_contains_stage_body_html_guards():
     import re
@@ -241,7 +222,6 @@ def test_render_dashboard_html_contains_stage_body_html_guards():
                 f"stageBodyHtml line has .map without toList: {line.strip()}"
             )
 
-
 def test_render_dashboard_html_contains_sse_timeout_handler():
     html = render_dashboard_html()
 
@@ -252,11 +232,9 @@ def test_render_dashboard_html_contains_sse_timeout_handler():
         "SSE timeout UI message missing (运行超时 / force close / forceClose)"
     )
 
-
 def test_render_dashboard_html_contains_inline_favicon_link():
     html = render_dashboard_html()
     assert 'rel="icon"' in html, "favicon link missing"
-
 
 def test_render_dashboard_html_does_not_contain_legacy_run_api():
     """旧 /api/v1/dashboard/run endpoint 必须已删除（No Legacy By Default）"""
@@ -268,7 +246,6 @@ def test_render_dashboard_html_does_not_contain_legacy_run_api():
         f"Legacy /api/v1/dashboard/run reference still in page (matches: {legacy_match.group(0) if legacy_match else None!r})"
     )
 
-
 def test_render_dashboard_html_contains_resilient_sse_onerror():
     """SSE onerror 必须有重连容忍，不直接 close 流"""
     html = render_dashboard_html()
@@ -278,7 +255,6 @@ def test_render_dashboard_html_contains_resilient_sse_onerror():
     assert ("RECONNECT" in html) or ("reconnect" in html), (
         "Reconnect constants missing"
     )
-
 
 def test_render_dashboard_html_sse_timeouts_match_backend_run_time():
     """SSE 心跳/硬性超时常量必须 ≥ 后端实测的完整 run 耗时（≥ 60s / ≥ 120s）。
@@ -306,18 +282,15 @@ def test_render_dashboard_html_sse_timeouts_match_backend_run_time():
         f"hard timeout {hard_timeout_ms}ms too short; 至少要给 LLM 推理 120s"
     )
 
-
 def test_render_dashboard_html_contains_insufficient_data_warning_helper():
     html = render_dashboard_html()
     assert "insufficientDataWarningHtml" in html
     assert "数据不足" in html
 
-
 def test_render_dashboard_html_contains_run_card_hint():
     html = render_dashboard_html()
     assert "run-card-hint" in html
     assert "点击查看案件详情" in html
-
 
 def test_render_dashboard_html_contains_case_drawer_contract():
     """验证 drawer 容器和关闭控件已嵌入"""
@@ -329,7 +302,6 @@ def test_render_dashboard_html_contains_case_drawer_contract():
     assert 'closeCaseDrawer' in html
     assert 'class="case-shell"' in html
 
-
 def test_render_dashboard_html_drawer_not_open_by_default():
     """验证 drawer 默认状态是关闭的（无 open class，aria-hidden=true）"""
     html = render_dashboard_html()
@@ -339,7 +311,6 @@ def test_render_dashboard_html_drawer_not_open_by_default():
     assert 'class="drawer-backdrop"' in html
     assert 'aria-hidden="true"' in html
 
-
 def test_render_dashboard_html_contains_close_button():
     """验证 close 按钮已嵌入"""
     html = render_dashboard_html()
@@ -347,12 +318,10 @@ def test_render_dashboard_html_contains_close_button():
     assert 'closeCaseDrawer()' in html
     assert 'aria-label="关闭案件视图"' in html
 
-
 def test_render_dashboard_html_rail_bottom_removed():
     """验证 rail-bottom 已被 drawer 取代"""
     html = render_dashboard_html()
     assert 'class="rail-bottom"' not in html
-
 
 def test_render_dashboard_html_contains_skeleton_function():
     """验证 skeleton 函数和样式已嵌入"""

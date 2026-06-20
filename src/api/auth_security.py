@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 
 from src.core.config import Settings
 from src.storage.auth_store import AuthStore
-from src.storage.dependencies import get_runtime_store
+from src.storage.dependencies import get_runtime_engine
 
 PUBLIC_EXACT = {
     "/login",
@@ -72,7 +72,7 @@ def get_current_user_from_request(request: Request) -> dict | None:
     user_id = read_auth_token(token, settings)
     if not user_id:
         return None
-    user = AuthStore(get_runtime_store().engine).get_user(user_id)
+    user = AuthStore(get_runtime_engine()).get_user(user_id)
     if not user or user["disabled"]:
         return None
     return _public_user(user)

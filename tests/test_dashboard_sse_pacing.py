@@ -4,7 +4,7 @@ import time
 import pytest
 
 from src.api.routes_dashboard import stream_dashboard_run_events
-from src.storage.dependencies import get_runtime_store
+from src.api.dependencies import get_user_runtime_store
 from src.storage.runtime_store import RuntimeStore
 
 
@@ -66,7 +66,7 @@ async def test_sse_paces_yields_so_browser_event_source_can_dispatch(test_app, s
     browser over a real socket observes each yield as a distinct chunk, so
     the generator-level pacing we test here is what reaches the browser.
     """
-    test_app.dependency_overrides[get_runtime_store] = lambda: seeded_store
+    test_app.dependency_overrides[get_user_runtime_store] = lambda: seeded_store
 
     response = await stream_dashboard_run_events(
         run_context_id="wrk-pacing-001",

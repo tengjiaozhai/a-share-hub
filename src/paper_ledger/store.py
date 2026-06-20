@@ -7,6 +7,7 @@ from sqlalchemy import and_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from src.core.tenant import TenantContext
 from src.paper_ledger.models import (
     PaperAccountRow,
     PaperFillRow,
@@ -18,14 +19,18 @@ from src.paper_ledger.models import (
 
 
 class PaperLedgerStore:
-    """纸面账本 CRUD 操作（按 user_id 隔离）"""
+    """纸面账本 CRUD 操作（按绑定租户隔离）"""
 
-    def __init__(self, session: Session):
+    def __init__(self, session: Session, tenant: TenantContext):
         self._session = session
+        self._tenant = tenant
+
+    @property
+    def user_id(self) -> str:
+        return self._tenant.user_id
 
     def get_or_create_account(
         self,
-        user_id: str,
         market: str,
         account_kind: str,
         initial_capital: float = 1000000.0,
@@ -33,7 +38,7 @@ class PaperLedgerStore:
         """获取或创建账户（按 user_id + market + account_kind 唯一）"""
         stmt = select(PaperAccountRow).where(
             and_(
-                PaperAccountRow.user_id == user_id,
+                PaperAccountRow.user_id == self.user_id,
                 PaperAccountRow.market == market,
                 PaperAccountRow.account_kind == account_kind,
             )
@@ -41,8 +46,8 @@ class PaperLedgerStore:
         account = self._session.execute(stmt).scalar_one_or_none()
         if account is None:
             account = PaperAccountRow(
-                account_id=f"acc-{user_id}-{market}-{account_kind}",
-                user_id=user_id,
+                account_id=f"acc-{self.user_id}-{market}-{account_kind}",
+                user_id=self.user_id,
                 market=market,
                 account_kind=account_kind,
                 initial_capital=initial_capital,
@@ -57,7 +62,6 @@ class PaperLedgerStore:
 
     def create_run(
         self,
-        user_id: str,
         account_id: str,
         market: str,
         trade_date: date,
@@ -68,7 +72,7 @@ class PaperLedgerStore:
         """创建运行记录"""
         run = PaperRunRow(
             run_id=f"run-{uuid.uuid4().hex[:12]}",
-            user_id=user_id,
+            user_id=self.user_id,
             account_id=account_id,
             market=market,
             trade_date=trade_date,
@@ -83,15 +87,19 @@ class PaperLedgerStore:
 
     def update_run_status(self, run_id: str, status: str, error_message: str | None = None):
         """更新运行状态"""
-        stmt = select(PaperRunRow).where(PaperRunRow.run_id == run_id)
-        run = self._session.execute(stmt).scalar_one()
+        stmt = select(PaperRunRow).where(
+            PaperRunRow.run_id == run_id,
+            PaperRunRow.user_id == self.user_id,
+        )
+        run = self._session.execute(stmt).scalar_one_or_none()
+        if run is None:
+            raise LookupError(f"paper run not found: {run_id}")
         run.status = status
         run.error_message = error_message
         self._session.commit()
 
     def create_fill(
         self,
-        user_id: str,
         run_id: str,
         account_id: str,
         symbol: str,
@@ -100,9 +108,25 @@ class PaperLedgerStore:
         price: float,
     ) -> PaperFillRow:
         """创建成交记录"""
+        run = self._session.execute(
+            select(PaperRunRow).where(
+                PaperRunRow.run_id == run_id,
+                PaperRunRow.user_id == self.user_id,
+            )
+        ).scalar_one_or_none()
+        if run is None:
+            raise LookupError(f"paper run not found: {run_id}")
+        account = self._session.execute(
+            select(PaperAccountRow).where(
+                PaperAccountRow.account_id == account_id,
+                PaperAccountRow.user_id == self.user_id,
+            )
+        ).scalar_one_or_none()
+        if account is None:
+            raise LookupError(f"paper account not found: {account_id}")
         fill = PaperFillRow(
             fill_id=f"fill-{uuid.uuid4().hex[:12]}",
-            user_id=user_id,
+            user_id=self.user_id,
             run_id=run_id,
             account_id=account_id,
             symbol=symbol,
@@ -115,11 +139,11 @@ class PaperLedgerStore:
         self._session.commit()
         return fill
 
-    def get_position(self, user_id: str, account_id: str, symbol: str) -> PaperPositionRow | None:
+    def get_position(self, account_id: str, symbol: str) -> PaperPositionRow | None:
         """获取持仓"""
         stmt = select(PaperPositionRow).where(
             and_(
-                PaperPositionRow.user_id == user_id,
+                PaperPositionRow.user_id == self.user_id,
                 PaperPositionRow.account_id == account_id,
                 PaperPositionRow.symbol == symbol,
             )
@@ -128,18 +152,17 @@ class PaperLedgerStore:
 
     def update_position(
         self,
-        user_id: str,
         account_id: str,
         symbol: str,
         quantity: int,
         avg_cost: float,
     ):
         """更新持仓"""
-        position = self.get_position(user_id, account_id, symbol)
+        position = self.get_position(account_id, symbol)
         if position is None:
             position = PaperPositionRow(
-                position_id=f"pos-{user_id}-{account_id}-{symbol}",
-                user_id=user_id,
+                position_id=f"pos-{self.user_id}-{account_id}-{symbol}",
+                user_id=self.user_id,
                 account_id=account_id,
                 symbol=symbol,
                 quantity=quantity,
@@ -152,11 +175,11 @@ class PaperLedgerStore:
             position.updated_at = datetime.utcnow()
         self._session.commit()
 
-    def get_all_positions(self, user_id: str, account_id: str) -> list[PaperPositionRow]:
+    def get_all_positions(self, account_id: str) -> list[PaperPositionRow]:
         """获取所有持仓"""
         stmt = select(PaperPositionRow).where(
             and_(
-                PaperPositionRow.user_id == user_id,
+                PaperPositionRow.user_id == self.user_id,
                 PaperPositionRow.account_id == account_id,
             )
         )
@@ -164,7 +187,6 @@ class PaperLedgerStore:
 
     def create_nav_snapshot(
         self,
-        user_id: str,
         account_id: str,
         trade_date: date,
         nav: float,
@@ -175,8 +197,8 @@ class PaperLedgerStore:
     ) -> PaperNavDailyRow:
         """创建净值快照"""
         nav_row = PaperNavDailyRow(
-            nav_id=f"nav-{user_id}-{account_id}-{trade_date.isoformat()}-{source}",
-            user_id=user_id,
+            nav_id=f"nav-{self.user_id}-{account_id}-{trade_date.isoformat()}-{source}",
+            user_id=self.user_id,
             account_id=account_id,
             trade_date=trade_date,
             nav=nav,
@@ -193,7 +215,7 @@ class PaperLedgerStore:
             existing = self._session.execute(
                 select(PaperNavDailyRow).where(
                     and_(
-                        PaperNavDailyRow.user_id == user_id,
+                        PaperNavDailyRow.user_id == self.user_id,
                         PaperNavDailyRow.account_id == account_id,
                         PaperNavDailyRow.trade_date == trade_date,
                         PaperNavDailyRow.source == source,
@@ -203,13 +225,13 @@ class PaperLedgerStore:
             return existing
         return nav_row
 
-    def get_nav_history(self, user_id: str, account_id: str, days: int = 30) -> list[PaperNavDailyRow]:
+    def get_nav_history(self, account_id: str, days: int = 30) -> list[PaperNavDailyRow]:
         """获取净值历史"""
         stmt = (
             select(PaperNavDailyRow)
             .where(
                 and_(
-                    PaperNavDailyRow.user_id == user_id,
+                    PaperNavDailyRow.user_id == self.user_id,
                     PaperNavDailyRow.account_id == account_id,
                 )
             )
@@ -220,7 +242,6 @@ class PaperLedgerStore:
 
     def check_run_exists(
         self,
-        user_id: str,
         market: str,
         trade_date: date,
         run_source: str,
@@ -233,7 +254,7 @@ class PaperLedgerStore:
         """
         stmt = select(PaperRunRow).where(
             and_(
-                PaperRunRow.user_id == user_id,
+                PaperRunRow.user_id == self.user_id,
                 PaperRunRow.market == market,
                 PaperRunRow.trade_date == trade_date,
                 PaperRunRow.run_source == run_source,
@@ -252,16 +273,15 @@ class PaperLedgerStore:
 
     def acquire_job_lock(
         self,
-        user_id: str,
         job_name: str,
         market: str,
         trade_date: date,
         ttl_seconds: int = 3600,
         lock_owner: str | None = None,
     ) -> str | None:
-        """尝试获取调度锁，成功返回 job_key，失败返回 None。
+        """尝试获取全局调度锁，成功返回 job_key，失败返回 None。
 
-        用数据库主键做原子互斥，防止多 worker / 多实例同时执行同一个自动任务。
+        锁归属全局（不按 user_id 隔离），多 worker / 多实例互斥同一自动任务。
         """
         now = datetime.utcnow()
         job_key = self._job_key(job_name, market, trade_date)
@@ -318,17 +338,16 @@ class PaperLedgerStore:
 
     def get_latest_run(
         self,
-        user_id: str,
         market: str,
         account_kind: str,
     ) -> PaperRunRow | None:
         """获取最近一次成功的运行"""
-        account = self.get_or_create_account(user_id, market, account_kind)
+        account = self.get_or_create_account(market, account_kind)
         stmt = (
             select(PaperRunRow)
             .where(
                 and_(
-                    PaperRunRow.user_id == user_id,
+                    PaperRunRow.user_id == self.user_id,
                     PaperRunRow.account_id == account.account_id,
                     PaperRunRow.status == "success",
                 )
@@ -340,7 +359,6 @@ class PaperLedgerStore:
 
     def get_nav_range(
         self,
-        user_id: str,
         account_id: str,
         start_date: date | None = None,
         end_date: date | None = None,
@@ -348,7 +366,7 @@ class PaperLedgerStore:
     ) -> list[PaperNavDailyRow]:
         """获取指定日期范围内的净值记录"""
         conditions = [
-            PaperNavDailyRow.user_id == user_id,
+            PaperNavDailyRow.user_id == self.user_id,
             PaperNavDailyRow.account_id == account_id,
         ]
         if start_date is not None:
@@ -365,7 +383,6 @@ class PaperLedgerStore:
 
     def get_comparison_windows(
         self,
-        user_id: str,
         account_id: str,
         windows: list[str] | None = None,
     ) -> dict[str, float]:
@@ -378,7 +395,7 @@ class PaperLedgerStore:
             select(PaperNavDailyRow)
             .where(
                 and_(
-                    PaperNavDailyRow.user_id == user_id,
+                    PaperNavDailyRow.user_id == self.user_id,
                     PaperNavDailyRow.account_id == account_id,
                 )
             )
@@ -399,7 +416,7 @@ class PaperLedgerStore:
                 select(PaperNavDailyRow)
                 .where(
                     and_(
-                        PaperNavDailyRow.user_id == user_id,
+                        PaperNavDailyRow.user_id == self.user_id,
                         PaperNavDailyRow.account_id == account_id,
                         PaperNavDailyRow.trade_date <= start,
                     )
@@ -415,14 +432,13 @@ class PaperLedgerStore:
 
     def get_run_history(
         self,
-        user_id: str,
         market: str,
         source: str = "all",
         limit: int = 20,
     ) -> list[PaperRunRow]:
         """获取运行历史，可按 source 过滤"""
         conditions = [
-            PaperRunRow.user_id == user_id,
+            PaperRunRow.user_id == self.user_id,
             PaperRunRow.market == market,
         ]
         if source != "all":

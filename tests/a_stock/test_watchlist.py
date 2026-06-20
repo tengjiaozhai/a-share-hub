@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import MagicMock
 
+from src.core.tenant import TenantContext
 from src.a_stock.watchlist import AShareWatchlistStore
 
 
@@ -22,7 +23,7 @@ def test_list_items(mock_db):
     cursor.fetchall.return_value = [
         {"id": 1, "symbol": "600519.SH", "name": "贵州茅台", "sort_order": 0, "created_at": "2026-01-01"},
     ]
-    store = AShareWatchlistStore(conn, TEST_USER_ID)
+    store = AShareWatchlistStore(conn, TenantContext(TEST_USER_ID))
     items, total = store.list_items()
     assert total == 1
     assert len(items) == 1
@@ -37,7 +38,7 @@ def test_add_item(mock_db):
     cursor.fetchone.return_value = {
         "id": 1, "symbol": "600519.SH", "name": "贵州茅台", "sort_order": 0, "created_at": "2026-01-01",
     }
-    store = AShareWatchlistStore(conn, TEST_USER_ID)
+    store = AShareWatchlistStore(conn, TenantContext(TEST_USER_ID))
     item = store.add("600519.SH", "贵州茅台")
     assert item.symbol == "600519.SH"
     insert_args = cursor.execute.call_args[0][1]
@@ -47,7 +48,7 @@ def test_add_item(mock_db):
 def test_add_duplicate_raises(mock_db):
     conn, cursor = mock_db
     cursor.execute.side_effect = Exception("duplicate key")
-    store = AShareWatchlistStore(conn, TEST_USER_ID)
+    store = AShareWatchlistStore(conn, TenantContext(TEST_USER_ID))
     with pytest.raises(ValueError, match="already exists"):
         store.add("600519.SH", "贵州茅台")
 
@@ -55,7 +56,7 @@ def test_add_duplicate_raises(mock_db):
 def test_remove_item(mock_db):
     conn, cursor = mock_db
     cursor.rowcount = 1
-    store = AShareWatchlistStore(conn, TEST_USER_ID)
+    store = AShareWatchlistStore(conn, TenantContext(TEST_USER_ID))
     result = store.remove("600519.SH")
     assert result is True
     delete_args = cursor.execute.call_args[0][1]
@@ -65,6 +66,6 @@ def test_remove_item(mock_db):
 def test_remove_not_found(mock_db):
     conn, cursor = mock_db
     cursor.rowcount = 0
-    store = AShareWatchlistStore(conn, TEST_USER_ID)
+    store = AShareWatchlistStore(conn, TenantContext(TEST_USER_ID))
     result = store.remove("INVALID")
     assert result is False

@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine
 
 from src.execution.paper_execution_service import PaperExecutionService
+from src.core.tenant import TenantContext
 from src.storage.models import Base
 from src.storage.runtime_store import RuntimeStore
 
@@ -10,7 +11,7 @@ TEST_USER_ID = "test-user"
 def test_paper_execution_service_records_reconcile_snapshot_fields(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path}/paper.db", future=True)
     Base.metadata.create_all(engine)
-    store = RuntimeStore(engine)
+    store = RuntimeStore(engine, TenantContext("test-user"))
     service = PaperExecutionService(store=store, fee_bps=3.0, slippage_bps=5.0)
 
     service.execute_targets(
@@ -32,7 +33,7 @@ def test_paper_execution_service_records_reconcile_snapshot_fields(tmp_path):
         trade_date="2026-06-15",
     )
 
-    snapshot = store.get_latest_account_snapshot(user_id=TEST_USER_ID, run_context_id="wrk-001")
+    snapshot = store.get_latest_account_snapshot(run_context_id="wrk-001")
     position = snapshot["positions"]["NVDA"]
 
     assert position["mark_price"] == 99.90
@@ -44,7 +45,7 @@ def test_paper_execution_service_records_reconcile_snapshot_fields(tmp_path):
 def test_paper_execution_service_records_lifecycle_and_reconcile_snapshot(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path}/paper.db", future=True)
     Base.metadata.create_all(engine)
-    store = RuntimeStore(engine)
+    store = RuntimeStore(engine, TenantContext("test-user"))
     service = PaperExecutionService(store=store, fee_bps=3.0, slippage_bps=5.0)
 
     result = service.execute_targets(
@@ -72,8 +73,8 @@ def test_paper_execution_service_records_lifecycle_and_reconcile_snapshot(tmp_pa
         trade_date="2026-06-14",
     )
 
-    order = store.list_execution_orders(user_id=TEST_USER_ID, run_context_id="wrk-001", limit=1)[0]
-    snapshot = store.get_latest_account_snapshot(user_id=TEST_USER_ID, run_context_id="wrk-001")
+    order = store.list_execution_orders(limit=1)[0]
+    snapshot = store.get_latest_account_snapshot(run_context_id="wrk-001")
 
     assert result["status"] == "ok"
     assert order["status_code"] == "FILLED"

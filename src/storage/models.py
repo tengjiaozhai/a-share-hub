@@ -6,9 +6,6 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 SYSTEM_USER_ID = "system"
 
 
-SYSTEM_USER_ID = "system"
-
-
 class Base(DeclarativeBase):
     pass
 
@@ -16,7 +13,7 @@ class ExecutionPlanRow(Base):
     __tablename__ = "execution_plans"
 
     plan_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default=SYSTEM_USER_ID)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     action: Mapped[str] = mapped_column(String(16), nullable=False)
     target_value: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -47,7 +44,7 @@ class DecisionRunRow(Base):
     __tablename__ = "decision_runs"
 
     decision_run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default=SYSTEM_USER_ID)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     prompt_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     run_context_id: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -64,7 +61,7 @@ class DecisionInputSnapshotRow(Base):
     __tablename__ = "decision_input_snapshots"
 
     snapshot_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default=SYSTEM_USER_ID)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     decision_run_id: Mapped[str] = mapped_column(String(64), nullable=False)
     payload_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
@@ -74,7 +71,7 @@ class TargetPositionRow(Base):
     __tablename__ = "target_positions"
 
     target_position_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default=SYSTEM_USER_ID)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     decision_run_id: Mapped[str] = mapped_column(String(64), nullable=False)
     run_context_id: Mapped[str] = mapped_column(String(64), nullable=False)
     symbol: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -96,7 +93,7 @@ class ExecutionOrderRow(Base):
     __tablename__ = "execution_orders"
 
     execution_order_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default=SYSTEM_USER_ID)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     target_position_id: Mapped[str] = mapped_column(String(64), nullable=False)
     run_context_id: Mapped[str] = mapped_column(String(64), nullable=False)
     symbol: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -122,7 +119,7 @@ class RiskGateEventRow(Base):
     __tablename__ = "risk_gate_events"
 
     risk_gate_event_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default=SYSTEM_USER_ID)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     run_context_id: Mapped[str] = mapped_column(String(64), nullable=False)
     target_position_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     symbol: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -146,7 +143,7 @@ class AccountSnapshotRow(Base):
     __tablename__ = "account_snapshots"
 
     snapshot_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default=SYSTEM_USER_ID)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     cash: Mapped[float] = mapped_column(Float, nullable=False)
     nav: Mapped[float] = mapped_column(Float, nullable=False)
     run_context_id: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -171,7 +168,7 @@ class AStockWatchlistRow(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(
-        String(64), nullable=False, index=True, default=SYSTEM_USER_ID
+        String(64), nullable=False, index=True
     )
     symbol: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -185,7 +182,7 @@ class USStockWatchlistRow(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(
-        String(64), nullable=False, index=True, default=SYSTEM_USER_ID
+        String(64), nullable=False, index=True
     )
     symbol: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -197,7 +194,7 @@ class AlphaTicketRow(Base):
     __tablename__ = "alpha_tickets"
 
     ticket_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default=SYSTEM_USER_ID)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     asset_symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     underlying_symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     action: Mapped[str] = mapped_column(String(16), nullable=False)
@@ -214,7 +211,7 @@ class AlphaManualFillRow(Base):
     __tablename__ = "alpha_manual_fills"
 
     fill_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default=SYSTEM_USER_ID)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     ticket_id: Mapped[str] = mapped_column(String(64), nullable=False)
     operator_id: Mapped[str] = mapped_column(String(64), nullable=False)
     executed_quantity: Mapped[float] = mapped_column(Float, nullable=False)
@@ -231,7 +228,7 @@ class AlphaPositionRow(Base):
     )
 
     symbol: Mapped[str] = mapped_column(String(32), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(64), primary_key=True, default=SYSTEM_USER_ID)
+    user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     quantity: Mapped[float] = mapped_column(Float, nullable=False)
     avg_cost: Mapped[float] = mapped_column(Float, nullable=False)
     mark_price: Mapped[float] = mapped_column(Float, nullable=False)
@@ -242,7 +239,7 @@ class AlphaPortfolioSnapshotRow(Base):
     __tablename__ = "alpha_portfolio_snapshots"
 
     snapshot_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default=SYSTEM_USER_ID)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     cash_balance: Mapped[float] = mapped_column(Float, nullable=False)
     realized_pnl: Mapped[float] = mapped_column(Float, nullable=False)
     unrealized_pnl: Mapped[float] = mapped_column(Float, nullable=False)
@@ -254,7 +251,7 @@ class AlphaReconciliationRunRow(Base):
     __tablename__ = "alpha_reconciliation_runs"
 
     run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default=SYSTEM_USER_ID)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     source: Mapped[str] = mapped_column(String(32), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     discrepancies_json: Mapped[str] = mapped_column(Text, nullable=False)
@@ -278,7 +275,7 @@ class AlphaApiOrderAttemptRow(Base):
     __tablename__ = "alpha_api_order_attempts"
 
     attempt_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default=SYSTEM_USER_ID)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     ticket_id: Mapped[str] = mapped_column(String(64), nullable=False)
     asset_symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     action: Mapped[str] = mapped_column(String(16), nullable=False)
@@ -295,7 +292,7 @@ class DashboardRunSummaryRow(Base):
     __tablename__ = "dashboard_run_summaries"
 
     run_context_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(64), primary_key=True, default=SYSTEM_USER_ID)
+    user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     trade_date: Mapped[str] = mapped_column(String(10), nullable=False)
     decision_mode: Mapped[str] = mapped_column(String(16), nullable=False)
     execution_mode: Mapped[str] = mapped_column(String(16), nullable=False)
@@ -321,7 +318,7 @@ class DashboardRunEventRow(Base):
     __tablename__ = "dashboard_run_events"
 
     event_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default=SYSTEM_USER_ID)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     run_context_id: Mapped[str] = mapped_column(String(64), nullable=False)
     seq: Mapped[int] = mapped_column(Integer, nullable=False)
     event_type: Mapped[str] = mapped_column(String(32), nullable=False)
