@@ -48,6 +48,15 @@ mypy src/
 - **调度器**: APScheduler 内嵌 FastAPI 进程，A股 09:15 / 美股 21:15（北京时间）
 - **影子模式**: 所有脚本 fail-closed，失败即退出（`set -euo pipefail`）
 
+## 用户隔离（User Isolation）
+
+- **认证**: 受保护路由通过 FastAPI 依赖 `Depends(get_current_user)` 强制登录；登录 Cookie 与 token 同寿命 7 天（`AUTH_SESSION_HOURS=168`）
+- **租户绑定**: 用户拥有的 Store（`RuntimeStore` / `PaperLedgerStore` / `WatchlistStore`）必须在构造时绑定 `TenantContext`；Store 方法不再接受 `user_id` 参数
+- **显式 system 身份**: CLI / 调度器 / 回填用 `SYSTEM_TENANT`，禁止 `user_id or "system"` fallback
+- **无外键**: 跨用户一致性通过 Store 写事务内的 owner 校验保证，schema 不创建外键
+- **全局表**: `kill_switch_state` / `kill_switch_events` / `scheduled_job_locks` 全局；`broker_events` 通过 `execution_orders` 解析 owner 后归属
+- **详情**: 见 `docs/runbooks/user-isolation.md`
+
 ## 模块边界
 
 | 目录 | 职责 |
