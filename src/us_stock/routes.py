@@ -12,7 +12,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/us-stock", tags=["us-stock"])
 
 _yahoo_provider: YahooProvider | None = None
-_watchlist_store: WatchlistStore | None = None
+# 修复：原模块级单例在第一次调用时被绑定到某 user_id，后续所有请求都拿到错绑定的 store。
+# 改为 per-user 缓存：每个 user_id 复用独立连接。
+_watchlist_stores: dict[str, WatchlistStore] = {}
 
 
 def _get_yahoo_provider() -> YahooProvider:
@@ -23,19 +25,21 @@ def _get_yahoo_provider() -> YahooProvider:
 
 
 def _get_watchlist_store(user_id: str) -> WatchlistStore:
-    global _watchlist_store
-    if _watchlist_store is None:
-        import psycopg
+    cached = _watchlist_stores.get(user_id)
+    if cached is not None:
+        return cached
+    import psycopg
 
-        from src.core.config import Settings
-        from src.storage.connection_url import build_psycopg_dsn
-        settings = Settings()
-        database_url = settings.database_url
-        if not database_url:
-            raise HTTPException(status_code=503, detail="DATABASE_URL not configured")
-        conn = psycopg.connect(build_psycopg_dsn(database_url), row_factory=psycopg.rows.dict_row)
-        _watchlist_store = WatchlistStore(conn, user_id)
-    return _watchlist_store
+    from src.core.config import Settings
+    from src.storage.connection_url import build_psycopg_dsn
+    settings = Settings()
+    database_url = settings.database_url
+    if not database_url:
+        raise HTTPException(status_code=503, detail="DATABASE_URL not configured")
+    conn = psycopg.connect(build_psycopg_dsn(database_url), row_factory=psycopg.rows.dict_row)
+    store = WatchlistStore(conn, user_id)
+    _watchlist_stores[user_id] = store
+    return store
 
 
 @router.get("/quotes")
