@@ -20,6 +20,43 @@ def test_start_run_returns_accepted_and_run_context_id(test_app, authenticated_c
     assert payload["stream_url"] == f"/api/v1/dashboard/runs/{payload['run_context_id']}/events"
 
 
+def test_start_run_keeps_accepted_response_and_persists_failed_run_when_background_launch_crashes(
+    test_app,
+    authenticated_client,
+    pg_store,
+    monkeypatch,
+):
+    from src.api import routes_dashboard
+
+    def _boom(run_context_id, config, user_id):  # noqa: ARG001
+        raise RuntimeError("launch exploded")
+
+    monkeypatch.setattr(routes_dashboard, "_launch_dashboard_run", _boom)
+
+    response = authenticated_client.post(
+        "/api/v1/dashboard/runs",
+        json={
+            "watchlist": ["NVDA"],
+            "capital_base": 10_000,
+            "max_position_ratio": 0.2,
+            "execution_mode": "full",
+            "decision_mode": "mock",
+            "market": "us",
+        },
+    )
+
+    assert response.status_code == 202
+    payload = response.json()
+    run_context_id = payload["run_context_id"]
+    summary = pg_store.get_dashboard_run_summary(run_context_id=run_context_id)
+    events = pg_store.list_dashboard_run_events(run_context_id=run_context_id)
+
+    assert summary is not None
+    assert summary["status"] == "failed"
+    assert any(event["event_type"] == "run.failed" for event in events)
+    assert any("launch exploded" in (event["payload"].get("error") or "") for event in events)
+
+
 def test_run_events_route_streams_ordered_event_log(authenticated_client, pg_store):
     pg_store.append_dashboard_run_event(
         run_context_id="wrk-001",

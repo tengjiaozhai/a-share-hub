@@ -3,6 +3,7 @@ import asyncio
 import base64
 import binascii
 import json
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -24,6 +25,7 @@ from src.storage.runtime_store import RuntimeStore
 from src.storage.system_runtime_store import SystemRuntimeStore
 
 _CST = timezone(timedelta(hours=8))
+logger = logging.getLogger(__name__)
 
 
 def _now_cst() -> datetime:
@@ -164,6 +166,60 @@ def _launch_dashboard_run(run_context_id: str, config: dict, user_id: str) -> No
     service.run(run_context_id=run_context_id, config=config, user_id=user_id)
 
 
+def _persist_dashboard_run_launch_failure(run_context_id: str, config: dict, user_id: str, exc: Exception, engine) -> None:
+    store = RuntimeStore(engine, TenantContext(user_id))
+    failed_at = _now_cst().isoformat()
+    error_message = f"{type(exc).__name__}: {exc}"
+    existing = store.get_dashboard_run_summary(run_context_id) or {}
+    latest_workbench = dict(existing.get("latest_workbench") or {})
+    latest_run = dict(latest_workbench.get("latest_run") or {})
+    latest_run.update(
+        {
+            "run_context_id": run_context_id,
+            "status": "failed",
+            "finished_at": failed_at,
+            "error": error_message,
+            "error_message": error_message,
+        }
+    )
+    latest_workbench["market"] = latest_workbench.get("market") or str(config.get("market", "a"))
+    latest_workbench["last_run_at"] = failed_at
+    latest_workbench["latest_run"] = latest_run
+
+    store.append_dashboard_run_event(
+        run_context_id=run_context_id,
+        event_type="run.failed",
+        stage="reconcile",
+        status="failed",
+        payload={"error": error_message, "message": "运行启动失败"},
+    )
+    store.upsert_dashboard_run_summary(
+        run_context_id=run_context_id,
+        trade_date=existing.get("trade_date") or _now_cst().date().isoformat(),
+        decision_mode=existing.get("decision_mode") or str(config.get("decision_mode", "mock")),
+        execution_mode=existing.get("execution_mode") or (
+            "decision" if config.get("execution_mode") == "decision" else "full"
+        ),
+        capital_base=int(existing.get("capital_base") or config.get("capital_base", 1_000_000)),
+        status="failed",
+        execution_fee_total=float(existing.get("execution_fee_total") or 0.0),
+        realized_pnl=float(existing.get("realized_pnl") or 0.0),
+        unrealized_pnl=float(existing.get("unrealized_pnl") or 0.0),
+        net_pnl=float(existing.get("net_pnl") or 0.0),
+        started_at=existing.get("started_at") or failed_at,
+        finished_at=failed_at,
+        latest_workbench=latest_workbench,
+    )
+
+
+def _run_dashboard_background_task(run_context_id: str, config: dict, user_id: str, engine) -> None:
+    try:
+        _launch_dashboard_run(run_context_id, config, user_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Dashboard run launch failed: %s", run_context_id)
+        _persist_dashboard_run_launch_failure(run_context_id, config, user_id, exc, engine)
+
+
 @router.post("/api/v1/dashboard/runs", status_code=202)
 def start_dashboard_run(
     config: dict | None = None,
@@ -196,7 +252,7 @@ def start_dashboard_run(
         status="running",
         payload={"message": "请求已提交，等待后台执行"},
     )
-    background_tasks.add_task(_launch_dashboard_run, run_context_id, payload, user_id)
+    background_tasks.add_task(_run_dashboard_background_task, run_context_id, payload, user_id, store.engine)
     return {
         "run_context_id": run_context_id,
         "stream_url": f"/api/v1/dashboard/runs/{run_context_id}/events",
