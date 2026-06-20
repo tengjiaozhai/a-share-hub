@@ -1,10 +1,9 @@
-def test_start_run_returns_accepted_and_run_context_id(authenticated_client, monkeypatch):
+def test_start_run_returns_accepted_and_run_context_id(test_app, authenticated_client, monkeypatch):
     from src.api import routes_dashboard
 
     monkeypatch.setattr(routes_dashboard, "_launch_dashboard_run", lambda run_context_id, config, user_id: None)
 
-    client = authenticated_client
-    response = client.post(
+    response = authenticated_client.post(
         "/api/v1/dashboard/runs",
         json={
             "watchlist": ["NVDA", "AAPL"],
@@ -52,8 +51,8 @@ def test_run_events_route_streams_ordered_event_log(authenticated_client, pg_sto
         latest_workbench={"latest_run": {"run_context_id": "wrk-001"}},
     )
 
-    client = authenticated_client
-    with client.stream("GET", "/api/v1/dashboard/runs/wrk-001/events") as response:
+<<<<<<< HEAD
+    with authenticated_client.stream("GET", "/api/v1/dashboard/runs/wrk-001/events") as response:
         body = "".join(chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk for chunk in response.iter_text())
 
     assert response.status_code == 200

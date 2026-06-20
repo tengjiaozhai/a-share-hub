@@ -102,3 +102,69 @@ async def test_sse_paces_yields_so_browser_event_source_can_dispatch(test_app, s
         f"Expected spread > 100ms between first and last event, got {spread_ms:.1f}ms. "
         "Browser EventSource needs pacing to dispatch events before connection close."
     )
+
+
+@pytest.mark.asyncio
+async def test_sse_waits_for_terminal_event_even_if_summary_is_already_completed():
+    """The stream must not close only because summary.status flipped to completed.
+
+    Real runs persist the completed summary before the final run.completed event is
+    appended. If the SSE loop exits on summary status alone, the browser misses the
+    terminal event and the live run looks opaque.
+    """
+
+    class FakeStore:
+        def __init__(self) -> None:
+            self.event_calls = 0
+            self.summary_calls = 0
+
+        def list_dashboard_run_events(self, run_context_id: str, after_seq: int = 0) -> list[dict]:
+            self.event_calls += 1
+            if self.event_calls == 1:
+                return [
+                    {
+                        "run_context_id": run_context_id,
+                        "seq": 1,
+                        "event_type": "run.accepted",
+                        "stage": "decision",
+                        "status": "running",
+                        "payload": {"message": "accepted"},
+                        "created_at": "2026-06-16T14:00:00+08:00",
+                    }
+                ]
+            if self.event_calls == 2:
+                return []
+            if after_seq < 2:
+                return [
+                    {
+                        "run_context_id": run_context_id,
+                        "seq": 2,
+                        "event_type": "run.completed",
+                        "stage": "reconcile",
+                        "status": "done",
+                        "payload": {"message": "done", "run_pnl_summary": {"net_pnl": 1.23}},
+                        "created_at": "2026-06-16T14:00:01+08:00",
+                    }
+                ]
+            return []
+
+        def get_dashboard_run_summary(self, run_context_id: str) -> dict:
+            self.summary_calls += 1
+            status = "running" if self.summary_calls == 1 else "completed"
+            return {"run_context_id": run_context_id, "status": status}
+
+    response = await stream_dashboard_run_events(
+        run_context_id="wrk-race-001",
+        last_event_id=None,
+        store=FakeStore(),
+        user_id="test-user",
+    )
+
+    received: list[dict] = []
+    async for event in response.body_iterator:
+        received.append(event)
+        if len(received) >= 2:
+            break
+
+    assert [event["event"] for event in received] == ["run.accepted", "run.completed"]
+    assert [event["id"] for event in received] == ["1", "2"]

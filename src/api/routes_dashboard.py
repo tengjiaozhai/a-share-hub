@@ -185,8 +185,10 @@ def start_dashboard_run(
         net_pnl=0.0,
         started_at=_now_cst().isoformat(),
         finished_at=None,
-        latest_workbench={"latest_run": {"run_context_id": run_context_id, "steps": []}},
-        market=payload.get("market", "a"),
+        latest_workbench={
+            "market": str(payload.get("market", "a")),
+            "latest_run": {"run_context_id": run_context_id, "steps": []},
+        },
     )
     store.append_dashboard_run_event(run_context_id=run_context_id,
         event_type="run.accepted",
@@ -213,10 +215,14 @@ async def stream_dashboard_run_events(
 
     async def event_iter():
         last_seq = after_seq
+        terminal_event_seen = False
+        terminal_summary_seen_at: float | None = None
         while True:
             events = store.list_dashboard_run_events(run_context_id, after_seq=last_seq)
             for event in events:
                 last_seq = event["seq"]
+                if event["event_type"] in {"run.completed", "run.failed"}:
+                    terminal_event_seen = True
                 yield {
                     "id": str(event["seq"]),
                     "event": event["event_type"],
@@ -227,12 +233,19 @@ async def stream_dashboard_run_events(
                 # 6 events flush in <1s and the connection closes before
                 # onmessage fires, forcing a 47s reconnect via Last-Event-ID.
                 await asyncio.sleep(0.05)
-            summary = store.get_dashboard_run_summary(run_context_id)
-            if summary and summary["status"] in {"completed", "failed"}:
+            if terminal_event_seen:
                 # Final flush window: give the browser ~500ms to dispatch the
                 # last batch of events before sse-starlette closes the stream.
                 await asyncio.sleep(0.5)
                 return
+            summary = store.get_dashboard_run_summary(run_context_id)
+            if summary and summary["status"] in {"completed", "failed"}:
+                if terminal_summary_seen_at is None:
+                    terminal_summary_seen_at = asyncio.get_running_loop().time()
+                elif asyncio.get_running_loop().time() - terminal_summary_seen_at >= 3.0:
+                    return
+            else:
+                terminal_summary_seen_at = None
             await asyncio.sleep(0.2)
 
     return EventSourceResponse(
@@ -374,11 +387,9 @@ def _build_manual_history_runs(store: RuntimeStore, market: str, limit: int, use
         history = latest_workbench.get("history") or {}
         decisions = history.get("decisions") or latest_run.get("decision_items") or []
         watchlist = latest_run.get("watchlist") or [item.get("symbol") for item in decisions if item.get("symbol")]
-        resolved_market = (
-            latest_workbench.get("market")
-            or latest_run.get("market")
-            or _infer_market_from_watchlist(watchlist)
-            or market
+        resolved_market = store.get_dashboard_run_market(
+            summary["run_context_id"],
+            latest_workbench=latest_workbench,
         )
         targets = history.get("targets") or latest_run.get("target_items") or []
         orders = history.get("orders") or latest_run.get("order_items") or []
@@ -406,15 +417,6 @@ def _build_manual_history_runs(store: RuntimeStore, market: str, limit: int, use
         if len(runs) >= limit:
             break
     return runs
-
-
-def _infer_market_from_watchlist(watchlist: list[str]) -> str | None:
-    symbols = [str(symbol).strip().upper() for symbol in watchlist if str(symbol).strip()]
-    if not symbols:
-        return None
-    if all("." in symbol or symbol[:1].isdigit() for symbol in symbols):
-        return "a"
-    return "us"
 
 
 def _parse_watchlist_count(raw_watchlist: object) -> int:

@@ -49,6 +49,73 @@ def _parse_summary_timestamp(value: str | None) -> datetime | None:
     return parsed.astimezone(UTC).replace(tzinfo=None)
 
 
+def _infer_market_from_symbols(symbols: list[object]) -> str | None:
+    normalized = [str(symbol).strip().upper() for symbol in symbols if str(symbol).strip()]
+    if not normalized:
+        return None
+    if all("." in symbol or symbol[:1].isdigit() for symbol in normalized):
+        return "a"
+    return "us"
+
+
+def _extract_market_from_snapshot(snapshot: dict) -> str | None:
+    direct_market = snapshot.get("market")
+    if isinstance(direct_market, str) and direct_market.strip():
+        return direct_market.strip().lower()
+
+    market_context = snapshot.get("market_context")
+    if isinstance(market_context, dict):
+        context_market = market_context.get("market")
+        if isinstance(context_market, str) and context_market.strip():
+            return context_market.strip().lower()
+
+    features = snapshot.get("features")
+    if isinstance(features, dict):
+        feature_market = features.get("market")
+        if isinstance(feature_market, str) and feature_market.strip():
+            return feature_market.strip().lower()
+        inferred = _infer_market_from_symbols(features.get("watchlist") or [])
+        if inferred is not None:
+            return inferred
+    return None
+
+
+def _extract_market_from_workbench(latest_workbench: dict) -> str | None:
+    direct_market = latest_workbench.get("market")
+    if isinstance(direct_market, str) and direct_market.strip():
+        return direct_market.strip().lower()
+
+    latest_run = latest_workbench.get("latest_run")
+    if isinstance(latest_run, dict):
+        run_market = latest_run.get("market")
+        if isinstance(run_market, str) and run_market.strip():
+            return run_market.strip().lower()
+        inferred = _infer_market_from_symbols(latest_run.get("watchlist") or [])
+        if inferred is not None:
+            return inferred
+
+    history = latest_workbench.get("history")
+    if isinstance(history, dict):
+        decisions = history.get("decisions") or []
+        inferred = _infer_market_from_symbols([item.get("symbol") for item in decisions if isinstance(item, dict)])
+        if inferred is not None:
+            return inferred
+    return None
+
+
+def _merge_preserved_workbench_market(existing_workbench: dict, incoming_workbench: dict) -> dict:
+    merged = dict(incoming_workbench)
+    existing_market = existing_workbench.get("market")
+    incoming_market = incoming_workbench.get("market")
+    if (
+        isinstance(existing_market, str)
+        and existing_market.strip()
+        and not (isinstance(incoming_market, str) and incoming_market.strip())
+    ):
+        merged["market"] = existing_market
+    return merged
+
+
 class RuntimeStore:
     def __init__(self, engine, tenant: TenantContext) -> None:
         self.engine = engine
@@ -1128,31 +1195,35 @@ class RuntimeStore:
         latest_workbench: dict,
         market: str | None = None,
     ) -> None:
-        resolved_market = market or (latest_workbench or {}).get("market") or "a"
-        values = {
-            "run_context_id": run_context_id,
-            "user_id": self.user_id,
-            "market": resolved_market,
-            "trade_date": trade_date,
-            "decision_mode": decision_mode,
-            "execution_mode": execution_mode,
-            "capital_base": capital_base,
-            "status": status,
-            "execution_fee_total": execution_fee_total,
-            "realized_pnl": realized_pnl,
-            "unrealized_pnl": unrealized_pnl,
-            "net_pnl": net_pnl,
-            "started_at": _parse_summary_timestamp(started_at),
-            "finished_at": _parse_summary_timestamp(finished_at),
-            "latest_workbench_json": json.dumps(latest_workbench, ensure_ascii=True, sort_keys=True),
-            "updated_at": datetime.utcnow(),
-        }
         with self.engine.begin() as conn:
             existing = conn.execute(
                 select(DashboardRunSummaryRow)
                 .where(DashboardRunSummaryRow.run_context_id == run_context_id)
                 .where(DashboardRunSummaryRow.user_id == self.user_id)
             ).fetchone()
+            effective_latest_workbench = latest_workbench
+            if existing is not None:
+                effective_latest_workbench = _merge_preserved_workbench_market(
+                    json.loads(existing.latest_workbench_json or "{}"),
+                    latest_workbench,
+                )
+            values = {
+                "run_context_id": run_context_id,
+                "user_id": self.user_id,
+                "trade_date": trade_date,
+                "decision_mode": decision_mode,
+                "execution_mode": execution_mode,
+                "capital_base": capital_base,
+                "status": status,
+                "execution_fee_total": execution_fee_total,
+                "realized_pnl": realized_pnl,
+                "unrealized_pnl": unrealized_pnl,
+                "net_pnl": net_pnl,
+                "started_at": _parse_summary_timestamp(started_at),
+                "finished_at": _parse_summary_timestamp(finished_at),
+                "latest_workbench_json": json.dumps(effective_latest_workbench, ensure_ascii=True, sort_keys=True),
+                "updated_at": datetime.utcnow(),
+            }
             if existing is None:
                 conn.execute(
                     DashboardRunSummaryRow.__table__.insert().values(
@@ -1231,6 +1302,54 @@ class RuntimeStore:
             stmt = stmt.where(DashboardRunSummaryRow.market == market)
         with self.engine.begin() as conn:
             return int(conn.execute(stmt).scalar_one())
+
+    def get_dashboard_run_market(self, run_context_id: str, latest_workbench: dict | None = None) -> str | None:
+        with self.engine.begin() as conn:
+            snapshot_row = conn.execute(
+                select(DecisionInputSnapshotRow.payload_json)
+                .join(
+                    DecisionRunRow,
+                    DecisionRunRow.decision_run_id == DecisionInputSnapshotRow.decision_run_id,
+                )
+                .where(DecisionRunRow.user_id == self.user_id)
+                .where(DecisionRunRow.run_context_id == run_context_id)
+                .where(DecisionInputSnapshotRow.user_id == self.user_id)
+                .order_by(DecisionRunRow.created_at.desc())
+                .limit(1)
+            ).fetchone()
+            if snapshot_row is not None:
+                market = _extract_market_from_snapshot(json.loads(snapshot_row[0] or "{}"))
+                if market is not None:
+                    return market
+
+            symbol_sources = (
+                select(DecisionRunRow.symbol)
+                .where(DecisionRunRow.user_id == self.user_id)
+                .where(DecisionRunRow.run_context_id == run_context_id)
+                .order_by(DecisionRunRow.created_at.desc())
+                .limit(1),
+                select(TargetPositionRow.symbol)
+                .where(TargetPositionRow.user_id == self.user_id)
+                .where(TargetPositionRow.run_context_id == run_context_id)
+                .order_by(TargetPositionRow.created_at.desc())
+                .limit(1),
+                select(ExecutionOrderRow.symbol)
+                .where(ExecutionOrderRow.user_id == self.user_id)
+                .where(ExecutionOrderRow.run_context_id == run_context_id)
+                .order_by(ExecutionOrderRow.created_at.desc())
+                .limit(1),
+            )
+            for stmt in symbol_sources:
+                symbol_row = conn.execute(stmt).fetchone()
+                if symbol_row is None:
+                    continue
+                market = _infer_market_from_symbols([symbol_row[0]])
+                if market is not None:
+                    return market
+
+        if latest_workbench is not None:
+            return _extract_market_from_workbench(latest_workbench)
+        return None
 
     def append_dashboard_run_event(
         self,

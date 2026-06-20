@@ -1231,7 +1231,7 @@ function activateLiveRunCase(runContextId) {
       run_context_id: runContextId,
       status: 'running',
       steps: [],
-      message: '运行已提交，等待流式事件。',
+      message: '运行已提交，等待策略引擎接收。',
     },
     history: {},
   };

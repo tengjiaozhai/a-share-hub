@@ -9,6 +9,11 @@ let runStreamReconnectAttempts = 0;
 const RUN_STREAM_HEARTBEAT_MS = 90_000;
 const RUN_STREAM_HARD_TIMEOUT_MS = 180_000;
 const RUN_STREAM_RECONNECT_MAX = 5;
+const RUN_STREAM_SUBMITTED_TEXT = '已提交，等待策略引擎接收';
+const RUN_STREAM_CONNECTED_TEXT = '实时流已连接，等待策略事件';
+const RUN_STREAM_RECONNECTING_TEXT = '连接中断，正在重连；运行仍在继续';
+const RUN_STREAM_DETACHED_TEXT = '实时连接已断开，请在运行中心继续查看本轮状态';
+const RUN_STREAM_COMPLETED_TEXT = '本轮完成，运行中心已记录结果';
 
 function clearRunStreamTimers() {
   if (runStreamHeartbeatTimer) {
@@ -23,9 +28,10 @@ function clearRunStreamTimers() {
 
 function endRunStream(reason, kind) {
   clearRunStreamTimers();
-  if (!runEventSource) return;
-  try { runEventSource.close(); } catch (_) { /* 关闭失败也不影响后续清理 */ }
-  runEventSource = null;
+  if (runEventSource) {
+    try { runEventSource.close(); } catch (_) { /* 关闭失败也不影响后续清理 */ }
+    runEventSource = null;
+  }
   setStreamStatus(kind || 'error', reason || '运行超时');
   if (kind === 'error' && reason) {
     addAlert('err', reason);
@@ -205,19 +211,22 @@ function connectRunStream(runContextId) {
     activateLiveRunCase(runContextId);
   }
   document.getElementById('run-trace-id').textContent = runContextId;
-  setStreamStatus('running', '运行中');
+  setStreamStatus('pending', RUN_STREAM_SUBMITTED_TEXT);
   runEventSource = new EventSource(RUN_EVENTS_API(runContextId));
+  runEventSource.onopen = () => {
+    setStreamStatus('running', RUN_STREAM_CONNECTED_TEXT);
+  };
 
   const resetHeartbeat = () => {
     if (runStreamHeartbeatTimer) clearTimeout(runStreamHeartbeatTimer);
     runStreamHeartbeatTimer = setTimeout(() => {
-      endRunStream('运行超时，90 秒内未收到任何事件，连接已断开', 'error');
+      endRunStream(RUN_STREAM_DETACHED_TEXT, 'pending');
     }, RUN_STREAM_HEARTBEAT_MS);
   };
   resetHeartbeat();
 
   runStreamHardTimeoutTimer = setTimeout(() => {
-    endRunStream('运行超时，已达到 180 秒硬性上限，强制关闭', 'error');
+    endRunStream(RUN_STREAM_DETACHED_TEXT, 'pending');
   }, RUN_STREAM_HARD_TIMEOUT_MS);
 
   runStreamReconnectAttempts = 0;
@@ -237,7 +246,7 @@ function connectRunStream(runContextId) {
     applyRunStreamEvent(envelope);
     try { await loadRunSnapshot(envelope.run_context_id); } catch (_) { /* 快照加载失败也不影响结束 */ }
     refreshHistoryAfterRun(envelope.run_context_id);
-    endRunStream('本轮完成', 'success');
+    endRunStream(RUN_STREAM_COMPLETED_TEXT, 'success');
   });
   runEventSource.addEventListener('run.failed', async (event) => {
     const envelope = parseRunStreamEnvelope(event);
@@ -254,10 +263,10 @@ function connectRunStream(runContextId) {
     }
     runStreamReconnectAttempts += 1;
     if (runStreamReconnectAttempts > RUN_STREAM_RECONNECT_MAX) {
-      endRunStream(`重连失败 ${runStreamReconnectAttempts} 次`, 'error');
+      endRunStream(RUN_STREAM_DETACHED_TEXT, 'pending');
       return;
     }
-    setStreamStatus('pending', `连接中断，重试中 (${runStreamReconnectAttempts}/${RUN_STREAM_RECONNECT_MAX})…`);
+    setStreamStatus('pending', `${RUN_STREAM_RECONNECTING_TEXT} (${runStreamReconnectAttempts}/${RUN_STREAM_RECONNECT_MAX})`);
   };
 }
 
@@ -275,7 +284,7 @@ async function triggerRun() {
   simRunning = true;
   const button = document.getElementById('run-btn');
   setButtonLoading(button, true, '运行中');
-  setStreamStatus('pending', '请求中');
+  setStreamStatus('pending', RUN_STREAM_SUBMITTED_TEXT);
   renderTimeline({
     run_context_id: '--',
     steps: [
@@ -283,7 +292,7 @@ async function triggerRun() {
         stage: 'decision',
         status: 'running',
         timestamp: new Date().toISOString(),
-        message: '请求已提交，等待后台接受本轮任务。',
+        message: '请求已提交，等待策略引擎接收本轮任务。',
       },
     ],
   });

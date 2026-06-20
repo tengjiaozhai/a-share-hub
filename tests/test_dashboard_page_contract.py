@@ -1,64 +1,11 @@
 from datetime import datetime, timedelta
 
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.pool import StaticPool
-
-from src.api import auth_security as _auth_security
-from src.api.auth_security import create_auth_token
 from src.api.dashboard_page.render import render_dashboard_html
-from src.api.dependencies import get_current_user, get_current_user_id, get_user_runtime_store
-from src.core.config import Settings
-from src.core.tenant import TenantContext
-from src.main import build_app
-from src.storage.models import Base
-from src.storage.runtime_store import RuntimeStore
 
-
-def _patch_auth(monkeypatch):
-    monkeypatch.setattr(
-        _auth_security,
-        "get_current_user_from_request",
-        lambda request: {
-            "user_id": "test-user",
-            "username": "test",
-            "email": "test@example.com",
-            "role": "user",
-        },
-    )
-
-
-def build_dashboard_client(monkeypatch):
-    _patch_auth(monkeypatch)
-    engine = create_engine(
-        "sqlite+pysqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-        future=True,
-    )
-    Base.metadata.create_all(engine)
-    store = RuntimeStore(engine, TenantContext("test-user"))
-    app = build_app()
-    app.dependency_overrides[get_user_runtime_store] = lambda: store
-    app.dependency_overrides[get_current_user] = lambda: {
-        "user_id": "test-user",
-        "username": "test",
-        "email": "test@example.com",
-        "role": "user",
-    }
-    app.dependency_overrides[get_current_user_id] = lambda: "test-user"
-    settings = Settings()
-    token = create_auth_token("test-user", settings)
-    client = TestClient(app)
-    client.cookies.set(settings.auth_cookie_name, token)
-    return client, store
-
-def test_dashboard_is_only_html_entrypoint(monkeypatch):
-    client, _ = build_dashboard_client(monkeypatch)
-
-    assert client.get("/dashboard").status_code == 200
-    assert client.get("/new").status_code == 404
-    assert client.get("/static/index.html").status_code == 404
+def test_dashboard_is_only_html_entrypoint(authenticated_client):
+    assert authenticated_client.get("/dashboard").status_code == 200
+    assert authenticated_client.get("/new").status_code == 404
+    assert authenticated_client.get("/static/index.html").status_code == 404
 
 def test_render_dashboard_html_contains_alpha_contract():
     html = render_dashboard_html()
@@ -114,6 +61,25 @@ def test_render_dashboard_html_contains_streaming_run_javascript_contract():
     assert "new EventSource" in html
     assert "connectRunStream" in html
 
+def test_render_dashboard_html_uses_theme_control_wording_not_terminal_wording():
+    html = render_dashboard_html()
+    assert 'id="theme-switcher-label">界面主题</span>' in html
+    assert 'aria-label="切换界面主题"' in html
+    assert "当前主题：" in html
+    assert 'id="theme-switcher-label">Trading Terminal</span>' not in html
+
+def test_render_dashboard_html_explains_live_run_connection_states():
+    html = render_dashboard_html()
+    required_markers = [
+        "已提交，等待策略引擎接收",
+        "实时流已连接，等待策略事件",
+        "连接中断，正在重连；运行仍在继续",
+        "实时连接已断开，请在运行中心继续查看本轮状态",
+        "本轮完成，运行中心已记录结果",
+    ]
+    for marker in required_markers:
+        assert marker in html
+
 def test_render_dashboard_html_contains_reconcile_renderer_hooks():
     html = render_dashboard_html()
     assert "renderReconcile(" in html
@@ -133,16 +99,13 @@ def test_render_dashboard_html_contains_incremental_history_and_window_switch_co
     for marker in required_markers:
         assert marker in html
 
-def test_dashboard_route_uses_rendered_split_html(monkeypatch):
-    client, _ = build_dashboard_client(monkeypatch)
-    response = client.get("/dashboard")
+def test_dashboard_route_uses_rendered_split_html(authenticated_client):
+    response = authenticated_client.get("/dashboard")
     assert response.status_code == 200
     assert response.text == render_dashboard_html()
 
-def test_dashboard_preferences_and_workbench_stay_server_backed(monkeypatch):
-    client, store = build_dashboard_client(monkeypatch)
-
-    store.set_preference("dashboard", {
+def test_dashboard_preferences_and_workbench_stay_server_backed(authenticated_client, pg_store):
+    pg_store.set_preference("dashboard", {
             "watchlist": ["600519.SH", "000858.SZ"],
             "capital_base": 1200000,
             "max_position_ratio": 0.25,
@@ -152,7 +115,7 @@ def test_dashboard_preferences_and_workbench_stay_server_backed(monkeypatch):
         },
     )
 
-    decision_run_id = store.insert_decision_run(symbol="600519.SH",
+    decision_run_id = pg_store.insert_decision_run(symbol="600519.SH",
         prompt_hash="dashboard-seed",
         model_name="mock",
         raw_output='{"action":"BUY","confidence":80}',
@@ -162,29 +125,29 @@ def test_dashboard_preferences_and_workbench_stay_server_backed(monkeypatch):
         reason="seed decision",
         input_snapshot={"symbol": "600519.SH", "features": {"decision_mode": "mock"}, "market_context": {"mode": "shadow"}},
     )
-    target_position_id = store.insert_target_position(decision_run_id=decision_run_id,
+    target_position_id = pg_store.insert_target_position(decision_run_id=decision_run_id,
         symbol="600519.SH",
         action="BUY",
         target_value=300000,
         target_position_ratio=0.25,
         expires_at=(datetime.utcnow() + timedelta(hours=1)).isoformat(),
     )
-    execution_order_id = store.insert_execution_order(target_position_id=target_position_id,
+    execution_order_id = pg_store.insert_execution_order(target_position_id=target_position_id,
         symbol="600519.SH",
         action="BUY",
         quantity=100,
         limit_price=1000.0,
     )
-    store.insert_broker_order_event(
+    pg_store.insert_broker_order_event(
         execution_order_id=execution_order_id,
         event_id="evt-001",
         event_type="SUBMITTED",
         payload={"broker_order_id": "paper-001"},
     )
 
-    html = client.get("/dashboard").text
-    prefs = client.get("/api/v1/dashboard/preferences").json()
-    workbench = client.get("/api/v1/dashboard/workbench").json()
+    html = authenticated_client.get("/dashboard").text
+    prefs = authenticated_client.get("/api/v1/dashboard/preferences").json()
+    workbench = authenticated_client.get("/api/v1/dashboard/workbench").json()
 
     assert "const WORKBENCH_API = '/api/v1/dashboard/workbench';" in html
     assert "const PREFS_API = '/api/v1/dashboard/preferences';" in html

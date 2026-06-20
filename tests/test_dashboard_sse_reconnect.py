@@ -85,10 +85,11 @@ async def test_reconnect_with_last_event_id_starts_after_seq(test_app, pg_store,
     test_app.dependency_overrides[get_user_runtime_store] = lambda: pg_store
     transport = httpx.ASGITransport(app=test_app)
     received: list[dict] = []
+    cookie_name = Settings().auth_cookie_name
 
     settings = Settings()
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        client.cookies.set(settings.auth_cookie_name, auth_token)
+        client.cookies.set(cookie_name, auth_token)
         # 模拟 client 在 seq=2 断开（只看到 1, 2）
         # 然后用 Last-Event-ID: 2 重连
         async with client.stream(

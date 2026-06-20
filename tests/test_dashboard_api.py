@@ -1,6 +1,5 @@
 from datetime import date, datetime, timedelta
 
-from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 class FakeLLM:
@@ -329,6 +328,7 @@ def test_history_manual_runs_link_case_view_by_run_context_id(authenticated_clie
         started_at="2026-06-18T10:00:00+08:00",
         finished_at="2026-06-18T10:01:00+08:00",
         latest_workbench={
+            "market": "a",
             "latest_run": {
                 "run_context_id": "wrk-history-404",
                 "watchlist": [],
@@ -420,6 +420,47 @@ def test_history_supports_cursor_pagination_for_incremental_loading(authenticate
     assert second_payload["has_more"] is False
     assert second_payload["cursor"] == first_payload["next_cursor"]
     assert second_payload["next_cursor"] is None
+
+def test_history_filters_manual_runs_by_persisted_run_market_not_request_fallback(authenticated_client, test_app, pg_store):
+    ensure_paper_ledger_tables(pg_store.engine)
+    pg_store.insert_decision_run(
+        symbol="AAPL",
+        prompt_hash="wrk-history-us",
+        run_context_id="wrk-history-us",
+        model_name="mock",
+        raw_output='{"action":"BUY","confidence":80}',
+        parsed_action="BUY",
+        confidence=80,
+        target_position_ratio=0.1,
+        reason="seed us run",
+        input_snapshot={
+            "features": {"watchlist": ["AAPL"]},
+            "market_context": {"market": "us"},
+        },
+    )
+    pg_store.upsert_dashboard_run_summary(
+        run_context_id="wrk-history-us",
+        trade_date="2026-06-18",
+        decision_mode="mock",
+        execution_mode="decision",
+        capital_base=500_000,
+        status="completed",
+        execution_fee_total=0.0,
+        realized_pnl=0.0,
+        unrealized_pnl=0.0,
+        net_pnl=3.0,
+        started_at="2026-06-18T10:06:00+08:00",
+        finished_at="2026-06-18T10:07:00+08:00",
+        latest_workbench={"latest_run": {"run_context_id": "wrk-history-us", "watchlist": []}},
+    )
+
+    client = authenticated_client
+
+    a_market_payload = client.get("/api/v1/dashboard/history?market=a&source=manual&limit=10").json()
+    us_market_payload = client.get("/api/v1/dashboard/history?market=us&source=manual&limit=10").json()
+
+    assert "wrk-history-us" not in [run["id"] for run in a_market_payload["runs"]]
+    assert "wrk-history-us" in [run["id"] for run in us_market_payload["runs"]]
 
 def test_performance_includes_window_metadata_and_comparison_cards(authenticated_client, test_app, pg_store):
     from src.core.tenant import TenantContext
