@@ -589,7 +589,6 @@ class RuntimeStore:
         self,
         run_context_id: str | None = None,
     ) -> dict:
-        # Task 7 才会把 broker_events 改为按 owner 过滤；Task 4 保持现有调用形状
         with self.engine.begin() as conn:
             open_orders_stmt = (
                 select(func.count())
@@ -597,7 +596,11 @@ class RuntimeStore:
                 .where(ExecutionOrderRow.user_id == self.user_id)
                 .where(ExecutionOrderRow.status != "FILLED")
             )
-            broker_events_stmt = select(func.count()).select_from(BrokerEventRow)
+            broker_events_stmt = (
+                select(func.count())
+                .select_from(BrokerEventRow)
+                .where(BrokerEventRow.user_id == self.user_id)
+            )
             if run_context_id is not None:
                 open_orders_stmt = open_orders_stmt.where(ExecutionOrderRow.run_context_id == run_context_id)
                 broker_events_stmt = broker_events_stmt.where(BrokerEventRow.run_context_id == run_context_id)
@@ -639,7 +642,6 @@ class RuntimeStore:
         }
 
     def sum_daily_pnl(self, trade_date: str | None = None) -> float:
-        # Task 7 才会按 owner 过滤 broker_events
         if trade_date:
             cst_today = datetime.fromisoformat(trade_date).replace(tzinfo=_CST)
         else:
@@ -652,6 +654,7 @@ class RuntimeStore:
         with self.engine.begin() as conn:
             rows = conn.execute(
                 select(BrokerEventRow.payload_json).where(
+                    BrokerEventRow.user_id == self.user_id,
                     BrokerEventRow.event_type == "FILLED",
                     BrokerEventRow.created_at >= day_start,
                     BrokerEventRow.created_at < day_end,
