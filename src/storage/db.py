@@ -1,6 +1,6 @@
 from threading import Lock
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from src.core.config import Settings
@@ -10,9 +10,15 @@ _runtime_schema_bootstrap_lock = Lock()
 
 
 def create_runtime_engine(settings: Settings):
+    """构造 SQLAlchemy 引擎。
+
+    防御层 2：客户端连接池回收 + 单连接超时，防止僵尸连接持锁阻塞 DDL。
+    """
     engine_kwargs = dict(
         future=True,
         pool_pre_ping=True,
+        pool_recycle=1800,           # 30 分钟回收，避免长时间空闲被服务端超时
+        pool_reset_on_return="rollback",  # 连接归还时回滚未提交事务，防止 idle-in-tx
         echo=settings.db_echo,
     )
     # SQLite 的 SingletonThreadPool / NullPool 不接受 QueuePool 专属参数。
@@ -21,7 +27,28 @@ def create_runtime_engine(settings: Settings):
         engine_kwargs["pool_size"] = settings.db_pool_size
         engine_kwargs["max_overflow"] = settings.db_max_overflow
         engine_kwargs["pool_timeout"] = settings.db_pool_timeout_seconds
-    return create_engine(settings.database_url, **engine_kwargs)
+
+    # PG 专属：客户端级 idle-in-tx 超时（与 DB SET 互为冗余保护）
+    connect_args: dict = {}
+    if settings.database_url.startswith(("postgresql", "postgres")):
+        connect_args["options"] = "-c idle_in_transaction_session_timeout=300 -c statement_timeout=600000 -c lock_timeout=120000"
+        connect_args["connect_timeout"] = 10
+    if connect_args:
+        engine_kwargs["connect_args"] = connect_args
+
+    engine = create_engine(settings.database_url, **engine_kwargs)
+
+    # 监听：在新连接上设置 search_path 和 statement_timeout（防御层 2 补充）
+    @event.listens_for(engine, "connect")
+    def _set_session_settings(dbapi_connection, connection_record):  # noqa: ANN001
+        with dbapi_connection.cursor() as cursor:
+            cursor.execute("SET application_name = 'a-share-hub'")
+            cursor.execute("SET idle_in_transaction_session_timeout = '5min'")
+            cursor.execute("SET statement_timeout = '10min'")
+            cursor.execute("SET lock_timeout = '2min'")
+        dbapi_connection.commit()
+
+    return engine
 
 
 def ensure_runtime_schema(engine) -> None:

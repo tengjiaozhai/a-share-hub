@@ -124,15 +124,21 @@ def build_app() -> FastAPI:
     settings = Settings()
     if settings.enable_scheduler or settings.app_role == "scheduler":
         _register_scheduler_lifecycle(app)
+    else:
+        _register_app_lifespan(app)
 
     return app
 
 
-def _register_scheduler_lifecycle(app: FastAPI) -> None:
-    """注册调度器生命周期钩子（启动/关闭）"""
+def _register_app_lifespan(app: FastAPI) -> None:
+    """注册应用生命周期：启动 backfill、调度器；关闭时 dispose 引擎连接池。
+
+    防御层 3：lifespan shutdown 显式 dispose 引擎，避免 `pkill -9` 残留 idle-in-tx 连接。
+    """
     from contextlib import asynccontextmanager
 
     from src.scheduler.daily_scheduler import get_scheduler
+    from src.storage.dependencies import get_runtime_store
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -142,9 +148,22 @@ def _register_scheduler_lifecycle(app: FastAPI) -> None:
             _run_startup_backfill()
             yield
         finally:
-            scheduler.stop()
+            try:
+                scheduler.stop()
+            except Exception:
+                pass
+            # 防御层 3：graceful shutdown 释放所有连接池中的连接
+            try:
+                get_runtime_store().engine.dispose()
+            except Exception:
+                pass
 
     app.router.lifespan_context = lifespan
+
+
+def _register_scheduler_lifecycle(app: FastAPI) -> None:
+    """仅调度器进程使用：保留旧 lifespan 兼容（即将废弃）"""
+    _register_app_lifespan(app)
 
 
 def _run_startup_backfill() -> None:
