@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from src.main import build_app
 
 
-def test_market_quote_returns_404_for_unknown_symbol(monkeypatch):
+def test_market_quote_returns_404_for_unknown_symbol(authenticated_client, monkeypatch):
     from src.api import routes_market
 
     class QuoteProvider:
@@ -14,7 +14,7 @@ def test_market_quote_returns_404_for_unknown_symbol(monkeypatch):
             raise KeyError(symbol)
 
     monkeypatch.setattr(routes_market, "_get_akshare_provider", lambda: QuoteProvider())
-    client = TestClient(build_app())
+    client = authenticated_client
 
     response = client.get("/api/v1/market/quote", params={"symbol": "999999.SH"})
 
@@ -22,7 +22,7 @@ def test_market_quote_returns_404_for_unknown_symbol(monkeypatch):
     assert response.json()["detail"] == "quote symbol not found: 999999.SH"
 
 
-def test_market_quote_returns_503_for_upstream_failure(monkeypatch):
+def test_market_quote_returns_503_for_upstream_failure(authenticated_client, monkeypatch):
     from src.api import routes_market
     from src.data.providers.akshare_errors import AkshareUpstreamError
 
@@ -34,7 +34,7 @@ def test_market_quote_returns_503_for_upstream_failure(monkeypatch):
             raise AkshareUpstreamError("upstream reset")
 
     monkeypatch.setattr(routes_market, "_get_akshare_provider", lambda: QuoteProvider())
-    client = TestClient(build_app())
+    client = authenticated_client
 
     response = client.get("/api/v1/market/quote", params={"symbol": "000858.SZ"})
 
@@ -42,7 +42,7 @@ def test_market_quote_returns_503_for_upstream_failure(monkeypatch):
     assert response.json()["detail"] == "quote upstream unavailable: upstream reset"
 
 
-def test_market_quote_returns_503_when_breaker_is_open(monkeypatch):
+def test_market_quote_returns_503_when_breaker_is_open(authenticated_client, monkeypatch):
     from src.api import routes_market
     from src.data.providers.akshare_errors import AkshareBreakerOpenError
 
@@ -54,7 +54,7 @@ def test_market_quote_returns_503_when_breaker_is_open(monkeypatch):
             raise AkshareBreakerOpenError("akshare spot snapshot breaker is open")
 
     monkeypatch.setattr(routes_market, "_get_akshare_provider", lambda: QuoteProvider())
-    client = TestClient(build_app())
+    client = authenticated_client
 
     response = client.get("/api/v1/market/quote", params={"symbol": "000858.SZ"})
 

@@ -21,11 +21,11 @@ class FakeAkshareProvider:
         )
 
 
-def test_market_stocks_returns_filtered_records(monkeypatch):
+def test_market_stocks_returns_filtered_records(authenticated_client, monkeypatch):
     from src.api import routes_market
 
     monkeypatch.setattr(routes_market, "_get_akshare_provider", lambda: FakeAkshareProvider())
-    client = TestClient(build_app())
+    client = authenticated_client
 
     response = client.get("/api/v1/market/stocks", params={"query": "粮", "exchange": "SZ", "limit": 10})
 

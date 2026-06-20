@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 from src.main import build_app
 
 
-def test_backtest_endpoint_returns_metrics(monkeypatch):
+def test_backtest_endpoint_returns_metrics(authenticated_client, monkeypatch):
     import pandas as pd
     from src.api import routes_dashboard
 
@@ -17,7 +17,7 @@ def test_backtest_endpoint_returns_metrics(monkeypatch):
     from src.data.providers.akshare_provider import AkshareProvider
     monkeypatch.setattr(AkshareProvider, "get_history", mock_get_history)
 
-    client = TestClient(build_app())
+    client = authenticated_client
     response = client.post("/api/v1/dashboard/backtest", json={
         "watchlist": ["600519.SH"],
         "start_date": "2025-01-01",
@@ -33,8 +33,8 @@ def test_backtest_endpoint_returns_metrics(monkeypatch):
     assert "total_return" in data["results"][0]["metrics"]
 
 
-def test_backtest_endpoint_returns_400_for_empty_watchlist():
-    client = TestClient(build_app())
+def test_backtest_endpoint_returns_400_for_empty_watchlist(authenticated_client):
+    client = authenticated_client
     response = client.post("/api/v1/dashboard/backtest", json={
         "watchlist": [],
         "start_date": "2025-01-01",

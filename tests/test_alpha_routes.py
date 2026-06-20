@@ -5,7 +5,7 @@ from src.api import routes_alpha
 from src.main import build_app
 
 
-def test_alpha_assets_endpoint_returns_normalized_rows(authenticated_client, monkeypatch):
+def test_alpha_assets_endpoint_returns_normalized_rows(authenticated_client, test_app, monkeypatch):
     from src.api import routes_alpha
 
     class FakeService:
@@ -18,7 +18,7 @@ def test_alpha_assets_endpoint_returns_normalized_rows(authenticated_client, mon
                     project_id="alpha-aaplx",
                     market_status="TRADING",
                     asset_status="ACTIVE",
-                    shares_multiplier=1.0,
+                    shares_multiplier=0.1,
                     min_qty=0.1,
                     max_qty=50.0,
                 )
@@ -27,8 +27,7 @@ def test_alpha_assets_endpoint_returns_normalized_rows(authenticated_client, mon
     async def override_get_alpha_service():
         return FakeService()
 
-    app = build_app()
-    app.dependency_overrides[routes_alpha.get_alpha_service] = override_get_alpha_service
+    test_app.dependency_overrides[routes_alpha.get_alpha_service] = override_get_alpha_service
     client = authenticated_client
 
     response = client.get("/api/v1/alpha/assets")
@@ -132,7 +131,7 @@ def test_alpha_reconciliation_route_returns_run_id(authenticated_client, test_ap
     assert response.json()["status"] == "MISMATCH"
 
 
-def test_alpha_watchlist_api_supports_list_and_add(authenticated_client, ):
+def test_alpha_watchlist_api_supports_list_and_add(authenticated_client, test_app, ):
     from unittest.mock import MagicMock
 
     mock_store = MagicMock()
@@ -140,10 +139,9 @@ def test_alpha_watchlist_api_supports_list_and_add(authenticated_client, ):
         {"symbol": "AAPLx", "underlying_symbol": "AAPL", "priority": 1}
     ]
 
-    from src.storage.dependencies import get_runtime_store
+    from src.api.dependencies import get_user_runtime_store
 
-    app = build_app()
-    app.dependency_overrides[get_runtime_store] = lambda: mock_store
+    test_app.dependency_overrides[get_user_runtime_store] = lambda: mock_store
     client = authenticated_client
 
     add_res = client.post(
@@ -162,7 +160,7 @@ def test_alpha_watchlist_api_supports_list_and_add(authenticated_client, ):
     assert items[0]["symbol"] == "AAPLx"
 
 
-def test_alpha_research_scan_endpoint_returns_ranked_candidates(authenticated_client, ):
+def test_alpha_research_scan_endpoint_returns_ranked_candidates(authenticated_client, test_app, ):
     from unittest.mock import MagicMock
 
     mock_store = MagicMock()
@@ -174,7 +172,8 @@ def test_alpha_research_scan_endpoint_returns_ranked_candidates(authenticated_cl
         {"symbol": "AAPLx", "quantity": 1.5, "avg_cost": 205.0, "mark_price": 211.0}
     ]
 
-    from src.storage.dependencies import get_runtime_store
+    from src.api import routes_alpha
+    from src.api.dependencies import get_user_runtime_store
 
     class FakeResearchService:
         async def rank_watchlist(self, symbols: list[str]) -> list[dict]:
@@ -186,9 +185,8 @@ def test_alpha_research_scan_endpoint_returns_ranked_candidates(authenticated_cl
     async def override_get_alpha_research_service():
         return FakeResearchService()
 
-    app = build_app()
-    app.dependency_overrides[get_runtime_store] = lambda: mock_store
-    app.dependency_overrides[routes_alpha.get_alpha_research_service] = override_get_alpha_research_service
+    test_app.dependency_overrides[get_user_runtime_store] = lambda: mock_store
+    test_app.dependency_overrides[routes_alpha.get_alpha_research_service] = override_get_alpha_research_service
     client = authenticated_client
 
     response = client.post("/api/v1/alpha/research/scan")
@@ -361,7 +359,7 @@ def test_generate_portfolio_report_endpoint(authenticated_client, test_app, pg_s
         opening_cash=10_000.0,
         price_map={"AAPLx": 210.0},
     )
-    client = _authenticated_client(test_app)
+    client = authenticated_client
 
     response = client.post(
         "/api/v1/alpha/portfolio/report",

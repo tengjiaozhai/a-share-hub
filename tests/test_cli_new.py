@@ -60,12 +60,41 @@ def test_store(test_engine):
 
 
 @pytest.fixture
-def test_app(test_store):
+def test_app(test_store, monkeypatch):
+    import src.api.auth_security as _auth_security
+    _original = _auth_security.get_current_user_from_request
+
+    def _patched(request):
+        user = getattr(request.state, "user", None)
+        if user:
+            return user
+        from src.core.config import Settings
+        settings = Settings()
+        token = request.cookies.get(settings.auth_cookie_name)
+        if not token:
+            return None
+        user_id = _auth_security.read_auth_token(token, settings)
+        if not user_id:
+            return None
+        from src.storage.auth_store import AuthStore
+        user_row = AuthStore(test_store.engine).get_user(user_id)
+        if not user_row or user_row.get("disabled"):
+            return None
+        return {
+            "user_id": user_row["user_id"],
+            "username": user_row["username"],
+            "email": user_row["email"],
+            "role": user_row["role"],
+        }
+
+    monkeypatch.setattr(_auth_security, "get_current_user_from_request", _patched)
+
     app = build_app()
     app.dependency_overrides[get_user_runtime_store] = lambda: test_store
     app.dependency_overrides[get_decision_run_repository] = lambda: SQLAlchemyDecisionRunRepository(test_store.engine)
     app.dependency_overrides[get_current_user_id] = lambda: TEST_USER_ID
-    return app
+    yield app
+    monkeypatch.setattr(_auth_security, "get_current_user_from_request", _original)
 
 
 def _wire_test_store(test_store):
@@ -81,14 +110,8 @@ def _wire_test_store(test_store):
 def _unwire_test_store():
     """还原 lru_cached 单例。"""
     import src.storage.dependencies as deps
-    from src.api import auth_security
-    from src.storage import dependencies as dep_mod
 
     deps._decision_run_repo_instance = None
-    # 重新 import 原始函数（带 lru_cache 的旧版本）并复位
-    import importlib
-    # 重新创建最纯净的 get_runtime_store 引用
-    from src.storage.dependencies import get_runtime_store as original
 
 
 def test_cli_exposes_evalution_commands():
@@ -110,9 +133,14 @@ def test_cli_exposes_backtest_and_evaluate_shadow_commands():
 
 
 def test_decision_runs_route_is_available(test_app, test_store):
+    from src.api.auth_security import create_auth_token
+    from src.core.config import Settings
     _wire_test_store(test_store)
     try:
         client = TestClient(test_app)
+        settings = Settings()
+        auth_token = create_auth_token(TEST_USER_ID, settings)
+        client.cookies.set(settings.auth_cookie_name, auth_token)
         response = client.get("/api/v1/decision-runs")
         assert response.status_code == 200
     finally:
@@ -120,9 +148,14 @@ def test_decision_runs_route_is_available(test_app, test_store):
 
 
 def test_portfolio_targets_route_is_available(test_app, test_store):
+    from src.api.auth_security import create_auth_token
+    from src.core.config import Settings
     _wire_test_store(test_store)
     try:
         client = TestClient(test_app)
+        settings = Settings()
+        auth_token = create_auth_token(TEST_USER_ID, settings)
+        client.cookies.set(settings.auth_cookie_name, auth_token)
         response = client.get("/api/v1/portfolio-targets/active")
         assert response.status_code == 200
     finally:
@@ -130,9 +163,14 @@ def test_portfolio_targets_route_is_available(test_app, test_store):
 
 
 def test_reconciliation_status_route_is_available(test_app, test_store):
+    from src.api.auth_security import create_auth_token
+    from src.core.config import Settings
     _wire_test_store(test_store)
     try:
         client = TestClient(test_app)
+        settings = Settings()
+        auth_token = create_auth_token(TEST_USER_ID, settings)
+        client.cookies.set(settings.auth_cookie_name, auth_token)
         response = client.get("/api/v1/reconciliation/status")
         assert response.status_code == 200
     finally:

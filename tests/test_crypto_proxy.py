@@ -10,8 +10,8 @@ def client():
     return TestClient(app)
 
 
-def test_crypto_router_is_registered_or_explicitly_absent(test_app):
-    client = TestClient(test_app)
+def test_crypto_router_is_registered_or_explicitly_absent(authenticated_client):
+    client = authenticated_client
     response = client.get("/api/v1/crypto/status")
 
     assert response.status_code in {200, 404, 500}

@@ -4,10 +4,10 @@ from src.evaluation.long_run import run_long_horizon_evaluation
 
 
 class FakeStore:
-    def list_decision_runs(self, user_id, limit=None):
+    def list_decision_runs(self, limit=None):
         return [{"decision_run_id": f"dr-{i}"} for i in range(5)]
 
-    def list_account_snapshots(self, user_id, since=None):
+    def list_account_snapshots(self, since=None):
         base = datetime(2026, 6, 1)
         return [
             {"created_at": (base + timedelta(days=0)).isoformat(), "nav": 1_000_000.0},
@@ -15,7 +15,7 @@ class FakeStore:
             {"created_at": (base + timedelta(days=2)).isoformat(), "nav": 1_010_000.0},
         ]
 
-    def list_execution_orders(self, user_id, limit=None):
+    def list_execution_orders(self, limit=None):
         return [
             {"execution_order_id": "eo-1", "status": "FILLED"},
             {"execution_order_id": "eo-2", "status": "READY"},
@@ -27,7 +27,7 @@ class FakeStore:
             {"event_type": "SUBMITTED", "payload": {}},
         ]
 
-    def get_reconciliation_status(self, user_id):
+    def get_reconciliation_status(self, run_context_id=None):
         return {"open_orders": 1, "broker_event_count": 2, "healthy": True}
 
 
