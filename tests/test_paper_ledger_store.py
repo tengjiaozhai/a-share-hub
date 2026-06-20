@@ -1,8 +1,7 @@
 from datetime import date, datetime, timedelta
 
 import pytest
-from sqlalchemy import select
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from src.core.tenant import TenantContext
@@ -310,10 +309,6 @@ def test_create_fill_rejects_cross_tenant_account():
     alice = PaperLedgerStore(session, TenantContext("alice"))
     bob = PaperLedgerStore(session, TenantContext("bob"))
     alice_account = alice.get_or_create_account("a", "manual")
-    alice_run = alice.create_run(
-        account_id=alice_account.account_id, market="a", trade_date=_date.today(),
-        run_source="manual", params={}, watchlist=[],
-    )
     bob_account = bob.get_or_create_account("a", "manual")
     bob_run = bob.create_run(
         account_id=bob_account.account_id, market="a", trade_date=_date.today(),

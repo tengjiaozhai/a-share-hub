@@ -1,7 +1,5 @@
 """Kill Switch API 测试：actor_user_id 归属验证"""
 
-from src.storage.system_runtime_store import SystemRuntimeStore
-
 
 def test_kill_switch_event_records_authenticated_actor(authenticated_admin_client, system_store):
     """激活 kill switch 的事件必须记录调用者 actor_user_id。"""
