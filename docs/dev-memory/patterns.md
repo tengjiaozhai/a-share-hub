@@ -454,3 +454,97 @@ export PATH="/Users/shenmingjie/.nvm/versions/node/v24.13.1/bin:$PATH"
 npm install -g package-name
 which package-name  # 获取绝对路径
 ```
+
+---
+
+## 数据库迁移防御层模式（2026-06-20 沉淀）
+
+**适用场景**：任何包含 alembic 迁移 + FastAPI/uvicorn + PostgreSQL 的项目。
+
+**核心原则**：绝不在单一层假设"环境是干净的"，而是**多层防御 + 幂等操作**。
+
+### 防御层 1：服务端（最可靠）
+
+```sql
+ALTER DATABASE your_db SET idle_in_transaction_session_timeout = '5min';
+ALTER DATABASE your_db SET statement_timeout = '10min';
+ALTER DATABASE your_db SET lock_timeout = '2min';
+```
+
+**为什么服务端最可靠**：无论应用代码怎么写，服务端会兜底。即使应用 crash、僵尸连接、运维失误，5 分钟后服务端自动清理。
+
+### 防御层 2：SQLAlchemy 引擎配置
+
+```python
+engine = create_engine(
+    settings.database_url,
+    pool_pre_ping=True,                # 连接前验证活性
+    pool_recycle=1800,                  # 30 分钟回收
+    pool_reset_on_return="rollback",    # 归还时回滚（防 idle-in-tx）
+    connect_args={"options": "-c idle_in_transaction_session_timeout=300"}
+)
+```
+
+**关键点**：
+- `pool_reset_on_return="rollback"` 是防 idle-in-tx 的杀手锏
+- connect_args 里的 `options` 在每个新连接上设置 client 级超时
+
+### 防御层 3：FastAPI lifespan
+
+```python
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    scheduler.start()
+    try:
+        yield
+    finally:
+        scheduler.stop()
+        get_runtime_store().engine.dispose()  # 释放连接池
+```
+
+**关键点**：`pkill -9` 时 lifespan 不会跑，但 SIGTERM / uvicorn 正常关闭会跑。`engine.dispose()` 立刻关闭所有池化连接。
+
+### 防御层 4：迁移幂等性
+
+```python
+def upgrade():
+    inspector = sa.inspect(op.get_bind())
+    for table in _USER_TABLES:
+        if not _column_exists(inspector, table, "user_id"):
+            with op.batch_alter_table(table) as batch_op:
+                batch_op.add_column(sa.Column("user_id", ..., server_default="system"))
+        if not _index_exists(inspector, table, f"ix_{table}_user_id"):
+            with op.batch_alter_table(table) as batch_op:
+                batch_op.create_index(f"ix_{table}_user_id", ["user_id"])
+```
+
+**5 条规则**：
+1. 所有 DROP 加 `IF EXISTS`
+2. 所有 CREATE 前用 `inspector.get_*()` 检查
+3. 加 `nullable=False` 列前必须有 `server_default`
+4. 删 `server_default` 前检查是否还有 default
+5. 主键 / 唯一约束改动用 inspector.get_pk_constraint() 检查
+
+### 防御层 5：运维兜底
+
+```bash
+# cron 每 5 分钟
+*/5 * * * * cd /home/ec2-user/a-share-hub && \
+  /opt/anaconda3/envs/py311/bin/python scripts/db_cleanup_zombies.py \
+  --min-idle-seconds 60 >> /var/log/db_cleanup.log 2>&1
+```
+
+`scripts/db_cleanup_zombies.py` 主动终止 idle-in-tx 超时的连接。
+
+### 何时使用本模式
+
+- 引入 alembic 到现有项目时
+- 任何带数据库连接池 + DDL 变更的项目
+- 多副本部署（每副本都可能有僵尸连接）
+
+### 反模式（不要做）
+
+- ❌ 用 `pkill -9` 杀进程而不清理连接
+- ❌ 写迁移用 `op.drop_index("hardcoded_name")` 而不 inspect
+- ❌ 把 `idle_in_transaction_session_timeout` 设为 0（默认）
+- ❌ 在 FastAPI 启动时启 scheduler 但 shutdown 不 dispose
