@@ -26,7 +26,8 @@ class BrokerEventRow(Base):
     __tablename__ = "broker_events"
 
     event_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    order_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    order_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     run_context_id: Mapped[str] = mapped_column(String(64), nullable=False)
     event_type: Mapped[str] = mapped_column(String(32), nullable=False)
     payload_json: Mapped[str] = mapped_column(Text, nullable=False)

@@ -110,18 +110,6 @@ class RuntimeStore:
                 .values(status="ACKNOWLEDGED")
             )
 
-    def insert_broker_event(self, event_id: str, order_id: str, event_type: str, payload: dict) -> None:
-        # 全局表（HMAC 验签），Task 6 才会按 owner 写入
-        with self.engine.begin() as conn:
-            conn.execute(
-                BrokerEventRow.__table__.insert().values(
-                    event_id=event_id,
-                    order_id=order_id,
-                    event_type=event_type,
-                    payload_json=json.dumps(payload, ensure_ascii=True, sort_keys=True),
-                )
-            )
-
     def insert_broker_order_event(
         self,
         execution_order_id: str,
@@ -130,7 +118,7 @@ class RuntimeStore:
         payload: dict,
         run_context_id: str | None = None,
     ) -> None:
-        # 全局表（HMAC 验签），Task 6 才会按 owner 写入
+        # 由 tenant-bound 执行路径写入：user_id 来自 self.user_id。
         with self.engine.begin() as conn:
             effective_run_context_id = run_context_id or conn.execute(
                 select(ExecutionOrderRow.run_context_id).where(ExecutionOrderRow.execution_order_id == execution_order_id)
@@ -138,6 +126,7 @@ class RuntimeStore:
             conn.execute(
                 BrokerEventRow.__table__.insert().values(
                     event_id=event_id,
+                    user_id=self.user_id,
                     order_id=execution_order_id,
                     run_context_id=effective_run_context_id,
                     event_type=event_type,
@@ -546,9 +535,12 @@ class RuntimeStore:
             return conn.execute(stmt).scalar()
 
     def list_broker_events(self, limit: int | None = None) -> list[dict]:
-        # 全局表（HMAC 验签），Task 6 才会按 owner 过滤
         with self.engine.begin() as conn:
-            stmt = select(BrokerEventRow).order_by(BrokerEventRow.created_at.desc())
+            stmt = (
+                select(BrokerEventRow)
+                .where(BrokerEventRow.user_id == self.user_id)
+                .order_by(BrokerEventRow.created_at.desc())
+            )
             if limit is not None:
                 stmt = stmt.limit(limit)
             rows = conn.execute(stmt).fetchall()
@@ -563,6 +555,8 @@ class RuntimeStore:
                 }
                 for row in rows
             ]
+
+
 
     def insert_risk_gate_event(
         self,

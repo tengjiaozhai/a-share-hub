@@ -3,9 +3,9 @@ import json
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
 from src.api.auth_security import verify_broker_signature
-from src.api.dependencies import get_user_runtime_store
 from src.core.config import Settings
-from src.storage.runtime_store import RuntimeStore
+from src.storage.dependencies import get_system_runtime_store
+from src.storage.system_runtime_store import SystemRuntimeStore
 
 router = APIRouter(prefix="/api/v1")
 
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/v1")
 @router.post("/broker-events")
 async def receive_broker_event(
     request: Request,
-    store: RuntimeStore = Depends(get_user_runtime_store),  # noqa: B008 - Task 6 才会改用 SystemRuntimeStore
+    store: SystemRuntimeStore = Depends(get_system_runtime_store),  # noqa: B008
     x_broker_signature: str | None = Header(default=None, alias="X-Broker-Signature"),
     x_broker_timestamp: str | None = Header(default=None, alias="X-Broker-Timestamp"),
 ) -> dict:
@@ -30,10 +30,13 @@ async def receive_broker_event(
     for required in ("event_id", "order_id", "event_type"):
         if required not in event:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"missing field: {required}")
-    store.insert_broker_event(
-        event_id=event["event_id"],
-        order_id=event["order_id"],
-        event_type=event["event_type"],
-        payload=event,
-    )
-    return {"received": True, "event_type": event["event_type"]}
+    try:
+        user_id = store.record_broker_event(
+            event_id=str(event["event_id"]),
+            order_id=str(event["order_id"]),
+            event_type=str(event["event_type"]),
+            payload=event,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return {"received": True, "event_type": event["event_type"], "user_id": user_id}
