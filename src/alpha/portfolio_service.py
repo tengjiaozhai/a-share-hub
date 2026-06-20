@@ -13,14 +13,26 @@ class AlphaPortfolioService:
 
     def load_portfolio(self) -> dict:
         ticket_lookup = self._build_ticket_lookup()
-        fills = [
+        all_fills = [
             self._enrich_fill(fill, ticket_lookup[fill["ticket_id"]])
             for fill in reversed(self._store.list_all_alpha_manual_fills())
         ]
+        positions = self._store.list_alpha_positions()
+        positions_with_pnl = [
+            {
+                **pos,
+                "unrealized_pnl": (pos["mark_price"] - pos["avg_cost"]) * pos["quantity"],
+            }
+            for pos in positions
+        ]
+        fills_by_symbol: dict[str, list[dict]] = {}
+        for fill in all_fills:
+            fills_by_symbol.setdefault(fill["asset_symbol"], []).append(fill)
         return {
             "snapshot": self._store.get_latest_alpha_portfolio_snapshot(),
-            "positions": self._store.list_alpha_positions(),
-            "fills": fills,
+            "positions": positions_with_pnl,
+            "fills": all_fills,
+            "fills_by_symbol": fills_by_symbol,
         }
 
     def rebuild_from_manual_fills(
@@ -48,6 +60,8 @@ class AlphaPortfolioService:
                 "quantity": position.quantity,
                 "avg_cost": position.avg_cost,
                 "mark_price": price_map.get(position.symbol, position.avg_cost),
+                "unrealized_pnl": (price_map.get(position.symbol, position.avg_cost) - position.avg_cost)
+                * position.quantity,
             }
             for position in state.positions.values()
             if position.quantity > 0
