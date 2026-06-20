@@ -6,8 +6,10 @@ import time
 import httpx
 import pytest
 
-from src.main import build_app
+from src.api.auth_security import create_auth_token
 from src.api.dependencies import get_user_runtime_store
+from src.core.config import Settings
+from src.main import build_app
 from src.storage.runtime_store import RuntimeStore
 
 
@@ -106,13 +108,15 @@ def seeded_store(pg_store: RuntimeStore):
 
 
 @pytest.mark.asyncio
-async def test_sse_response_streams_all_six_events_for_completed_run(test_app, seeded_store):
+async def test_sse_response_streams_all_six_events_for_completed_run(test_app, seeded_store, auth_token):
     test_app.dependency_overrides[get_user_runtime_store] = lambda: seeded_store
     transport = httpx.ASGITransport(app=test_app)
     received: list[dict] = []
     chunk_timestamps: list[float] = []
 
+    settings = Settings()
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        client.cookies.set(settings.auth_cookie_name, auth_token)
         async with client.stream(
             "GET", "/api/v1/dashboard/runs/wrk-sse-001/events"
         ) as response:

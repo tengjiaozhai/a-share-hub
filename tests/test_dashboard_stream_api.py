@@ -1,12 +1,9 @@
-from fastapi.testclient import TestClient
-
-
-def test_start_run_returns_accepted_and_run_context_id(test_app, monkeypatch):
+def test_start_run_returns_accepted_and_run_context_id(authenticated_client, monkeypatch):
     from src.api import routes_dashboard
 
-    monkeypatch.setattr(routes_dashboard, "_launch_dashboard_run", lambda run_context_id, config: None)
+    monkeypatch.setattr(routes_dashboard, "_launch_dashboard_run", lambda run_context_id, config, user_id: None)
 
-    client = TestClient(test_app)
+    client = authenticated_client
     response = client.post(
         "/api/v1/dashboard/runs",
         json={
@@ -24,22 +21,22 @@ def test_start_run_returns_accepted_and_run_context_id(test_app, monkeypatch):
     assert payload["stream_url"] == f"/api/v1/dashboard/runs/{payload['run_context_id']}/events"
 
 
-def test_run_events_route_streams_ordered_event_log(test_app, pg_store):
-    pg_store.append_dashboard_run_event(user_id="test-user", 
+def test_run_events_route_streams_ordered_event_log(authenticated_client, pg_store):
+    pg_store.append_dashboard_run_event(
         run_context_id="wrk-001",
         event_type="run.accepted",
         stage="decision",
         status="running",
         payload={"message": "accepted"},
     )
-    pg_store.append_dashboard_run_event(user_id="test-user", 
+    pg_store.append_dashboard_run_event(
         run_context_id="wrk-001",
         event_type="run.completed",
         stage="reconcile",
         status="done",
         payload={"message": "completed"},
     )
-    pg_store.upsert_dashboard_run_summary(user_id="test-user", 
+    pg_store.upsert_dashboard_run_summary(
         run_context_id="wrk-001",
         trade_date="2026-06-15",
         decision_mode="real",
@@ -55,7 +52,7 @@ def test_run_events_route_streams_ordered_event_log(test_app, pg_store):
         latest_workbench={"latest_run": {"run_context_id": "wrk-001"}},
     )
 
-    client = TestClient(test_app)
+    client = authenticated_client
     with client.stream("GET", "/api/v1/dashboard/runs/wrk-001/events") as response:
         body = "".join(chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk for chunk in response.iter_text())
 

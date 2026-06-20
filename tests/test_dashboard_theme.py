@@ -1,6 +1,5 @@
 """Tests for dashboard theme switch functionality."""
 import pytest
-from fastapi.testclient import TestClient
 
 
 THEME_IDS = [
@@ -9,8 +8,8 @@ THEME_IDS = [
 ]
 
 
-def test_theme_preference_round_trip(test_app):
-    client = TestClient(test_app)
+def test_theme_preference_round_trip(authenticated_client):
+    client = authenticated_client
     # Save theme
     resp = client.put("/api/v1/dashboard/preferences", json={"theme_id": "mission-control"})
     assert resp.status_code == 200
@@ -20,22 +19,22 @@ def test_theme_preference_round_trip(test_app):
     assert resp.json()["theme_id"] == "mission-control"
 
 
-def test_invalid_theme_id_is_rejected(test_app):
-    client = TestClient(test_app)
+def test_invalid_theme_id_is_rejected(authenticated_client):
+    client = authenticated_client
     resp = client.put("/api/v1/dashboard/preferences", json={"theme_id": "not-a-theme"})
     assert resp.status_code == 400
 
 
-def test_default_theme_is_trading_terminal(test_app):
-    client = TestClient(test_app)
+def test_default_theme_is_trading_terminal(authenticated_client):
+    client = authenticated_client
     resp = client.get("/api/v1/dashboard/preferences")
     assert resp.status_code == 200
     # Default should be trading-terminal if never set
     assert resp.json().get("theme_id") == "trading-terminal"
 
 
-def test_all_theme_ids_are_accepted(test_app):
-    client = TestClient(test_app)
+def test_all_theme_ids_are_accepted(authenticated_client):
+    client = authenticated_client
     for tid in THEME_IDS:
         resp = client.put("/api/v1/dashboard/preferences", json={"theme_id": tid})
         assert resp.status_code == 200, f"theme_id={tid} rejected"
@@ -43,8 +42,8 @@ def test_all_theme_ids_are_accepted(test_app):
         assert resp.json()["theme_id"] == tid
 
 
-def test_theme_survives_other_preference_save(test_app):
-    client = TestClient(test_app)
+def test_theme_survives_other_preference_save(authenticated_client):
+    client = authenticated_client
     # Save theme
     client.put("/api/v1/dashboard/preferences", json={"theme_id": "nvidia-power"})
     # Save other prefs

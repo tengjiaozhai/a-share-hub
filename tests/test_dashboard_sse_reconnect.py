@@ -5,7 +5,9 @@ import time
 import httpx
 import pytest
 
+from src.api.auth_security import create_auth_token
 from src.api.dependencies import get_user_runtime_store
+from src.core.config import Settings
 from src.storage.runtime_store import RuntimeStore
 
 
@@ -42,7 +44,7 @@ def parse_sse_chunk(chunk: bytes) -> list[dict]:
 
 
 def _seed_completed_run(store: RuntimeStore) -> None:
-    store.upsert_dashboard_run_summary(user_id="test-user", 
+    store.upsert_dashboard_run_summary(
         run_context_id="wrk-recon-001",
         trade_date="2026-06-16",
         decision_mode="mock",
@@ -68,7 +70,7 @@ def _seed_completed_run(store: RuntimeStore) -> None:
         ],
         start=1,
     ):
-        store.append_dashboard_run_event(user_id="test-user", 
+        store.append_dashboard_run_event(
             run_context_id="wrk-recon-001",
             event_type=etype,
             stage=stage,
@@ -78,13 +80,15 @@ def _seed_completed_run(store: RuntimeStore) -> None:
 
 
 @pytest.mark.asyncio
-async def test_reconnect_with_last_event_id_starts_after_seq(test_app, pg_store):
+async def test_reconnect_with_last_event_id_starts_after_seq(test_app, pg_store, auth_token):
     _seed_completed_run(pg_store)
     test_app.dependency_overrides[get_user_runtime_store] = lambda: pg_store
     transport = httpx.ASGITransport(app=test_app)
     received: list[dict] = []
 
+    settings = Settings()
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        client.cookies.set(settings.auth_cookie_name, auth_token)
         # 模拟 client 在 seq=2 断开（只看到 1, 2）
         # 然后用 Last-Event-ID: 2 重连
         async with client.stream(

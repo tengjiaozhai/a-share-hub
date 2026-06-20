@@ -4,14 +4,32 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
+from src.api import auth_security as _auth_security
+from src.api.auth_security import create_auth_token
 from src.api.dashboard_page.render import render_dashboard_html
-from src.main import build_app
-from src.api.dependencies import get_user_runtime_store
-from src.storage.models import Base
+from src.api.dependencies import get_current_user, get_current_user_id, get_user_runtime_store
+from src.core.config import Settings
 from src.core.tenant import TenantContext
+from src.main import build_app
+from src.storage.models import Base
 from src.storage.runtime_store import RuntimeStore
 
-def build_dashboard_client():
+
+def _patch_auth(monkeypatch):
+    monkeypatch.setattr(
+        _auth_security,
+        "get_current_user_from_request",
+        lambda request: {
+            "user_id": "test-user",
+            "username": "test",
+            "email": "test@example.com",
+            "role": "user",
+        },
+    )
+
+
+def build_dashboard_client(monkeypatch):
+    _patch_auth(monkeypatch)
     engine = create_engine(
         "sqlite+pysqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -22,10 +40,21 @@ def build_dashboard_client():
     store = RuntimeStore(engine, TenantContext("test-user"))
     app = build_app()
     app.dependency_overrides[get_user_runtime_store] = lambda: store
-    return TestClient(app), store
+    app.dependency_overrides[get_current_user] = lambda: {
+        "user_id": "test-user",
+        "username": "test",
+        "email": "test@example.com",
+        "role": "user",
+    }
+    app.dependency_overrides[get_current_user_id] = lambda: "test-user"
+    settings = Settings()
+    token = create_auth_token("test-user", settings)
+    client = TestClient(app)
+    client.cookies.set(settings.auth_cookie_name, token)
+    return client, store
 
-def test_dashboard_is_only_html_entrypoint():
-    client, _ = build_dashboard_client()
+def test_dashboard_is_only_html_entrypoint(monkeypatch):
+    client, _ = build_dashboard_client(monkeypatch)
 
     assert client.get("/dashboard").status_code == 200
     assert client.get("/new").status_code == 404
@@ -104,14 +133,14 @@ def test_render_dashboard_html_contains_incremental_history_and_window_switch_co
     for marker in required_markers:
         assert marker in html
 
-def test_dashboard_route_uses_rendered_split_html():
-    client = TestClient(build_app())
+def test_dashboard_route_uses_rendered_split_html(monkeypatch):
+    client, _ = build_dashboard_client(monkeypatch)
     response = client.get("/dashboard")
     assert response.status_code == 200
     assert response.text == render_dashboard_html()
 
-def test_dashboard_preferences_and_workbench_stay_server_backed():
-    client, store = build_dashboard_client()
+def test_dashboard_preferences_and_workbench_stay_server_backed(monkeypatch):
+    client, store = build_dashboard_client(monkeypatch)
 
     store.set_preference("dashboard", {
             "watchlist": ["600519.SH", "000858.SZ"],
