@@ -65,15 +65,15 @@ def ensure_paper_ledger_tables(engine) -> None:
     PaperBase.metadata.create_all(engine)
 
 
-def test_dashboard_workbench_route_exists(test_app):
-    client = TestClient(test_app)
+def test_dashboard_workbench_route_exists(authenticated_client, test_app):
+    client = authenticated_client
     response = client.get("/api/v1/dashboard/workbench")
     assert response.status_code == 200
 
 
-def test_workbench_payload_has_stable_contract(test_app, pg_store):
+def test_workbench_payload_has_stable_contract(authenticated_client, test_app, pg_store):
     decision_run_id, target_position_id, execution_order_id = seed_dashboard_records(pg_store)
-    client = TestClient(test_app)
+    client = authenticated_client
 
     response = client.get("/api/v1/dashboard/workbench")
     payload = response.json()
@@ -107,8 +107,8 @@ def test_workbench_payload_has_stable_contract(test_app, pg_store):
     assert {"symbol", "action", "quantity", "limit_price", "status", "created_at"}.issubset(order.keys())
 
 
-def test_kill_switch_events_are_visible_in_workbench_history(test_app):
-    client = TestClient(test_app)
+def test_kill_switch_events_are_visible_in_workbench_history(authenticated_client, test_app):
+    client = authenticated_client
 
     activate = client.post("/api/v1/kill-switch/activate", json={"reason": "dashboard manual halt"})
     assert activate.status_code == 200
@@ -133,7 +133,7 @@ def test_kill_switch_events_are_visible_in_workbench_history(test_app):
     )
 
 
-def test_workbench_payload_includes_alpha_panel(test_app, pg_store):
+def test_workbench_payload_includes_alpha_panel(authenticated_client, test_app, pg_store):
     ticket_id = pg_store.insert_alpha_ticket(user_id="test-user", 
         asset_symbol="AAPLx",
         underlying_symbol="AAPL",
@@ -143,7 +143,7 @@ def test_workbench_payload_includes_alpha_panel(test_app, pg_store):
         suggested_limit_price=210.5,
         expires_at="2026-06-01T16:00:00+08:00",
     )
-    client = TestClient(test_app)
+    client = authenticated_client
 
     response = client.get("/api/v1/dashboard/workbench")
 
@@ -153,7 +153,7 @@ def test_workbench_payload_includes_alpha_panel(test_app, pg_store):
     assert payload["alpha"]["tickets"][0]["ticket_id"] == ticket_id
 
 
-def test_workbench_payload_includes_alpha_portfolio_and_exceptions(test_app, pg_store):
+def test_workbench_payload_includes_alpha_portfolio_and_exceptions(authenticated_client, test_app, pg_store):
     ticket_id = pg_store.insert_alpha_ticket(user_id="test-user", 
         asset_symbol="AAPLx",
         underlying_symbol="AAPL",
@@ -186,7 +186,7 @@ def test_workbench_payload_includes_alpha_portfolio_and_exceptions(test_app, pg_
         status="MISMATCH",
         discrepancies={"positions": {"AAPLx": {"internal": 1.2, "external": 1.0}}},
     )
-    client = TestClient(test_app)
+    client = authenticated_client
 
     response = client.get("/api/v1/dashboard/workbench")
 
@@ -198,7 +198,7 @@ def test_workbench_payload_includes_alpha_portfolio_and_exceptions(test_app, pg_
     assert payload["alpha"]["exceptions"]["latest_status"] == "MISMATCH"
 
 
-def test_workbench_uses_authoritative_target_quantity_and_reconcile_items(test_app, pg_store):
+def test_workbench_uses_authoritative_target_quantity_and_reconcile_items(authenticated_client, test_app, pg_store):
     pg_store.upsert_dashboard_run_summary(user_id="test-user", 
         run_context_id="wrk-001",
         trade_date="2026-06-15",
@@ -222,7 +222,7 @@ def test_workbench_uses_authoritative_target_quantity_and_reconcile_items(test_a
         },
     )
 
-    client = TestClient(test_app)
+    client = authenticated_client
     response = client.get("/api/v1/dashboard/workbench?run_context_id=wrk-001")
     payload = response.json()
 
@@ -232,15 +232,14 @@ def test_workbench_uses_authoritative_target_quantity_and_reconcile_items(test_a
     assert payload["latest_run"]["run_pnl_summary"]["net_pnl"] == -0.96
 
 
-def test_history_returns_single_canonical_runs_list(test_app, pg_store):
+def test_history_returns_single_canonical_runs_list(authenticated_client, test_app, pg_store):
     from src.paper_ledger.store import PaperLedgerStore
 
     ensure_paper_ledger_tables(pg_store.engine)
     with Session(pg_store.engine) as session:
         ledger = PaperLedgerStore(session)
-        account = ledger.get_or_create_account("a", "auto")
-        auto_run = ledger.create_run(
-            account_id=account.account_id,
+        account = ledger.get_or_create_account("test-user", "a", "auto")
+        auto_run = ledger.create_run(user_id="test-user", account_id=account.account_id,
             market="a",
             trade_date=date(2026, 6, 16),
             run_source="auto",
@@ -276,7 +275,7 @@ def test_history_returns_single_canonical_runs_list(test_app, pg_store):
         },
     )
 
-    client = TestClient(test_app)
+    client = authenticated_client
     response = client.get("/api/v1/dashboard/history?limit=10")
     payload = response.json()
 
@@ -331,7 +330,7 @@ def test_history_returns_single_canonical_runs_list(test_app, pg_store):
     assert auto_history_run["supports_case_view"] is False
 
 
-def test_history_manual_runs_link_case_view_by_run_context_id(test_app, pg_store):
+def test_history_manual_runs_link_case_view_by_run_context_id(authenticated_client, test_app, pg_store):
     ensure_paper_ledger_tables(pg_store.engine)
     pg_store.upsert_dashboard_run_summary(user_id="test-user", 
         run_context_id="wrk-history-404",
@@ -358,7 +357,7 @@ def test_history_manual_runs_link_case_view_by_run_context_id(test_app, pg_store
         },
     )
 
-    client = TestClient(test_app)
+    client = authenticated_client
     history_payload = client.get("/api/v1/dashboard/history?limit=10").json()
     manual_run = next(run for run in history_payload["runs"] if run["id"] == "wrk-history-404")
 
@@ -370,7 +369,7 @@ def test_history_manual_runs_link_case_view_by_run_context_id(test_app, pg_store
     assert workbench_response.json()["latest_run"]["run_context_id"] == "wrk-history-404"
 
 
-def test_history_supports_cursor_pagination_for_incremental_loading(test_app, pg_store):
+def test_history_supports_cursor_pagination_for_incremental_loading(authenticated_client, test_app, pg_store):
     ensure_paper_ledger_tables(pg_store.engine)
     pg_store.upsert_dashboard_run_summary(user_id="test-user", 
         run_context_id="wrk-history-101",
@@ -418,7 +417,7 @@ def test_history_supports_cursor_pagination_for_incremental_loading(test_app, pg
         latest_workbench={"latest_run": {"run_context_id": "wrk-history-103", "watchlist": ["MSFT"]}},
     )
 
-    client = TestClient(test_app)
+    client = authenticated_client
 
     first_page = client.get("/api/v1/dashboard/history?market=us&source=manual&limit=2")
     assert first_page.status_code == 200
@@ -441,15 +440,16 @@ def test_history_supports_cursor_pagination_for_incremental_loading(test_app, pg
     assert second_payload["next_cursor"] is None
 
 
-def test_performance_includes_window_metadata_and_comparison_cards(test_app, pg_store):
+def test_performance_includes_window_metadata_and_comparison_cards(authenticated_client, test_app, pg_store):
     from src.paper_ledger.store import PaperLedgerStore
 
     account_kind = "perf-meta-case"
     ensure_paper_ledger_tables(pg_store.engine)
     with Session(pg_store.engine) as session:
         ledger = PaperLedgerStore(session)
-        account = ledger.get_or_create_account("a", account_kind)
+        account = ledger.get_or_create_account("test-user", "a", account_kind)
         ledger.create_nav_snapshot(
+            user_id="test-user",
             account_id=account.account_id,
             trade_date=date(2026, 6, 16),
             nav=100.0,
@@ -457,6 +457,7 @@ def test_performance_includes_window_metadata_and_comparison_cards(test_app, pg_
             positions_value=0.0,
         )
         ledger.create_nav_snapshot(
+            user_id="test-user",
             account_id=account.account_id,
             trade_date=date(2026, 6, 17),
             nav=103.0,
@@ -464,6 +465,7 @@ def test_performance_includes_window_metadata_and_comparison_cards(test_app, pg_
             positions_value=0.0,
         )
         ledger.create_nav_snapshot(
+            user_id="test-user",
             account_id=account.account_id,
             trade_date=date(2026, 6, 18),
             nav=108.0,
@@ -471,7 +473,7 @@ def test_performance_includes_window_metadata_and_comparison_cards(test_app, pg_
             positions_value=0.0,
         )
 
-    client = TestClient(test_app)
+    client = authenticated_client
     response = client.get(f"/api/v1/dashboard/performance?window=30d&account_kind={account_kind}")
     payload = response.json()
 
@@ -485,16 +487,16 @@ def test_performance_includes_window_metadata_and_comparison_cards(test_app, pg_
     assert {card["window"] for card in payload["comparison_cards"]} == {"7d", "30d", "90d", "ytd"}
 
 
-def test_old_run_endpoint_is_removed(test_app, monkeypatch):
+def test_old_run_endpoint_is_removed(authenticated_client, test_app, monkeypatch):
     """旧阻塞式 /api/v1/dashboard/run 必须删除（No Legacy By Default）。
 
     ShadowRunService.run() + POST /api/v1/dashboard/runs 是统一权威入口。
     """
     from src.api import routes_dashboard
 
-    monkeypatch.setattr(routes_dashboard, "_launch_dashboard_run", lambda run_context_id, config: None)
+    monkeypatch.setattr(routes_dashboard, "_launch_dashboard_run", lambda run_context_id, config, user_id=None: None)
 
-    client = TestClient(test_app)
+    client = authenticated_client
     res = client.post(
         "/api/v1/dashboard/run",
         json={"watchlist": ["NVDA"], "capital_base": 1_000_000},
@@ -504,13 +506,13 @@ def test_old_run_endpoint_is_removed(test_app, monkeypatch):
     )
 
 
-def test_new_runs_endpoint_remains(test_app, monkeypatch):
+def test_new_runs_endpoint_remains(authenticated_client, test_app, monkeypatch):
     """新流式 endpoint /api/v1/dashboard/runs 必须保留为唯一入口。"""
     from src.api import routes_dashboard
 
-    monkeypatch.setattr(routes_dashboard, "_launch_dashboard_run", lambda run_context_id, config: None)
+    monkeypatch.setattr(routes_dashboard, "_launch_dashboard_run", lambda run_context_id, config, user_id=None: None)
 
-    client = TestClient(test_app)
+    client = authenticated_client
     res = client.post(
         "/api/v1/dashboard/runs",
         json={

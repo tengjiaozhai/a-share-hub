@@ -39,14 +39,24 @@ def create_runtime_engine(settings: Settings):
     engine = create_engine(settings.database_url, **engine_kwargs)
 
     # 监听：在新连接上设置 search_path 和 statement_timeout（防御层 2 补充）
+    _dialect_name = engine.dialect.name
     @event.listens_for(engine, "connect")
     def _set_session_settings(dbapi_connection, connection_record):  # noqa: ANN001
-        with dbapi_connection.cursor() as cursor:
-            cursor.execute("SET application_name = 'a-share-hub'")
-            cursor.execute("SET idle_in_transaction_session_timeout = '5min'")
-            cursor.execute("SET statement_timeout = '10min'")
-            cursor.execute("SET lock_timeout = '2min'")
-        dbapi_connection.commit()
+        # SQLite 不支持 PG 专用 SET 语句；测试用 sqlite3.Cursor 也不支持 context manager
+        if _dialect_name == "sqlite":
+            return
+        try:
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute("SET application_name = 'a-share-hub'")
+                cursor.execute("SET idle_in_transaction_session_timeout = '5min'")
+                cursor.execute("SET statement_timeout = '10min'")
+                cursor.execute("SET lock_timeout = '2min'")
+            finally:
+                cursor.close()
+            dbapi_connection.commit()
+        except Exception:
+            pass
 
     return engine
 

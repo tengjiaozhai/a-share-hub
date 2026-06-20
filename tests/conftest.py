@@ -42,6 +42,7 @@ TEST_USER_ID = "test-user"
 def pg_engine(tmp_path):
     database_url = os.environ.get("TEST_DATABASE_URL", f"sqlite:///{tmp_path}/runtime_store.db")
     engine = create_engine(database_url, future=True)
+    from src.storage import auth_models  # noqa: F401  (registers app_users on Base.metadata)
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     try:
@@ -52,7 +53,28 @@ def pg_engine(tmp_path):
 
 @pytest.fixture
 def pg_store(pg_engine):
-    return RuntimeStore(pg_engine)
+    """包装 pg_engine 为 RuntimeStore，并插入与 auth_token user_id 匹配的测试用户。"""
+    from datetime import datetime
+    from sqlalchemy import insert
+    from src.storage.auth_models import AppUserRow
+
+    store = RuntimeStore(pg_engine)
+    # 直接用 TEST_USER_ID 插入（create_user 会生成随机 ID，与 cookie 的 user_id 不匹配）
+    try:
+        with pg_engine.begin() as conn:
+            conn.execute(insert(AppUserRow.__table__).values(
+                user_id=TEST_USER_ID,
+                username=TEST_USER_ID,
+                email=f"{TEST_USER_ID}@test.local",
+                password_hash="test-hash-no-login-needed",
+                role="admin",
+                disabled=False,
+                created_at=datetime.utcnow(),
+                last_login_at=datetime.utcnow(),
+            ))
+    except Exception:
+        pass  # 已存在
+    return store
 
 
 @pytest.fixture
@@ -73,12 +95,43 @@ def auth_token():
 
 
 @pytest.fixture
-def test_app(pg_store, in_memory_decision_run_repository, event_bus, auth_token):
+def test_app(pg_store, in_memory_decision_run_repository, event_bus, auth_token, monkeypatch):
+    # 关键：auth_middleware 直接调用 get_runtime_store()，绕过 FastAPI DI override。
+    # 用 monkeypatch 让 middleware 直接读 request.state（由我们自己塞 user）。
+    import src.api.auth_security as _auth_security
+    _original = _auth_security.get_current_user_from_request
+
+    def _patched(request):
+        user = getattr(request.state, "user", None)
+        if user:
+            return user
+        # 第一次：从 cookie 解码 user_id，然后查 pg_store 拿完整 user dict
+        settings = Settings()
+        token = request.cookies.get(settings.auth_cookie_name)
+        if not token:
+            return None
+        user_id = _auth_security.read_auth_token(token, settings)
+        if not user_id:
+            return None
+        from src.storage.auth_store import AuthStore
+        user_row = AuthStore(pg_store.engine).get_user(user_id)
+        if not user_row or user_row.get("disabled"):
+            return None
+        return {
+            "user_id": user_row["user_id"],
+            "username": user_row["username"],
+            "email": user_row["email"],
+            "role": user_row["role"],
+        }
+
+    monkeypatch.setattr(_auth_security, "get_current_user_from_request", _patched)
+
     app = build_app()
     app.dependency_overrides[get_runtime_store] = lambda: pg_store
     app.dependency_overrides[get_decision_run_repository] = lambda: in_memory_decision_run_repository
     app.dependency_overrides[get_current_user_id] = lambda: TEST_USER_ID
-    return app
+    yield app
+    monkeypatch.setattr(_auth_security, "get_current_user_from_request", _original)
 
 
 @pytest.fixture

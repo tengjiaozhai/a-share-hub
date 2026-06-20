@@ -82,10 +82,10 @@ _HISTORY_LIMIT = 100
 _HISTORY_CURSOR_SEPARATOR = "|"
 
 
-def _build_alpha_panel_payload(store: RuntimeStore) -> dict:
-    tickets = store.list_alpha_tickets()
-    portfolio = AlphaPortfolioService(store).load_portfolio()
-    recon_runs = store.list_alpha_reconciliation_runs()
+def _build_alpha_panel_payload(store: RuntimeStore, user_id: str) -> dict:
+    tickets = store.list_alpha_tickets(user_id)
+    portfolio = AlphaPortfolioService(store, user_id=user_id).load_portfolio()
+    recon_runs = store.list_alpha_reconciliation_runs(user_id)
     latest_recon = recon_runs[0] if recon_runs else None
     capability = _get_alpha_execution_service().get_capability()
     capability_payload = capability if isinstance(capability, dict) else capability.__dict__
@@ -132,9 +132,10 @@ def get_workbench(
     targets_page: int = Query(default=1, ge=1, description="目标仓位页码"),
     page_size: int = Query(default=20, ge=1, le=100, description="每页条数"),
     store: RuntimeStore = Depends(get_runtime_store),
+    user_id: str = Depends(get_current_user_id),
 ) -> dict:
     if run_context_id:
-        summary = store.get_dashboard_run_summary(run_context_id)
+        summary = store.get_dashboard_run_summary(user_id, run_context_id)
         if summary is None:
             raise HTTPException(status_code=404, detail="run_context_id not found")
         return summary["latest_workbench"]
@@ -144,13 +145,13 @@ def get_workbench(
         decisions_page=decisions_page,
         orders_page=orders_page,
         targets_page=targets_page,
-        page_size=page_size,
+        user_id=user_id,
     )
-    payload["alpha"] = _build_alpha_panel_payload(store)
+    payload["alpha"] = _build_alpha_panel_payload(store, user_id)
     return payload
 
 
-def _launch_dashboard_run(run_context_id: str, config: dict) -> None:
+def _launch_dashboard_run(run_context_id: str, config: dict, user_id: str | None = None) -> None:
     from src.execution.shadow_run_service import ShadowRunService
 
     store = get_runtime_store()
@@ -158,7 +159,7 @@ def _launch_dashboard_run(run_context_id: str, config: dict) -> None:
     llm = _get_llm()
     provider = AkshareProvider()
     service = ShadowRunService(store=store, settings=settings, llm=llm, provider=provider)
-    service.run(run_context_id=run_context_id, config=config)
+    service.run(run_context_id=run_context_id, config=config, user_id=user_id or "system")
 
 
 @router.post("/api/v1/dashboard/runs", status_code=202)
@@ -166,10 +167,12 @@ def start_dashboard_run(
     config: dict | None = None,
     background_tasks: BackgroundTasks = None,
     store: RuntimeStore = Depends(get_runtime_store),
+    user_id: str = Depends(get_current_user_id),
 ) -> dict:
     payload = config or {}
     run_context_id = f"wrk-{_now_cst().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
     store.upsert_dashboard_run_summary(
+        user_id=user_id,
         run_context_id=run_context_id,
         trade_date=_now_cst().date().isoformat(),
         decision_mode=str(payload.get("decision_mode", "mock")),
@@ -185,13 +188,14 @@ def start_dashboard_run(
         latest_workbench={"latest_run": {"run_context_id": run_context_id, "steps": []}},
     )
     store.append_dashboard_run_event(
+        user_id=user_id,
         run_context_id=run_context_id,
         event_type="run.accepted",
         stage="decision",
         status="running",
         payload={"message": "请求已提交，等待后台执行"},
     )
-    background_tasks.add_task(_launch_dashboard_run, run_context_id, payload)
+    background_tasks.add_task(_launch_dashboard_run, run_context_id, payload, user_id)
     return {
         "run_context_id": run_context_id,
         "stream_url": f"/api/v1/dashboard/runs/{run_context_id}/events",
@@ -204,13 +208,14 @@ async def stream_dashboard_run_events(
     run_context_id: str,
     last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
     store: RuntimeStore = Depends(get_runtime_store),
+    user_id: str = Depends(get_current_user_id),
 ) -> EventSourceResponse:
     after_seq = int(last_event_id) if last_event_id and last_event_id.isdigit() else 0
 
     async def event_iter():
         last_seq = after_seq
         while True:
-            events = store.list_dashboard_run_events(run_context_id, after_seq=last_seq)
+            events = store.list_dashboard_run_events(user_id, run_context_id, after_seq=last_seq)
             for event in events:
                 last_seq = event["seq"]
                 yield {
@@ -223,7 +228,7 @@ async def stream_dashboard_run_events(
                 # 6 events flush in <1s and the connection closes before
                 # onmessage fires, forcing a 47s reconnect via Last-Event-ID.
                 await asyncio.sleep(0.05)
-            summary = store.get_dashboard_run_summary(run_context_id)
+            summary = store.get_dashboard_run_summary(user_id, run_context_id)
             if summary and summary["status"] in {"completed", "failed"}:
                 # Final flush window: give the browser ~500ms to dispatch the
                 # last batch of events before sse-starlette closes the stream.
@@ -248,6 +253,7 @@ def get_performance(
     account_kind: str = Query(default="auto"),
     window: str = Query(default="30d"),
     store: RuntimeStore = Depends(get_runtime_store),
+    user_id: str = Depends(get_current_user_id),
 ) -> dict:
     from sqlalchemy.orm import Session as OrmSession
     from src.paper_ledger.store import PaperLedgerStore
@@ -255,12 +261,12 @@ def get_performance(
     engine = store.engine
     with OrmSession(engine) as session:
         ledger = PaperLedgerStore(session)
-        account = ledger.get_or_create_account(market, account_kind)
-        latest_rows = ledger.get_nav_history(account.account_id, days=1)
+        account = ledger.get_or_create_account(user_id, market, account_kind)
+        latest_rows = ledger.get_nav_history(user_id, account.account_id, days=1)
         latest_trade_date = latest_rows[0].trade_date if latest_rows else None
         window_start = _resolve_performance_window_start(window, latest_trade_date)
         nav_rows = (
-            ledger.get_nav_range(account.account_id, start_date=window_start, end_date=latest_trade_date, limit=366)
+            ledger.get_nav_range(user_id, account.account_id, start_date=window_start, end_date=latest_trade_date, limit=366)
             if latest_trade_date is not None
             else []
         )
@@ -272,7 +278,7 @@ def get_performance(
         perf = _build_performance_payload(history, window=window)
 
         windows = ["7d", "30d", "90d", "ytd"]
-        comparison = ledger.get_comparison_windows(account.account_id, windows)
+        comparison = ledger.get_comparison_windows(user_id, account.account_id, windows)
         perf["comparison_cards"] = [
             {"window": w, "return": comparison.get(w, 0.0)} for w in windows
         ]
@@ -284,8 +290,9 @@ def get_performance(
 def get_automation(
     market: str = Query(default="a"),
     account_kind: str = Query(default="auto"),
+    user_id: str = Depends(get_current_user_id),
 ) -> dict:
-    return _load_automation_state(None, market=market)
+    return _load_automation_state(None, market=market, user_id=user_id)
 
 
 @router.get("/api/v1/dashboard/history")
@@ -296,6 +303,7 @@ def get_history(
     limit: int = Query(default=20, ge=1, le=100),
     cursor: str | None = Query(default=None),
     store: RuntimeStore = Depends(get_runtime_store),
+    user_id: str = Depends(get_current_user_id),
 ) -> dict:
     from sqlalchemy.orm import Session as OrmSession
     from src.paper_ledger.store import PaperLedgerStore
@@ -304,7 +312,7 @@ def get_history(
     engine = store.engine
     with OrmSession(engine) as session:
         ledger = PaperLedgerStore(session)
-        auto_rows = ledger.get_run_history(market, source=source, limit=fetch_limit)
+        auto_rows = ledger.get_run_history(user_id, market, source=source, limit=fetch_limit)
         auto_runs = [
             {
                 "id": row.run_id,
@@ -329,7 +337,7 @@ def get_history(
             if row.run_source == "auto"
         ]
 
-    manual_runs = _build_manual_history_runs(store, market=market, limit=fetch_limit) if source in {"all", "manual"} else []
+    manual_runs = _build_manual_history_runs(store, market=market, limit=fetch_limit, user_id=user_id) if source in {"all", "manual"} else []
     merged_runs = _apply_history_cursor(
         sorted([*manual_runs, *auto_runs], key=_history_sort_key, reverse=True),
         cursor,
@@ -345,9 +353,9 @@ def get_history(
     }
 
 
-def _build_manual_history_runs(store: RuntimeStore, market: str, limit: int) -> list[dict]:
+def _build_manual_history_runs(store: RuntimeStore, market: str, limit: int, user_id: str | None = None) -> list[dict]:
     runs = []
-    for summary in store.list_dashboard_run_summaries(limit=max(limit * 4, 50)):
+    for summary in store.list_dashboard_run_summaries(user_id or "system", limit=max(limit * 4, 50)):
         latest_workbench = summary.get("latest_workbench") or {}
         latest_run = latest_workbench.get("latest_run") or {}
         history = latest_workbench.get("history") or {}
@@ -524,18 +532,21 @@ def _build_automation_payload(
     }
 
 
-def _load_paper_nav_history(store, market: str = "a") -> list[dict]:
+def _load_paper_nav_history(store, market: str = "a", user_id: str | None = None) -> list[dict]:
     """从 paper_ledger 加载净值历史；如未初始化则返回空列表"""
     try:
         from sqlalchemy.orm import Session
         from src.paper_ledger.store import PaperLedgerStore
         from src.storage.dependencies import get_runtime_store
 
+        if user_id is None:
+            from src.storage.models import SYSTEM_USER_ID
+            user_id = SYSTEM_USER_ID
         engine = get_runtime_store().engine
         with Session(engine) as session:
             ledger = PaperLedgerStore(session)
-            account = ledger.get_or_create_account(market, "auto")
-            nav_rows = ledger.get_nav_history(account.account_id, days=30)
+            account = ledger.get_or_create_account(user_id, market, "auto")
+            nav_rows = ledger.get_nav_history(user_id, account.account_id, days=30)
             return [
                 {"trade_date": row.trade_date.isoformat(), "nav": float(row.nav)}
                 for row in nav_rows
@@ -544,7 +555,7 @@ def _load_paper_nav_history(store, market: str = "a") -> list[dict]:
         return []
 
 
-def _load_automation_state(store, market: str = "a") -> dict:
+def _load_automation_state(store, market: str = "a", user_id: str | None = None) -> dict:
     """从 paper_ledger 加载最新 auto run + 调度器下次时间"""
     last_run_at: str | None = None
     last_status: str | None = None
@@ -555,10 +566,14 @@ def _load_automation_state(store, market: str = "a") -> dict:
         from src.paper_ledger.models import PaperRunRow
         from src.storage.dependencies import get_runtime_store
 
+        if user_id is None:
+            from src.storage.models import SYSTEM_USER_ID
+            user_id = SYSTEM_USER_ID
         engine = get_runtime_store().engine
         with Session(engine) as session:
             stmt = (
                 select(PaperRunRow)
+                .where(PaperRunRow.user_id == user_id)
                 .where(PaperRunRow.market == market)
                 .where(PaperRunRow.run_source == "auto")
                 .order_by(PaperRunRow.created_at.desc())
@@ -609,17 +624,20 @@ def _load_automation_state(store, market: str = "a") -> dict:
 
 def _build_workbench_payload(store, latest_run_override: dict | None = None, market: str = "a",
                               decisions_page: int = 1, orders_page: int = 1,
-                              targets_page: int = 1, page_size: int = 20) -> dict:
-    reconciliation = store.get_reconciliation_status()
+                              targets_page: int = 1, page_size: int = 20,
+                              user_id: str | None = None) -> dict:
+    _user_id = user_id or "system"
+    reconciliation = store.get_reconciliation_status(user_id=_user_id)
 
     # Paginated queries
     d_offset = (decisions_page - 1) * page_size
     o_offset = (orders_page - 1) * page_size
     t_offset = (targets_page - 1) * page_size
 
-    decision_rows = store.list_decision_runs(limit=page_size, offset=d_offset)
-    target_rows = store.list_active_target_positions(limit=page_size, offset=t_offset)
-    order_rows = store.list_execution_orders(limit=page_size, offset=o_offset)
+    _user_id = user_id or "system"
+    decision_rows = store.list_decision_runs(user_id=_user_id, limit=page_size, offset=d_offset)
+    target_rows = store.list_active_target_positions(user_id=_user_id, limit=page_size, offset=t_offset)
+    order_rows = store.list_execution_orders(user_id=_user_id, limit=page_size, offset=o_offset)
 
     decisions = [_serialize_decision_row(row) for row in decision_rows]
     targets = [_serialize_target_row(row) for row in target_rows]
@@ -627,9 +645,9 @@ def _build_workbench_payload(store, latest_run_override: dict | None = None, mar
     daily_pnl = store.sum_daily_pnl()
 
     # Counts for pagination
-    decisions_total = store.count_decision_runs()
-    orders_total = store.count_execution_orders()
-    targets_total = store.count_active_target_positions()
+    decisions_total = store.count_decision_runs(user_id=_user_id)
+    orders_total = store.count_execution_orders(user_id=_user_id)
+    targets_total = store.count_active_target_positions(user_id=_user_id)
 
     latest_run = latest_run_override or _build_latest_run(
         decisions=decisions,
@@ -644,8 +662,8 @@ def _build_workbench_payload(store, latest_run_override: dict | None = None, mar
         "last_run_at": latest_run.get("finished_at") or latest_run.get("started_at"),
         "services": _probe_services(),
         "kill_switch": {"active": store.get_kill_switch()},
-        "performance": _build_performance_payload(_load_paper_nav_history(store, market)),
-        "automation": _load_automation_state(store, market),
+        "performance": _build_performance_payload(_load_paper_nav_history(store, market, user_id)),
+        "automation": _load_automation_state(store, market, user_id),
         "risk": {
             "active_target_count": len(targets),
             "open_orders": reconciliation.get("open_orders", 0),
