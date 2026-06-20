@@ -22,6 +22,7 @@ const THEMES = {
 };
 
 const DEFAULT_THEME = 'trading-terminal';
+const THEME_SWITCHER_STATIC_LABEL = '界面主题';
 
 let _currentTheme = DEFAULT_THEME;
 
@@ -30,9 +31,13 @@ function applyTheme(themeId) {
   _currentTheme = themeId;
   document.documentElement.setAttribute('data-theme', themeId);
   const theme = THEMES[themeId];
-  const label = theme ? `${theme.labelCn} ${theme.label}` : themeId;
   const labelEl = document.getElementById('theme-switcher-label');
-  if (labelEl) labelEl.textContent = label;
+  if (labelEl) labelEl.textContent = THEME_SWITCHER_STATIC_LABEL;
+  const buttonEl = document.getElementById('theme-switcher-btn');
+  if (buttonEl) {
+    const themeLabel = theme ? `${theme.labelCn} ${theme.label}` : themeId;
+    buttonEl.title = `当前主题：${themeLabel}`;
+  }
   // Update selected state in menu
   document.querySelectorAll('.theme-menu-item').forEach(item => {
     item.classList.toggle('active', item.dataset.theme === themeId);

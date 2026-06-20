@@ -8,6 +8,7 @@ from src.decision.decision_runner import parse_decision_output
 from src.execution.paper_execution_service import PaperExecutionService
 from src.portfolio.target_planner import build_target_positions
 from src.risk.pre_trade_risk import evaluate_risk_gate
+from src.storage.system_runtime_store import SystemRuntimeStore
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,6 @@ class ShadowRunService:
         if run_pnl_summary is not None:
             enriched_payload["run_pnl_summary"] = dict(run_pnl_summary)
         self.store.append_dashboard_run_event(
-            user_id=user_id,
             run_context_id=run_context_id,
             event_type=event_type,
             stage=stage,
@@ -100,6 +100,18 @@ class ShadowRunService:
                 }
             )
         return sorted(items, key=lambda item: item["symbol"])
+
+    def _timestamped_item(self, item: dict, *, timestamp: str) -> dict:
+        enriched = dict(item)
+        if not enriched.get("created_at") and not enriched.get("timestamp"):
+            enriched["timestamp"] = timestamp
+        return enriched
+
+    def _timestamped_items(self, items: list[dict], *, timestamp: str) -> list[dict]:
+        return [self._timestamped_item(item, timestamp=timestamp) for item in items]
+
+    def _kill_switch_active(self) -> bool:
+        return SystemRuntimeStore(self.store.engine).get_kill_switch()
 
     def run(self, user_id: str, run_context_id: str, config: dict) -> None:
         """Execute one dashboard shadow run end-to-end and persist a complete
@@ -176,8 +188,8 @@ class ShadowRunService:
                 except Exception:
                     price_by_symbol[symbol] = 100.0
 
-            self.store.deactivate_expired_targets(user_id=user_id)
-            current_snapshot = self.store.get_latest_account_snapshot(user_id=user_id)
+            self.store.deactivate_expired_targets()
+            current_snapshot = self.store.get_latest_account_snapshot()
             account_state = current_snapshot or {"cash": float(capital_base), "positions": {}}
             current_positions = account_state.get("positions", {}) if isinstance(account_state, dict) else {}
 
@@ -205,9 +217,9 @@ class ShadowRunService:
                 confidence = decision.confidence
                 target_ratio = decision.target_position_ratio if parsed_action == "BUY" else 0.0
                 reason = decision.reason
+                decision_timestamp = _now_cst_iso()
 
                 decision_run_id = self.store.insert_decision_run(
-                    user_id=user_id,
                     symbol=symbol,
                     prompt_hash=f"dashboard-{run_context_id}",
                     model_name=model_label,
@@ -223,16 +235,33 @@ class ShadowRunService:
                     },
                 )
                 decision_items.append(
-                    {
+                    self._timestamped_item(
+                        {
                         "decision_run_id": decision_run_id,
                         "symbol": symbol,
                         "action": parsed_action,
                         "confidence": confidence,
                         "reason": reason,
-                    }
+                        },
+                        timestamp=decision_timestamp,
+                    )
                 )
 
             _step("decision", "done", items=list(decision_items))
+            self.emit(
+                user_id,
+                run_context_id,
+                "stage.updated",
+                stage="decision",
+                status="done",
+                payload={
+                    "message": f"已生成 {len(decision_items)} 条决策",
+                    "decision_items": list(decision_items),
+                },
+                steps=list(steps),
+                reconcile_items=[],
+                run_pnl_summary={},
+            )
 
             # --- Stage 2: target -------------------------------------------
             self.emit(
@@ -265,7 +294,6 @@ class ShadowRunService:
                     if row["symbol"] == target["symbol"]
                 )
                 target_position_id = self.store.insert_target_position(
-                    user_id=user_id,
                     decision_run_id=decision_run_id,
                     symbol=target["symbol"],
                     action=target["action"],
@@ -281,7 +309,7 @@ class ShadowRunService:
                 target["target_position_id"] = target_position_id
                 target["price"] = price_by_symbol.get(target["symbol"], target["price"])
                 target["run_context_id"] = run_context_id
-                target_items.append(
+                target_items.append(self._timestamped_item(
                     {
                         "target_position_id": target_position_id,
                         "symbol": target["symbol"],
@@ -289,8 +317,9 @@ class ShadowRunService:
                         "target_quantity": target["quantity"] if target["action"] == "BUY" else 0,
                         "target_position_ratio": target["target_position_ratio"],
                         "price": target["price"],
-                    }
-                )
+                    },
+                    timestamp=_now_cst_iso(),
+                ))
 
                 current_position = (
                     current_positions.get(target["symbol"], {})
@@ -303,7 +332,7 @@ class ShadowRunService:
                 risk = evaluate_risk_gate(
                     symbol=target["symbol"],
                     action=target["action"],
-                    kill_switch=self.store.get_kill_switch(),
+                    kill_switch=self._kill_switch_active(),
                     available_cash=float(account_state.get("cash", capital_base)),
                     requested_value=float(target["notional"]),
                     current_position_value=current_position_value,
@@ -316,6 +345,20 @@ class ShadowRunService:
                     executable_targets.append(target)
 
             _step("target", "done", items=list(target_items))
+            self.emit(
+                user_id,
+                run_context_id,
+                "stage.updated",
+                stage="target",
+                status="done",
+                payload={
+                    "message": f"已计算 {len(target_items)} 条目标仓位",
+                    "target_items": list(target_items),
+                },
+                steps=list(steps),
+                reconcile_items=[],
+                run_pnl_summary={},
+            )
 
             # --- Stage 3: execute ------------------------------------------
             self.emit(
@@ -343,7 +386,12 @@ class ShadowRunService:
                     mark_prices=price_by_symbol,
                     trade_date=datetime.now(_CST).date().isoformat(),
                 )
-                order_items.extend(execution_result.get("orders", []))
+                order_items.extend(
+                    self._timestamped_items(
+                        execution_result.get("orders", []),
+                        timestamp=_now_cst_iso(),
+                    )
+                )
 
             if decision_only:
                 _step("execute", "skipped", message="仅决策模式，跳过执行")
@@ -351,6 +399,20 @@ class ShadowRunService:
                 _step("execute", "done", items=list(order_items))
             else:
                 _step("execute", "done", message="无可执行订单，已跳过模拟执行")
+            self.emit(
+                user_id,
+                run_context_id,
+                "stage.updated",
+                stage="execute",
+                status="skipped" if decision_only else "done",
+                payload={
+                    "message": "仅决策模式，跳过执行" if decision_only else "执行阶段已完成",
+                    "order_items": list(order_items),
+                },
+                steps=list(steps),
+                reconcile_items=[],
+                run_pnl_summary={},
+            )
 
             # --- Stage 4: reconcile ---------------------------------------
             self.emit(
@@ -366,7 +428,7 @@ class ShadowRunService:
             )
 
             previous_nav = float(account_state.get("nav", capital_base))
-            latest_snapshot = self.store.get_latest_account_snapshot(user_id=user_id, run_context_id=run_context_id) or current_snapshot
+            latest_snapshot = self.store.get_latest_account_snapshot(run_context_id=run_context_id) or current_snapshot
             if not decision_only and execution_result is not None:
                 current_nav = float(execution_result.get("nav", previous_nav))
             elif latest_snapshot is not None:
@@ -374,7 +436,10 @@ class ShadowRunService:
             else:
                 current_nav = previous_nav
 
-            reconcile_items = self.build_reconcile_items(latest_snapshot, order_items)
+            reconcile_items = self._timestamped_items(
+                self.build_reconcile_items(latest_snapshot, order_items),
+                timestamp=_now_cst_iso(),
+            )
             run_pnl_summary = self.build_run_pnl_summary(previous_nav, current_nav, order_items, reconcile_items)
             daily_pnl = run_pnl_summary["net_pnl"]
 
@@ -472,9 +537,9 @@ class ShadowRunService:
         last_error: str | None,
     ) -> None:
         trade_date = datetime.now(_CST).date().isoformat()
-        events = self.store.list_dashboard_run_events(user_id=user_id, run_context_id=run_context_id)
-        kill_switch_active = bool(self.store.get_kill_switch())
-        reconciliation = self.store.get_reconciliation_status(user_id=user_id, run_context_id=run_context_id)
+        events = self.store.list_dashboard_run_events(run_context_id=run_context_id)
+        kill_switch_active = bool(self._kill_switch_active())
+        reconciliation = self.store.get_reconciliation_status(run_context_id=run_context_id)
         daily_pnl = float(run_pnl_summary.get("net_pnl", 0.0))
         capital_base = int(config.get("capital_base", 1_000_000))
         decision_mode = str(config.get("decision_mode", "mock"))
@@ -539,7 +604,6 @@ class ShadowRunService:
         }
 
         self.store.upsert_dashboard_run_summary(
-            user_id=user_id,
             run_context_id=run_context_id,
             trade_date=trade_date,
             decision_mode=decision_mode,

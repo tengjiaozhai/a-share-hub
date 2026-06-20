@@ -103,7 +103,6 @@ def _seed_accepted_run(store, run_context_id: str) -> None:
     """Replicates the row that start_dashboard_run creates, so the service
     can update it via upsert_dashboard_run_summary."""
     store.upsert_dashboard_run_summary(
-        user_id=TEST_USER_ID,
         run_context_id=run_context_id,
         trade_date=datetime.now().date().isoformat(),
         decision_mode="mock",
@@ -136,7 +135,7 @@ def test_shadow_run_service_emits_full_stage_sequence(pg_store, settings_stub):
         config={"watchlist": ["NVDA"], "decision_mode": "mock", "capital_base": 1_000_000},
     )
 
-    events = pg_store.list_dashboard_run_events(user_id=TEST_USER_ID, run_context_id="wrk-test-1")
+    events = pg_store.list_dashboard_run_events(run_context_id="wrk-test-1")
     types_in_order = [e["event_type"] for e in events]
     stages_in_order = [e["stage"] for e in events]
 
@@ -172,7 +171,7 @@ def test_shadow_run_service_writes_complete_latest_workbench(pg_store, settings_
         config={"watchlist": ["NVDA"], "decision_mode": "mock", "capital_base": 1_000_000},
     )
 
-    summary = pg_store.get_dashboard_run_summary(user_id=TEST_USER_ID, run_context_id="wrk-test-2")
+    summary = pg_store.get_dashboard_run_summary(run_context_id="wrk-test-2")
     assert summary["status"] == "completed"
     assert summary["finished_at"] is not None
 
@@ -221,10 +220,10 @@ def test_shadow_run_service_emits_run_failed_on_exception(pg_store, settings_stu
         config={"watchlist": ["NVDA"], "decision_mode": "real", "capital_base": 1_000_000},
     )
 
-    summary = pg_store.get_dashboard_run_summary(user_id=TEST_USER_ID, run_context_id="wrk-test-3")
+    summary = pg_store.get_dashboard_run_summary(run_context_id="wrk-test-3")
     assert summary["status"] == "failed"
 
-    events = pg_store.list_dashboard_run_events(user_id=TEST_USER_ID, run_context_id="wrk-test-3")
+    events = pg_store.list_dashboard_run_events(run_context_id="wrk-test-3")
     assert any(e["event_type"] == "run.failed" for e in events)
 
 
@@ -254,7 +253,7 @@ def test_stage_updated_events_carry_cumulative_render_state(pg_store, settings_s
         config={"watchlist": ["NVDA"], "decision_mode": "mock", "capital_base": 1_000_000},
     )
 
-    events = pg_store.list_dashboard_run_events(user_id=TEST_USER_ID, run_context_id="wrk-cumulative-001")
+    events = pg_store.list_dashboard_run_events(run_context_id="wrk-cumulative-001")
     stage_events = [e for e in events if e["event_type"] == "stage.updated"]
     completed_events = [e for e in events if e["event_type"] == "run.completed"]
 
@@ -297,3 +296,53 @@ def test_stage_updated_events_carry_cumulative_render_state(pg_store, settings_s
     assert isinstance(completed_payload.get("reconcile_items"), list)
     assert "run_pnl_summary" in completed_payload
     assert "net_pnl" in completed_payload["run_pnl_summary"]
+
+
+def test_streamed_history_items_include_timestamps_for_live_tables(pg_store, settings_stub):
+    """Live SSE-derived history rows must carry a timestamp so the dashboard can
+    render a concrete time instead of falling back to `未记录`.
+    """
+    run_context_id = "wrk-live-time-001"
+    pg_store.upsert_dashboard_run_summary(
+        run_context_id=run_context_id,
+        trade_date=datetime.now().date().isoformat(),
+        decision_mode="mock",
+        execution_mode="full",
+        capital_base=1_000_000,
+        status="accepted",
+        execution_fee_total=0.0,
+        realized_pnl=0.0,
+        unrealized_pnl=0.0,
+        net_pnl=0.0,
+        started_at=datetime.now().isoformat(),
+        finished_at=None,
+        latest_workbench={"latest_run": {"run_context_id": run_context_id, "steps": []}},
+    )
+
+    service = ShadowRunService(
+        store=pg_store,
+        settings=settings_stub,
+        llm=MockLLM(),
+        provider=MockProvider(),
+    )
+    service.run(
+        user_id=TEST_USER_ID,
+        run_context_id=run_context_id,
+        config={"watchlist": ["NVDA"], "decision_mode": "mock", "capital_base": 1_000_000},
+    )
+
+    summary = pg_store.get_dashboard_run_summary(run_context_id=run_context_id)
+    latest_run = summary["latest_workbench"]["latest_run"]
+
+    for collection_name in ("target_items", "order_items", "reconcile_items"):
+        for item in latest_run[collection_name]:
+            assert item.get("created_at") or item.get("timestamp"), (
+                f"{collection_name} item missing renderable timestamp: {item}"
+            )
+
+    derived_history = summary["latest_workbench"]["history"]
+    for collection_name in ("decisions", "targets", "orders", "reconcile"):
+        for item in derived_history[collection_name]:
+            assert item.get("created_at") or item.get("timestamp"), (
+                f"history.{collection_name} item missing renderable timestamp: {item}"
+            )
