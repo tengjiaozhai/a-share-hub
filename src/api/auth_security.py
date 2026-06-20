@@ -75,7 +75,7 @@ def read_auth_token(token: str, settings: Settings) -> str | None:
         data = _b64decode_json(payload)
     except Exception:
         return None
-    if int(data.get("exp", 0)) < int(time.time()):
+    if int(data.get("exp", 0)) <= int(time.time()):
         return None
     return str(data.get("uid") or "") or None
 
