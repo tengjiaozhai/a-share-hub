@@ -260,12 +260,9 @@ class AlphaReconciliationRunRow(Base):
 
 class AlphaWatchlistItemRow(Base):
     __tablename__ = "alpha_watchlist_items"
-    __table_args__ = (UniqueConstraint("user_id", "symbol", name="uq_alpha_watchlist_user_symbol"),)
 
+    user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     symbol: Mapped[str] = mapped_column(String(32), primary_key=True)
-    user_id: Mapped[str] = mapped_column(
-        String(64), nullable=False, index=True, default=SYSTEM_USER_ID
-    )
     underlying_symbol: Mapped[str] = mapped_column(String(32), nullable=False)
     priority: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)

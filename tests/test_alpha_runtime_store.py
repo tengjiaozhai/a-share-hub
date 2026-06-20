@@ -87,6 +87,24 @@ def test_runtime_store_manages_alpha_watchlist_items(tmp_path):
     store.remove_alpha_watchlist_item(symbol="SPYx")
     assert [item["symbol"] for item in store.list_alpha_watchlist_items()] == ["AAPLx"]
 
+
+def test_alpha_watchlist_allows_same_symbol_for_different_users(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path}/runtime.db", future=True)
+    Base.metadata.create_all(engine)
+    alice = RuntimeStore(engine, TenantContext("alice"))
+    bob = RuntimeStore(engine, TenantContext("bob"))
+
+    alice.add_alpha_watchlist_item(symbol="AAPLx", underlying_symbol="AAPL", priority=1)
+    bob.add_alpha_watchlist_item(symbol="AAPLx", underlying_symbol="AAPL", priority=2)
+
+    assert alice.list_alpha_watchlist_items()[0]["priority"] == 1
+    assert bob.list_alpha_watchlist_items()[0]["priority"] == 2
+
+    alice.remove_alpha_watchlist_item("AAPLx")
+    assert alice.list_alpha_watchlist_items() == []
+    assert bob.list_alpha_watchlist_items()[0]["symbol"] == "AAPLx"
+
+
 def test_runtime_store_persists_alpha_api_order_attempt(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path}/runtime.db", future=True)
     Base.metadata.create_all(engine)
