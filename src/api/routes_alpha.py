@@ -188,8 +188,9 @@ def rebuild_alpha_portfolio(
 def generate_portfolio_report(
     payload: GeneratePortfolioReportRequest,
     store: RuntimeStore = Depends(get_runtime_store),
+    user_id: str = Depends(get_current_user_id),
 ) -> dict:
-    service = AlphaPortfolioReportService(store=store)
+    service = AlphaPortfolioReportService(store=store, user_id=user_id)
     return service.generate_report(payload.model_dump())
 
 
