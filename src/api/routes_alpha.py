@@ -10,7 +10,7 @@ from src.alpha.execution_models import AlphaExecutionRequest
 from src.alpha.execution_service import AlphaExecutionService
 from src.alpha.portfolio_service import AlphaPortfolioService
 from src.alpha.reconciliation import reconcile_alpha_positions
-from src.alpha.report_service import AlphaPortfolioReportService
+from src.alpha.report_service import AlphaPortfolioReportService, normalize_report_symbols
 from src.alpha.research_service import AlphaResearchService
 from src.alpha.service import AlphaMarketService
 from src.alpha.signal_engine import AlphaSignalEngine
@@ -206,7 +206,9 @@ def generate_portfolio_report(
     store: RuntimeStore = Depends(get_user_runtime_store),
 ) -> dict:
     service = AlphaPortfolioReportService(store=store)
-    return service.generate_report(payload.model_dump())
+    request_payload = payload.model_dump()
+    request_payload["symbols"] = normalize_report_symbols(request_payload.get("symbols"))
+    return service.generate_report(request_payload)
 
 
 @router.post("/reconciliation/run")

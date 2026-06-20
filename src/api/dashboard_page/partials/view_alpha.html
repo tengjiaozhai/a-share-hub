@@ -2,36 +2,79 @@
 
   <section class="alpha-hero">
     <div class="alpha-hero-copy">
-      <p class="alpha-kicker">Alpha Desk</p>
-      <h2>Alpha 持仓助手</h2>
-      <p class="alpha-summary">围绕当前持仓回填成交、跟踪风险、筛选加减仓候选。建议单、资产状态与观察列表仍保留在同一执行台。</p>
+      <p class="alpha-kicker">持仓分析</p>
+      <h2>股票代码优先的持仓分析台</h2>
+      <p class="alpha-summary">先输入股票代码生成分析，再快速对照当前持仓、最近成交与 multi-leg 记录。保留必要的成交回填能力，但不再以执行台和候选流转为主。</p>
     </div>
   </section>
 
-  <section class="alpha-status-grid">
-    <article class="alpha-panel" id="alpha-execution-capability">
-      <div class="alpha-panel-head">
-        <span class="alpha-panel-dot" id="alpha-cap-dot"></span>
-        Direct Execution Capability
+  <section class="alpha-analysis-grid">
+    <div class="card alpha-report-card alpha-report-card-primary" id="alpha-report-card">
+      <div class="card-head alpha-report-head">
+        <div>
+          <span>持仓分析报告</span>
+          <div class="alpha-report-caption">主入口先看股票代码分析；留空时回落到当前持仓视角。</div>
+        </div>
+        <div class="alpha-report-controls">
+          <select id="alpha-report-window" class="alpha-report-select">
+            <option value="30d">30日</option>
+            <option value="60d" selected>60日</option>
+            <option value="120d">120日</option>
+          </select>
+          <label class="alpha-report-toggle">
+            <input type="checkbox" id="alpha-report-include-shadow" checked>
+            <span>包含模拟交易</span>
+          </label>
+          <label class="alpha-report-toggle">
+            <input type="checkbox" id="alpha-report-include-backtest" checked>
+            <span>包含历史回测</span>
+          </label>
+        </div>
       </div>
+      <div class="card-body alpha-report-body alpha-report-body-primary">
+        <div class="alpha-report-toolbar">
+          <div class="alpha-field alpha-report-symbol-field">
+            <label for="alpha-report-symbol">股票代码</label>
+            <input id="alpha-report-symbol" placeholder="如 600519 / 000001.SZ / 多个代码用逗号分隔" />
+          </div>
+          <button type="button" id="alpha-report-generate" class="run-btn accent alpha-report-trigger">
+            分析股票
+          </button>
+        </div>
+        <div class="alpha-report-empty" id="alpha-report-body">
+          输入股票代码后立即生成分析；如需复盘当前组合，可留空直接基于持仓生成报告。
+        </div>
+      </div>
+    </div>
+
+    <article class="alpha-panel alpha-panel-holdings">
+      <div class="alpha-panel-head">当前持仓</div>
+      <div class="alpha-panel-body alpha-panel-body-tight">
+        <div id="alpha-holdings-summary" class="alpha-holdings-summary"></div>
+        <div class="alpha-section-label">持仓列表</div>
+        <div id="alpha-positions" class="alpha-positions-list"></div>
+      </div>
+    </article>
+  </section>
+
+  <section class="alpha-ops-grid alpha-ops-grid-compact">
+    <article class="alpha-panel alpha-panel-history">
+      <div class="alpha-panel-head">成交 / Multi-leg 历史</div>
       <div class="alpha-panel-body">
-        <div id="alpha-execution-mode" class="alpha-big-value"></div>
-        <div id="alpha-execution-reason" class="alpha-dim-text"></div>
-        <div class="alpha-cap-hint">manual = 手动记录成交 · api = 远程提交交易所</div>
+        <div class="alpha-history-columns">
+          <div class="alpha-data-section">
+            <div class="alpha-section-label">最近成交</div>
+            <div id="alpha-fill-history"></div>
+          </div>
+          <div class="alpha-data-section">
+            <div class="alpha-section-label">Multi-leg 历史</div>
+            <div id="alpha-multi-leg-history"></div>
+          </div>
+        </div>
       </div>
     </article>
 
-    <article class="alpha-panel alpha-panel-exceptions">
-      <div class="alpha-panel-head">
-        <span class="alpha-panel-dot" id="alpha-exc-dot"></span>
-        Alpha 异常
-      </div>
-      <div class="alpha-panel-body">
-        <div id="alpha-exceptions"></div>
-      </div>
-    </article>
-
-    <article class="alpha-panel alpha-panel-fill-form">
+    <article class="alpha-panel alpha-panel-fill-form alpha-panel-fill-form-compact">
       <div class="alpha-panel-head">手动回填成交</div>
       <div class="alpha-panel-body">
         <form id="alpha-fill-form" class="alpha-form" onsubmit="submitAlphaManualFill(event)">
@@ -68,7 +111,7 @@
           </div>
           <div class="alpha-field">
             <label>重建价格映射 JSON</label>
-            <textarea id="alpha-rebuild-price-map" placeholder='如 {"AAPLx": 215.0}，留空则按均价估值'></textarea>
+            <textarea id="alpha-rebuild-price-map" placeholder='如 {"600519": 1680.0}，留空则按均价估值'></textarea>
           </div>
           <div class="alpha-field">
             <label>备注</label>
@@ -77,136 +120,6 @@
           <div id="alpha-fill-status" class="alpha-form-status"></div>
           <button type="submit">记录成交</button>
         </form>
-      </div>
-    </article>
-  </section>
-
-  <section class="alpha-ops-grid">
-    <article class="alpha-panel alpha-panel-holdings">
-      <div class="alpha-panel-head">当前持仓</div>
-      <div class="alpha-panel-body alpha-panel-body-tight">
-        <div id="alpha-holdings-summary" class="alpha-holdings-summary"></div>
-        <div class="alpha-section-label">持仓列表</div>
-        <div id="alpha-positions" class="alpha-positions-list"></div>
-      </div>
-    </article>
-
-    <div class="card alpha-report-card" id="alpha-report-card">
-      <div class="card-head alpha-report-head">
-        <span>持仓分析报告</span>
-        <div class="alpha-report-controls">
-          <select id="alpha-report-window" class="alpha-report-select">
-            <option value="30d">30日</option>
-            <option value="60d" selected>60日</option>
-            <option value="120d">120日</option>
-          </select>
-          <label class="alpha-report-toggle">
-            <input type="checkbox" id="alpha-report-include-shadow" checked>
-            <span>包含模拟交易</span>
-          </label>
-          <label class="alpha-report-toggle">
-            <input type="checkbox" id="alpha-report-include-backtest" checked>
-            <span>包含历史回测</span>
-          </label>
-          <button type="button" id="alpha-report-generate" class="run-btn accent">
-            生成持仓分析报告
-          </button>
-        </div>
-      </div>
-      <div class="card-body alpha-report-body" id="alpha-report-body">
-        <div class="alpha-report-empty">
-          点击右上角按钮生成持仓分析报告
-        </div>
-      </div>
-    </div>
-
-    <article class="alpha-panel alpha-panel-history">
-      <div class="alpha-panel-head">成交 / Multi-leg 历史</div>
-      <div class="alpha-panel-body">
-        <div class="alpha-history-columns">
-          <div class="alpha-data-section">
-            <div class="alpha-section-label">最近成交</div>
-            <div id="alpha-fill-history"></div>
-          </div>
-          <div class="alpha-data-section">
-            <div class="alpha-section-label">Multi-leg 历史</div>
-            <div id="alpha-multi-leg-history"></div>
-          </div>
-        </div>
-      </div>
-    </article>
-  </section>
-
-  <section class="alpha-history-grid">
-    <article class="alpha-panel alpha-panel-queue">
-      <div class="alpha-panel-head">
-        建议单队列
-        <span class="alpha-ticket-count" id="alpha-ticket-count">0</span>
-      </div>
-      <div class="alpha-panel-body">
-        <div id="alpha-tickets"></div>
-      </div>
-    </article>
-  </section>
-
-  <section class="alpha-data-grid">
-    <div class="alpha-support-stack">
-      <article class="alpha-panel alpha-panel-form">
-        <div class="alpha-panel-head">建议单录入</div>
-        <div class="alpha-panel-body">
-          <form id="alpha-ticket-form" class="alpha-form" onsubmit="submitAlphaTicket(event)">
-            <div class="alpha-form-row">
-              <div class="alpha-field">
-                <label>资产代码</label>
-                <input id="alpha-symbol" placeholder="如 AAPLx" />
-              </div>
-              <div class="alpha-field">
-                <label>标的代码</label>
-                <input id="alpha-underlying" placeholder="如 AAPL" />
-              </div>
-            </div>
-            <div class="alpha-form-row">
-              <div class="alpha-field">
-                <label>数量</label>
-                <input id="alpha-qty" type="number" step="0.0001" min="0" placeholder="0" />
-              </div>
-              <div class="alpha-field">
-                <label>限价</label>
-                <input id="alpha-limit" type="number" step="0.0001" min="0" placeholder="0.0000" />
-              </div>
-            </div>
-            <div class="alpha-field">
-              <label>投资逻辑</label>
-              <textarea id="alpha-thesis" placeholder="描述建仓、加仓或减仓逻辑"></textarea>
-            </div>
-            <button type="submit">创建建议单</button>
-          </form>
-        </div>
-      </article>
-
-      <article class="alpha-panel">
-        <div class="alpha-panel-head">资产状态</div>
-        <div class="alpha-panel-body alpha-assets-body">
-          <div id="alpha-assets"></div>
-        </div>
-      </article>
-    </div>
-
-    <article class="alpha-panel alpha-panel-research">
-      <div class="alpha-panel-head">观察列表与持仓候选</div>
-      <div class="alpha-panel-body">
-        <div class="alpha-action-bar">
-          <button class="alpha-btn alpha-btn-primary" onclick="runAlphaScan()">运行扫描</button>
-          <button class="alpha-btn alpha-btn-secondary" onclick="proposeTopAlphaTicket()">生成建议单</button>
-        </div>
-        <div class="alpha-data-section">
-          <div class="alpha-section-label">观察列表</div>
-          <div id="alpha-watchlist"></div>
-        </div>
-        <div class="alpha-data-section">
-          <div class="alpha-section-label">候选标的</div>
-          <div id="alpha-candidates"></div>
-        </div>
       </div>
     </article>
   </section>

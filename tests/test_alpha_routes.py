@@ -377,6 +377,45 @@ def test_generate_portfolio_report_endpoint(authenticated_client, test_app, pg_s
     assert item["recommendation"]["action"] in {"HOLD", "ADD", "REDUCE", "EXIT", "WATCH"}
 
 
+def test_generate_portfolio_report_endpoint_normalizes_symbols_before_service(
+    authenticated_client,
+    test_app,
+    monkeypatch,
+):
+    captured_payload = {}
+
+    class FakeReportService:
+        def __init__(self, store, user_id=None):
+            self.store = store
+            self.user_id = user_id
+
+        def generate_report(self, payload):
+            captured_payload.update(payload)
+            return {
+                "generated_at": "2026-06-20T12:00:00+08:00",
+                "portfolio_snapshot": {},
+                "backtest_window": payload["backtest_window"],
+                "items": [],
+            }
+
+    monkeypatch.setattr(routes_alpha, "AlphaPortfolioReportService", FakeReportService)
+    client = authenticated_client
+
+    response = client.post(
+        "/api/v1/alpha/portfolio/report",
+        json={
+            "symbols": ["600519", "msft", "NVDA.US", "000001.SZ"],
+            "include_shadow": True,
+            "include_backtest": True,
+            "backtest_window": "60d",
+            "opening_cash": 10_000.0,
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured_payload["symbols"] == ["600519.SH", "MSFT.US", "NVDA.US", "000001.SZ"]
+
+
 def _authenticated_client(test_app):
     from src.core.config import Settings
 

@@ -9,6 +9,7 @@ const ALPHA_REPORT_API = '/api/v1/alpha/portfolio/report';
 const VALID_REPORT_ACTIONS = ['HOLD', 'ADD', 'REDUCE', 'EXIT', 'WATCH'];
 
 let alphaTicketCache = [];
+let alphaPortfolioSymbols = [];
 
 function alphaStatusMarkup(message, level = 'info') {
   const cssLevel = ['ok', 'warn', 'err'].includes(level) ? level : 'info';
@@ -59,6 +60,19 @@ function alphaLocalDateTimeValue(date) {
   const dt = date || new Date();
   const pad = (value) => String(value).padStart(2, '0');
   return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+}
+
+function parseAlphaReportSymbols(raw) {
+  return Array.from(new Set(String(raw || '')
+    .split(/[,\s]+/)
+    .map((value) => value.trim().toUpperCase())
+    .filter(Boolean)));
+}
+
+function resolveAlphaReportSymbols() {
+  const input = document.getElementById('alpha-report-symbol');
+  const typedSymbols = parseAlphaReportSymbols(input?.value);
+  return typedSymbols.length ? typedSymbols : alphaPortfolioSymbols;
 }
 
 function alphaParsePriceMap(raw) {
@@ -136,7 +150,7 @@ function renderAlphaPositions(positions) {
     return;
   }
   root.innerHTML = positions.map((item) => `
-    <div class="alpha-position-item">
+    <div class="alpha-position-item" data-symbol="${escapeHtml(item.symbol)}">
       <div>
         <div class="alpha-position-symbol">${escapeHtml(item.symbol)}</div>
         <div class="alpha-position-sub">${escapeHtml(String(item.quantity))} 股 / 均价 ${escapeHtml(formatNumber(item.avg_cost, 2))}</div>
@@ -200,6 +214,9 @@ function renderAlphaPortfolio(portfolio) {
   const snapshot = portfolio?.snapshot || null;
   const positions = toList(portfolio?.positions);
   const fills = toList(portfolio?.fills);
+  alphaPortfolioSymbols = positions
+    .map((item) => String(item?.symbol || '').trim().toUpperCase())
+    .filter(Boolean);
   renderAlphaHoldingsSummary(snapshot, positions, fills);
   renderAlphaPositions(positions);
   renderAlphaFillHistory(fills);
@@ -504,12 +521,15 @@ async function proposeTopAlphaTicket() {
   }
 }
 
-function renderAlphaReport(report) {
+function renderAlphaReport(report, requestedSymbols = []) {
   const body = document.getElementById('alpha-report-body');
   if (!body) return;
   const items = toList(report?.items);
   if (!items.length) {
-    body.innerHTML = '<div class="alpha-report-empty">当前无持仓可分析</div>';
+    const emptyNote = requestedSymbols.length
+      ? `未返回 ${requestedSymbols.join(', ')} 的分析结果。若后端尚未支持空仓代码分析，请对接 report 接口的 symbols / primary_symbol 入参。`
+      : '当前无持仓可分析';
+    body.innerHTML = `<div class="alpha-report-empty">${escapeHtml(emptyNote)}</div>`;
     return;
   }
   const windowLabel = normalizeText(report?.backtest_window, '60d');
@@ -580,21 +600,22 @@ function showAlphaReportLoading() {
   body.innerHTML = '<div class="alpha-report-loading">正在生成持仓分析报告…</div>';
 }
 
-function hideAlphaReportLoading() {
-  const body = document.getElementById('alpha-report-body');
-  if (!body) return;
-  body.innerHTML = '';
-}
-
 async function loadAlphaReport() {
   const windowSelect = document.getElementById('alpha-report-window');
   const shadowToggle = document.getElementById('alpha-report-include-shadow');
   const backtestToggle = document.getElementById('alpha-report-include-backtest');
+  const symbolInput = document.getElementById('alpha-report-symbol');
   const body = document.getElementById('alpha-report-body');
   if (!body) return;
+  const requestedSymbols = resolveAlphaReportSymbols();
+  if (symbolInput) {
+    symbolInput.value = parseAlphaReportSymbols(symbolInput.value).join(', ');
+  }
 
+  // Integration note: backend can accept explicit symbol analysis via symbols[] and primary_symbol.
   const payload = {
-    symbols: [],
+    symbols: requestedSymbols,
+    primary_symbol: requestedSymbols[0] || null,
     include_shadow: shadowToggle?.checked !== false,
     include_backtest: backtestToggle?.checked !== false,
     backtest_window: windowSelect?.value || '60d',
@@ -615,7 +636,7 @@ async function loadAlphaReport() {
     if (!res.ok) {
       throw new Error(extractErrorMessage(data, `报告生成失败 (${res.status})`));
     }
-    renderAlphaReport(data);
+    renderAlphaReport(data, requestedSymbols);
   } catch (error) {
     body.innerHTML = `<div class="alpha-report-empty" style="color:var(--danger)">报告生成失败: ${escapeHtml(error.message)}</div>`;
     addAlert('err', `持仓分析报告失败: ${error.message}`);

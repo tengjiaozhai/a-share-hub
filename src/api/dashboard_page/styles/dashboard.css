@@ -1029,6 +1029,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   gap: 14px;
   padding: 20px 24px 0;
 }
+.alpha-analysis-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(320px, 1fr);
+  gap: 14px;
+  padding: 20px 24px 0;
+}
 .alpha-panel-exceptions.alpha-has-exception {
   border-color: var(--red);
   box-shadow: 0 0 0 1px rgba(239,68,68,.12);
@@ -1038,6 +1044,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   grid-template-columns: 2fr 1.3fr;
   gap: 14px;
   padding: 20px 24px 0;
+}
+.alpha-ops-grid-compact {
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, .95fr);
+  padding-bottom: 24px;
 }
 .alpha-history-grid {
   padding: 20px 24px 0;
@@ -1129,6 +1139,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .alpha-form button[type="submit"]:active { transform: scale(.98); }
 .alpha-ticket-summary {
   min-height: 20px;
+}
+.alpha-panel-fill-form-compact .alpha-panel-body {
+  padding-top: 12px;
 }
 .alpha-ticket-meta-row {
   display: flex;
@@ -1523,6 +1536,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
 /* Alpha responsive */
 @media (max-width: 1023px) {
+  .alpha-analysis-grid { grid-template-columns: 1fr; }
   .alpha-status-grid { grid-template-columns: repeat(2, 1fr); }
   .alpha-ops-grid { grid-template-columns: 1fr; }
   .alpha-data-grid { grid-template-columns: 1fr; }
@@ -1533,10 +1547,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 @media (max-width: 640px) {
   .alpha-hero { padding: 16px 14px 14px; }
   .alpha-hero h2 { font-size: 16px; }
+  .alpha-analysis-grid { padding: 14px 14px 0; }
   .alpha-status-grid { grid-template-columns: 1fr; padding: 14px 14px 0; }
   .alpha-ops-grid { padding: 14px 14px 0; }
+  .alpha-ops-grid-compact { padding-bottom: 14px; }
   .alpha-history-grid { padding: 14px 14px 0; }
   .alpha-data-grid { padding: 14px 14px 20px; }
+  .alpha-report-toolbar { grid-template-columns: 1fr; }
+  .alpha-report-trigger { width: 100%; }
   .alpha-form-row { grid-template-columns: 1fr; }
   .alpha-ticket-item { grid-template-columns: 1fr auto; gap: 4px; }
   .alpha-asset-item { grid-template-columns: 1fr auto; gap: 4px; }
@@ -2155,11 +2173,44 @@ html[data-theme='coinbase-institutional'] {
   justify-content: space-between;
   gap: 8px;
 }
+.alpha-report-caption {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--dim);
+}
 .alpha-report-controls {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+}
+.alpha-report-card-primary {
+  min-height: 420px;
+}
+.alpha-report-body-primary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.alpha-report-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+.alpha-report-symbol-field {
+  gap: 6px;
+}
+.alpha-report-symbol-field input {
+  min-height: 42px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  letter-spacing: .2px;
+}
+.alpha-report-trigger {
+  min-width: 120px;
+  min-height: 42px;
 }
 .alpha-report-select {
   background: var(--panel-2);

@@ -16,6 +16,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import UTC, datetime
 
+from src.data.providers.akshare_catalog import normalize_symbol as normalize_a_share_symbol
+
 PositionDict = dict
 FillDict = dict
 ShadowDict = dict
@@ -31,6 +33,32 @@ def _normalize_window(window: str | None) -> str:
     if window in _VALID_WINDOWS:
         return window
     return "60d"
+
+
+def normalize_report_symbol(symbol: str) -> str:
+    raw_text = str(symbol or "").strip()
+    if not raw_text:
+        return ""
+    text = raw_text.upper()
+    if "." in text:
+        return text
+    if text.isdigit() and len(text) == 6:
+        return normalize_a_share_symbol(text)
+    if raw_text.endswith(("x", "X")):
+        return raw_text
+    return f"{text}.US"
+
+
+def normalize_report_symbols(symbols: list[str] | None) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for symbol in symbols or []:
+        normalized_symbol = normalize_report_symbol(symbol)
+        if not normalized_symbol or normalized_symbol in seen:
+            continue
+        seen.add(normalized_symbol)
+        normalized.append(normalized_symbol)
+    return normalized
 
 
 def _build_fill_summary(fills_for_symbol: list[FillDict]) -> dict:
@@ -145,16 +173,32 @@ def _build_recommendation(position: PositionDict, shadow: dict, backtest: dict) 
     6. shadow=BUY 且回测为正且当前浮盈不高 -> ADD
     7. 其他 -> WATCH
     """
-    quantity = float(position.get("quantity", 0.0) or 0.0)
-    if quantity <= 0:
-        return {"action": "WATCH", "confidence": 0.4, "reason": "当前无持仓"}
-
-    pnl_pct = float(position.get("unrealized_pnl_pct", 0.0) or 0.0)
     shadow_action = str(shadow.get("action", "UNKNOWN")).upper() if shadow else "UNKNOWN"
     backtest_status = str(backtest.get("status", "no_data"))
     backtest_total_return = float(backtest.get("total_return", 0.0) or 0.0)
     backtest_max_dd = float(backtest.get("max_drawdown", 0.0) or 0.0)
     backtest_positive = backtest_status == "ok" and backtest_total_return > 0
+    quantity = float(position.get("quantity", 0.0) or 0.0)
+    if quantity <= 0:
+        if shadow_action == "BUY" and backtest_positive:
+            return {
+                "action": "ADD",
+                "confidence": 0.55,
+                "reason": "当前无持仓，影子建议买入且回测为正，可作为建仓候选",
+            }
+        if shadow_action == "SELL":
+            return {
+                "action": "WATCH",
+                "confidence": 0.5,
+                "reason": "当前无持仓，影子侧偏空，暂列观察",
+            }
+        return {
+            "action": "WATCH",
+            "confidence": 0.4,
+            "reason": "当前无持仓，可先结合影子与回测继续观察",
+        }
+
+    pnl_pct = float(position.get("unrealized_pnl_pct", 0.0) or 0.0)
 
     if pnl_pct <= -0.08:
         return {
@@ -209,7 +253,7 @@ class AlphaPortfolioReportService:
 
     def generate_report(self, payload: dict) -> dict:
         """主入口：拼装 {generated_at, portfolio_snapshot, items[]}。"""
-        symbols = payload.get("symbols") or []
+        symbols = normalize_report_symbols(payload.get("symbols") or [])
         include_shadow = bool(payload.get("include_shadow", True))
         include_backtest = bool(payload.get("include_backtest", True))
         backtest_window = _normalize_window(payload.get("backtest_window"))
@@ -221,9 +265,20 @@ class AlphaPortfolioReportService:
         ticket_lookup = self._build_ticket_lookup()
 
         latest_workbench = self._latest_workbench()
-        target_symbols = {sym for sym in symbols if sym}
-        if target_symbols:
-            positions = [row for row in positions if row["symbol"] in target_symbols]
+        if symbols:
+            positions_by_symbol = {row["symbol"]: row for row in positions}
+            positions = [
+                positions_by_symbol.get(
+                    symbol,
+                    {
+                        "symbol": symbol,
+                        "quantity": 0.0,
+                        "avg_cost": 0.0,
+                        "mark_price": 0.0,
+                    },
+                )
+                for symbol in symbols
+            ]
 
         items: list[dict] = []
         for position in positions:

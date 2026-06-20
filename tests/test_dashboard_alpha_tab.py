@@ -52,43 +52,44 @@ def _dashboard_html() -> str:
     return client.get("/dashboard").text
 
 
-def test_dashboard_contains_alpha_operations_tab(_patch_auth):
+def test_dashboard_contains_holdings_analysis_tab(_patch_auth):
     html = _dashboard_html()
     assert "view-alpha" in html
-    assert "Alpha 持仓助手" in html
+    assert "持仓分析" in html
     assert "const ALPHA_ASSETS_API = '/api/v1/alpha/assets';" in html
-    assert "const ALPHA_TICKETS_API = '/api/v1/alpha/tickets';" in html
-    assert "renderAlphaTickets" in html
-    assert "submitAlphaTicket" in html
+    assert "const ALPHA_REPORT_API = '/api/v1/alpha/portfolio/report';" in html
+    assert "loadAlphaReport" in html
 
 
-def test_dashboard_contains_alpha_portfolio_and_exceptions_ui(_patch_auth):
+def test_dashboard_contains_holdings_and_history_ui(_patch_auth):
     html = _dashboard_html()
     assert "alpha-holdings-summary" in html
     assert "alpha-positions" in html
     assert "alpha-fill-history" in html
     assert "alpha-multi-leg-history" in html
-    assert "alpha-exceptions" in html
     assert "renderAlphaPortfolio" in html
     assert "renderAlphaFillHistory" in html
     assert "renderAlphaMultiLegHistory" in html
-    assert "renderAlphaExceptions" in html
     assert "当前持仓" in html
-    assert "Alpha 异常" in html
+    assert "成交 / Multi-leg 历史" in html
 
 
-def test_dashboard_contains_alpha_research_controls(_patch_auth):
+def test_dashboard_contains_code_analysis_first_controls(_patch_auth):
     html = _dashboard_html()
-    assert "观察列表与持仓候选" in html
-    assert "runAlphaScan" in html
-    assert "proposeTopAlphaTicket" in html
+    assert 'id="alpha-report-symbol"' in html
+    assert 'id="alpha-report-generate"' in html
+    assert "股票代码" in html
+    assert "分析股票" in html
 
 
-def test_dashboard_contains_alpha_execution_capability_panel(_patch_auth):
+def test_dashboard_removes_legacy_alpha_ops_sections(_patch_auth):
     html = _dashboard_html()
-    assert "alpha-execution-capability" in html
-    assert "Direct Execution Capability" in html
-    assert "const ALPHA_CAPABILITIES_API = '/api/v1/alpha/capabilities';" in html
+    assert "alpha-execution-capability" not in html
+    assert "Direct Execution Capability" not in html
+    assert "Alpha 异常" not in html
+    assert "建议单队列" not in html
+    assert "建议单录入" not in html
+    assert "观察列表与持仓候选" not in html
 
 
 def test_dashboard_contains_alpha_manual_fill_entry_ui(_patch_auth):

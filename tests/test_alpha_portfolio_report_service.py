@@ -174,6 +174,27 @@ def test_generate_report_filters_to_requested_symbols(tmp_path):
     assert len(report["items"]) == 1
     assert report["items"][0]["symbol"] == "AAPLx"
 
+def test_generate_report_builds_zero_quantity_items_for_requested_non_held_symbols(tmp_path):
+    store = _bootstrap_store(tmp_path)
+
+    service = AlphaPortfolioReportService(
+        store=store,
+        shadow_opinion_provider=_patched_shadow_provider(store),
+        backtest_provider=_no_data_backtest_provider(store),
+    )
+    report = service.generate_report(
+        {"symbols": ["600519", "msft", "AAPL.US"], "opening_cash": 10_000.0}
+    )
+
+    assert [item["symbol"] for item in report["items"]] == ["600519.SH", "MSFT.US", "AAPL.US"]
+    for item in report["items"]:
+        assert item["quantity"] == 0.0
+        assert item["avg_cost"] == 0.0
+        assert item["mark_price"] == 0.0
+        assert item["fill_summary"]["count"] == 0
+        assert item["recommendation"]["action"] in {"ADD", "WATCH"}
+        assert item["recommendation"]["reason"]
+
 def test_generate_report_recommendation_action_enum(tmp_path):
     store = _bootstrap_store(tmp_path)
     _seed_holdings(store)

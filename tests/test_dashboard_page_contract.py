@@ -10,14 +10,13 @@ def test_dashboard_is_only_html_entrypoint(authenticated_client):
 def test_render_dashboard_html_contains_alpha_contract():
     html = render_dashboard_html()
     assert "view-alpha" in html
-    assert "alpha-execution-capability" in html
     assert "alpha-holdings-summary" in html
     assert "alpha-fill-history" in html
     assert "alpha-multi-leg-history" in html
-    assert "const ALPHA_ASSETS_API = '/api/v1/alpha/assets';" in html
-    assert "const ALPHA_TICKETS_API = '/api/v1/alpha/tickets';" in html
-    assert "runAlphaScan" in html
-    assert "proposeTopAlphaTicket" in html
+    assert 'id="alpha-report-symbol"' in html
+    assert "分析股票" in html
+    assert "const ALPHA_REPORT_API = '/api/v1/alpha/portfolio/report';" in html
+    assert "loadAlphaReport" in html
 
 def test_render_dashboard_html_contains_market_contract():
     html = render_dashboard_html()
@@ -162,20 +161,17 @@ def test_render_dashboard_html_contains_market_and_alpha_controls():
         'id="a-quotes-table"',
         'id="a-search-input"',
         'id="scan-btn"',
-        'id="alpha-assets"',
-        'id="alpha-ticket-form"',
         'id="alpha-fill-form"',
         'id="alpha-fill-ticket"',
         'id="alpha-fill-executed-at"',
         'id="alpha-rebuild-opening-cash"',
         'id="alpha-rebuild-price-map"',
-        'id="alpha-execution-capability"',
-        "const ALPHA_CAPABILITIES_API = '/api/v1/alpha/capabilities';",
+        'id="alpha-report-symbol"',
         "const ALPHA_ASSETS_API = '/api/v1/alpha/assets';",
         "const ALPHA_TICKETS_API = '/api/v1/alpha/tickets';",
-        'runAlphaScan',
-        'proposeTopAlphaTicket',
+        "const ALPHA_REPORT_API = '/api/v1/alpha/portfolio/report';",
         'submitAlphaManualFill',
+        'loadAlphaReport',
         'aLoadQuotes',
     ]
     for marker in required_markers:
