@@ -1126,10 +1126,13 @@ class RuntimeStore:
         started_at: str,
         finished_at: str | None,
         latest_workbench: dict,
+        market: str | None = None,
     ) -> None:
+        resolved_market = market or (latest_workbench or {}).get("market") or "a"
         values = {
             "run_context_id": run_context_id,
             "user_id": self.user_id,
+            "market": resolved_market,
             "trade_date": trade_date,
             "decision_mode": decision_mode,
             "execution_mode": execution_mode,
@@ -1189,14 +1192,16 @@ class RuntimeStore:
             "latest_workbench": json.loads(row.latest_workbench_json or "{}"),
         }
 
-    def list_dashboard_run_summaries(self, limit: int = 50) -> list[dict]:
+    def list_dashboard_run_summaries(self, limit: int = 50, market: str | None = None) -> list[dict]:
+        stmt = select(DashboardRunSummaryRow).where(DashboardRunSummaryRow.user_id == self.user_id)
+        if market is not None:
+            stmt = stmt.where(DashboardRunSummaryRow.market == market)
+        stmt = stmt.order_by(
+            DashboardRunSummaryRow.started_at.desc(),
+            DashboardRunSummaryRow.run_context_id.desc(),
+        ).limit(limit)
         with self.engine.begin() as conn:
-            rows = conn.execute(
-                select(DashboardRunSummaryRow)
-                .where(DashboardRunSummaryRow.user_id == self.user_id)
-                .order_by(DashboardRunSummaryRow.started_at.desc(), DashboardRunSummaryRow.run_context_id.desc())
-                .limit(limit)
-            ).fetchall()
+            rows = conn.execute(stmt).fetchall()
         return [
             {
                 "run_context_id": row.run_context_id,
@@ -1217,6 +1222,15 @@ class RuntimeStore:
             }
             for row in rows
         ]
+
+    def count_dashboard_run_summaries(self, market: str | None = None) -> int:
+        stmt = select(func.count()).select_from(DashboardRunSummaryRow).where(
+            DashboardRunSummaryRow.user_id == self.user_id
+        )
+        if market is not None:
+            stmt = stmt.where(DashboardRunSummaryRow.market == market)
+        with self.engine.begin() as conn:
+            return int(conn.execute(stmt).scalar_one())
 
     def append_dashboard_run_event(
         self,

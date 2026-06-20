@@ -894,6 +894,9 @@ function upsertHistoryRun(runMeta, options = {}) {
   });
   if (!merged) {
     next.unshift(incoming);
+    historyCounts.all += 1;
+    if (incoming.source === 'manual') historyCounts.manual += 1;
+    else if (incoming.source === 'auto') historyCounts.auto += 1;
   }
   historyRuns = next.sort((left, right) => {
     const leftTime = normalizeText(left.created_at, '');
@@ -1234,6 +1237,7 @@ function activateLiveRunCase(runContextId) {
   };
   selectedCaseStage = stagePaneId('overview');
   upsertHistoryRun(selectedHistoryRunMeta, { select: true });
+  openCaseDrawer(runContextId);
   renderActiveCase();
 }
 
@@ -1581,6 +1585,13 @@ async function loadHistoryPanel(market, options = {}) {
     const runs = toList(data.runs);
     historyPanelHasMore = Boolean(data.has_more);
     historyPanelNextCursor = data.next_cursor || null;
+    if (data.total_count != null) {
+      historyCounts = {
+        all: Number(data.total_count) || 0,
+        manual: Number(data.manual_count) || 0,
+        auto: Number(data.auto_count) || 0,
+      };
+    }
     if (append) {
       const existingKeys = new Set(historyRuns.map(r => `${r.created_at || ''}::${r.id}`));
       const newRuns = runs.filter(r => !existingKeys.has(`${r.created_at || ''}::${r.id}`));
@@ -1720,9 +1731,9 @@ function renderRunCenter(runs, options = {}) {
   const list = document.getElementById('run-center-list');
   const footer = document.getElementById('run-center-footer');
   const counts = {
-    all: historyRuns.length,
-    manual: historyRuns.filter(run => run.source === 'manual').length,
-    auto: historyRuns.filter(run => run.source === 'auto').length,
+    all: historyCounts.all || historyRuns.length,
+    manual: historyCounts.manual || historyRuns.filter(run => run.source === 'manual').length,
+    auto: historyCounts.auto || historyRuns.filter(run => run.source === 'auto').length,
   };
   if (filters) {
     filters.innerHTML = [
@@ -1748,9 +1759,10 @@ function renderRunCenter(runs, options = {}) {
 
   list.innerHTML = filtered.map(renderRunCard).join('');
   if (footer) {
+    const totalCount = historyCounts.all || historyRuns.length;
     footer.innerHTML = historyPanelHasMore
-      ? `<button type="button" class="run-load-more" id="run-history-load-more" onclick="loadMoreHistoryRuns()" ${historyPanelLoading ? 'disabled' : ''}>${historyPanelLoading ? '加载中...' : '加载更多 (已显示 ' + historyRuns.length + ' 条)'}</button>`
-      : `<div class="run-center-status">已显示全部 ${historyRuns.length} 条记录</div>`;
+      ? `<button type="button" class="run-load-more" id="run-history-load-more" onclick="loadMoreHistoryRuns()" ${historyPanelLoading ? 'disabled' : ''}>${historyPanelLoading ? '加载中...' : '加载更多 (已显示 ' + totalCount + ' 条)'}</button>`
+      : `<div class="run-center-status">已显示全部 ${totalCount} 条记录</div>`;
     setupHistoryScrollObserver(footer);
   }
   if (selectedHistoryRunMeta) {

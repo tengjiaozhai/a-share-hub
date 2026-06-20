@@ -118,6 +118,7 @@ class PaperExecutionService:
                     "status_reason": "paper_filled",
                     "submitted_at": submitted_at,
                     "filled_at": filled_at,
+                    "created_at": _now_cst_iso(),
                 }
             )
 

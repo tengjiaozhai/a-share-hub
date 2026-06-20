@@ -30,7 +30,7 @@ function applyTheme(themeId) {
   _currentTheme = themeId;
   document.documentElement.setAttribute('data-theme', themeId);
   const theme = THEMES[themeId];
-  const label = theme ? `${theme.labelCn} ${theme.label}` : themeId;
+  const label = theme ? `主题 ${theme.labelCn}` : '主题 / Theme';
   const labelEl = document.getElementById('theme-switcher-label');
   if (labelEl) labelEl.textContent = label;
   // Update selected state in menu

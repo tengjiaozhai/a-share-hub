@@ -11,6 +11,7 @@ let selectedSearchIndex = -1;
 let isSearchMode = false;
 let selectedHistorySource = 'all';
 let historyRuns = [];
+let historyCounts = { all: 0, manual: 0, auto: 0 };
 let selectedHistoryRunMeta = null;
 let selectedCaseSnapshot = null;
 let selectedCaseStage = 'case-pane-overview';

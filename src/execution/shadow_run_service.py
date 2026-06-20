@@ -229,6 +229,7 @@ class ShadowRunService:
                         "action": parsed_action,
                         "confidence": confidence,
                         "reason": reason,
+                        "created_at": _now_cst_iso(),
                     }
                 )
 
@@ -289,6 +290,7 @@ class ShadowRunService:
                         "target_quantity": target["quantity"] if target["action"] == "BUY" else 0,
                         "target_position_ratio": target["target_position_ratio"],
                         "price": target["price"],
+                        "created_at": _now_cst_iso(),
                     }
                 )
 

@@ -262,12 +262,15 @@ def test_history_returns_single_canonical_runs_list(authenticated_client, test_a
     payload = response.json()
 
     assert response.status_code == 200
-    assert set(payload.keys()) == {"runs", "cursor", "has_more", "next_cursor"}
+    assert set(payload.keys()) == {"runs", "cursor", "has_more", "next_cursor", "total_count", "manual_count", "auto_count"}
     assert "auto_runs" not in payload
     assert "manual_runs" not in payload
     assert payload["cursor"] is None
     assert payload["has_more"] is False
     assert payload["next_cursor"] is None
+    assert payload["total_count"] == 2
+    assert payload["manual_count"] == 1
+    assert payload["auto_count"] == 1
 
     runs = payload["runs"]
     assert len(runs) == 2
@@ -363,6 +366,7 @@ def test_history_supports_cursor_pagination_for_incremental_loading(authenticate
         started_at="2026-06-18T10:02:00+08:00",
         finished_at="2026-06-18T10:03:00+08:00",
         latest_workbench={"latest_run": {"run_context_id": "wrk-history-101", "watchlist": ["NVDA"]}},
+        market="us",
     )
     pg_store.upsert_dashboard_run_summary(run_context_id="wrk-history-102",
         trade_date="2026-06-18",
@@ -377,6 +381,7 @@ def test_history_supports_cursor_pagination_for_incremental_loading(authenticate
         started_at="2026-06-18T10:04:00+08:00",
         finished_at="2026-06-18T10:05:00+08:00",
         latest_workbench={"latest_run": {"run_context_id": "wrk-history-102", "watchlist": ["AAPL"]}},
+        market="us",
     )
     pg_store.upsert_dashboard_run_summary(run_context_id="wrk-history-103",
         trade_date="2026-06-18",
@@ -391,6 +396,7 @@ def test_history_supports_cursor_pagination_for_incremental_loading(authenticate
         started_at="2026-06-18T10:06:00+08:00",
         finished_at="2026-06-18T10:07:00+08:00",
         latest_workbench={"latest_run": {"run_context_id": "wrk-history-103", "watchlist": ["MSFT"]}},
+        market="us",
     )
 
     client = authenticated_client

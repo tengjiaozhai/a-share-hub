@@ -3,7 +3,7 @@ import socket
 import uuid
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import and_, select, update
+from sqlalchemy import and_, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -474,3 +474,28 @@ class PaperLedgerStore:
             .limit(limit)
         )
         return list(self._session.execute(stmt).scalars().all())
+
+    def count_run_history(
+        self,
+        market: str,
+        source: str = "all",
+    ) -> dict[str, int]:
+        """返回运行历史计数：{total, auto, manual, backfill}"""
+        base_conditions = [
+            PaperRunRow.user_id == self.user_id,
+            PaperRunRow.market == market,
+        ]
+        total = int(self._session.execute(
+            select(func.count()).select_from(PaperRunRow).where(and_(*base_conditions))
+        ).scalar_one())
+        auto_count = int(self._session.execute(
+            select(func.count()).select_from(PaperRunRow).where(
+                and_(*base_conditions, PaperRunRow.run_source == "auto")
+            )
+        ).scalar_one())
+        manual_count = int(self._session.execute(
+            select(func.count()).select_from(PaperRunRow).where(
+                and_(*base_conditions, PaperRunRow.run_source == "manual")
+            )
+        ).scalar_one())
+        return {"total": total, "auto": auto_count, "manual": manual_count}

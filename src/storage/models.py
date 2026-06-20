@@ -292,6 +292,7 @@ class DashboardRunSummaryRow(Base):
 
     run_context_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    market: Mapped[str] = mapped_column(String(16), nullable=False, default="a")
     trade_date: Mapped[str] = mapped_column(String(10), nullable=False)
     decision_mode: Mapped[str] = mapped_column(String(16), nullable=False)
     execution_mode: Mapped[str] = mapped_column(String(16), nullable=False)

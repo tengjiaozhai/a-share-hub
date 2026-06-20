@@ -186,6 +186,7 @@ def start_dashboard_run(
         started_at=_now_cst().isoformat(),
         finished_at=None,
         latest_workbench={"latest_run": {"run_context_id": run_context_id, "steps": []}},
+        market=payload.get("market", "a"),
     )
     store.append_dashboard_run_event(run_context_id=run_context_id,
         event_type="run.accepted",
@@ -314,7 +315,7 @@ def get_history(
         auto_runs = [
             {
                 "id": row.run_id,
-                "source": "auto",
+                "source": row.run_source,
                 "market": row.market,
                 "status": row.status,
                 "trade_date": row.trade_date.isoformat(),
@@ -332,10 +333,17 @@ def get_history(
                 "supports_case_view": False,
             }
             for row in auto_rows
-            if row.run_source == "auto"
         ]
+        paper_counts = ledger.count_run_history(market, source=source)
 
-    manual_runs = _build_manual_history_runs(store, market=market, limit=fetch_limit, user_id=user_id) if source in {"all", "manual"} else []
+    manual_runs = (
+        _build_manual_history_runs(store, market=market, limit=fetch_limit, user_id=user_id)
+        if source in {"all", "manual"} else []
+    )
+    manual_total = (
+        store.count_dashboard_run_summaries(market=market)
+        if source in {"all", "manual"} else 0
+    )
     merged_runs = _apply_history_cursor(
         sorted([*manual_runs, *auto_runs], key=_history_sort_key, reverse=True),
         cursor,
@@ -343,17 +351,24 @@ def get_history(
     page_runs = merged_runs[:limit]
     has_more = len(merged_runs) > limit
     next_cursor = _encode_history_cursor(page_runs[-1]) if has_more and page_runs else None
+
+    total_count = paper_counts["total"] + manual_total
+    auto_count = paper_counts["auto"]
+    manual_count = paper_counts["manual"] + manual_total
     return {
         "runs": page_runs,
         "cursor": cursor,
         "has_more": has_more,
         "next_cursor": next_cursor,
+        "total_count": total_count,
+        "manual_count": manual_count,
+        "auto_count": auto_count,
     }
 
 
 def _build_manual_history_runs(store: RuntimeStore, market: str, limit: int, user_id: str | None = None) -> list[dict]:
     runs = []
-    for summary in store.list_dashboard_run_summaries(limit=max(limit * 4, 50)):
+    for summary in store.list_dashboard_run_summaries(limit=max(limit * 4, 50), market=market):
         latest_workbench = summary.get("latest_workbench") or {}
         latest_run = latest_workbench.get("latest_run") or {}
         history = latest_workbench.get("history") or {}
@@ -365,8 +380,6 @@ def _build_manual_history_runs(store: RuntimeStore, market: str, limit: int, use
             or _infer_market_from_watchlist(watchlist)
             or market
         )
-        if resolved_market != market:
-            continue
         targets = history.get("targets") or latest_run.get("target_items") or []
         orders = history.get("orders") or latest_run.get("order_items") or []
         runs.append(
