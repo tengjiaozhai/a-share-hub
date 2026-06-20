@@ -59,6 +59,8 @@ class RebuildAlphaPortfolioRequest(BaseModel):
 
 class GeneratePortfolioReportRequest(BaseModel):
     symbols: list[str] = []
+    position_ratio: float | None = None
+    buy_time: str | None = None
     include_shadow: bool = True
     include_backtest: bool = True
     backtest_window: str = "60d"

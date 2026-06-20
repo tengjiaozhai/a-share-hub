@@ -2,9 +2,9 @@
 
 ## 概述
 
-Alpha 操作台用于管理代币化证券（Tokenized Securities）的建议单流程。系统提供公开资产数据查询、建议单创建/审批、人工执行结果回填等功能。
+Alpha 操作台当前以持仓分析为主。Dashboard 中的 Alpha 页提供通用股票代码分析入口，并允许直接补充 `持仓仓位 (%)` 与 `买入时间` 作为分析上下文。
 
-**当前版本不支持自动下单**，所有交易执行需人工操作后回填结果。
+Dashboard 不再提供“建议单 + 操作员 + 手动回填成交”的主入口；成交历史与 multi-leg 数据仅保留为只读参考信息。
 
 ## API 端点
 
@@ -25,17 +25,32 @@ POST /api/v1/alpha/tickets/{id}/approve  # 审批建议单
 POST /api/v1/alpha/tickets/{id}/fills    # 回填执行结果
 ```
 
+### 持仓分析报告
+
+```
+POST /api/v1/alpha/portfolio/report
+```
+
+请求体支持：
+
+- `symbols`
+- `position_ratio`
+- `buy_time`
+- `include_shadow`
+- `include_backtest`
+- `backtest_window`
+- `opening_cash`
+
 ### 工作台集成
 
-Alpha 面板已集成到 Dashboard 工作台（`GET /api/v1/dashboard/workbench`），返回数据中的 `alpha` 字段包含建议单列表。
+Alpha 面板已集成到 Dashboard 工作台（`GET /api/v1/dashboard/workbench`）。Dashboard 主入口以分析表单为主，历史成交与 multi-leg 记录作为只读参考显示在同页。
 
 ## 典型工作流
 
-1. **查看资产**: 调用 `GET /api/v1/alpha/assets` �认可交易标的
-2. **创建建议单**: 调用 `POST /api/v1/alpha/tickets` 提交交易建议
-3. **审批**: 由操作员调用 `POST /api/v1/alpha/tickets/{id}/approve`
-4. **人工执行**: 操作员在交易所手动下单
-5. **回填结果**: 调用 `POST /api/v1/alpha/tickets/{id}/fills` 记录执行价格和数量
+1. **查看资产**: 调用 `GET /api/v1/alpha/assets` 确认可分析标的
+2. **输入分析上下文**: 在 Dashboard Alpha 页填写股票代码，并按需补充 `持仓仓位 (%)` 与 `买入时间`
+3. **生成报告**: 调用 `POST /api/v1/alpha/portfolio/report` 获取持仓、影子建议、回测与综合建议
+4. **对照历史**: 在 Alpha 页只读查看最近成交与 multi-leg 历史，辅助理解报告背景
 
 ## 测试
 
@@ -54,6 +69,6 @@ TEST_DATABASE_URL="postgresql+psycopg://..." /opt/anaconda3/envs/py311/bin/pytho
 
 ## 边界说明
 
-- 系统仅提供"建议"，不自动执行交易
-- 所有执行结果通过人工回填
+- 系统当前以分析为主，不在 Dashboard 主路径中承担人工回填成交录入
+- 页面中的成交历史与 multi-leg 历史只用于参考，不作为分析表单输入
 - 当前支持的资产来源为 Binance 代币化股票

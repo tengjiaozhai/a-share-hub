@@ -8,13 +8,7 @@ const ALPHA_PROPOSE_API = '/api/v1/alpha/research/propose-top-ticket';
 const ALPHA_REPORT_API = '/api/v1/alpha/portfolio/report';
 const VALID_REPORT_ACTIONS = ['HOLD', 'ADD', 'REDUCE', 'EXIT', 'WATCH'];
 
-let alphaTicketCache = [];
 let alphaPortfolioSymbols = [];
-
-function alphaStatusMarkup(message, level = 'info') {
-  const cssLevel = ['ok', 'warn', 'err'].includes(level) ? level : 'info';
-  return `<span class="alpha-inline-status ${cssLevel}">${escapeHtml(message)}</span>`;
-}
 
 function alphaActionClass(action) {
   const normalized = String(action || 'HOLD').toLowerCase();
@@ -56,12 +50,6 @@ function alphaReportActionLabel(action) {
   }
 }
 
-function alphaLocalDateTimeValue(date) {
-  const dt = date || new Date();
-  const pad = (value) => String(value).padStart(2, '0');
-  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
-}
-
 function parseAlphaReportSymbols(raw) {
   return Array.from(new Set(String(raw || '')
     .split(/[,\s]+/)
@@ -73,16 +61,6 @@ function resolveAlphaReportSymbols() {
   const input = document.getElementById('alpha-report-symbol');
   const typedSymbols = parseAlphaReportSymbols(input?.value);
   return typedSymbols.length ? typedSymbols : alphaPortfolioSymbols;
-}
-
-function alphaParsePriceMap(raw) {
-  const trimmed = String(raw || '').trim();
-  if (!trimmed) return {};
-  const parsed = JSON.parse(trimmed);
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('价格映射必须是 JSON 对象');
-  }
-  return parsed;
 }
 
 function groupAlphaFillsBySymbol(fills) {
@@ -239,15 +217,14 @@ function renderAlphaExceptions(exceptions) {
 function renderAlphaTickets(items) {
   const root = document.getElementById('alpha-tickets');
   const countEl = document.getElementById('alpha-ticket-count');
-  alphaTicketCache = toList(items);
-  if (countEl) countEl.textContent = String(alphaTicketCache.length);
+  const tickets = toList(items);
+  if (countEl) countEl.textContent = String(tickets.length);
   if (!root) return;
-  if (!alphaTicketCache.length) {
+  if (!tickets.length) {
     root.innerHTML = '<div class="alpha-empty-state">暂无建议单</div>';
-    populateAlphaFillTicketSelect([]);
     return;
   }
-  root.innerHTML = alphaTicketCache.map((item) => {
+  root.innerHTML = tickets.map((item) => {
     const action = normalizeText(item.action, 'BUY').toUpperCase();
     const status = normalizeText(item.status, 'pending').toLowerCase();
     const qty = item.suggested_quantity ?? '--';
@@ -262,54 +239,6 @@ function renderAlphaTickets(items) {
       <span class="alpha-ticket-status ${status}">${escapeHtml(status)}</span>
     </div>`;
   }).join('');
-  populateAlphaFillTicketSelect(alphaTicketCache);
-}
-
-function populateAlphaFillTicketSelect(tickets) {
-  const select = document.getElementById('alpha-fill-ticket');
-  if (!select) return;
-  if (!tickets.length) {
-    select.innerHTML = '<option value="">暂无可回填建议单</option>';
-    renderSelectedFillTicketMeta(null);
-    return;
-  }
-  select.innerHTML = tickets.map((ticket) => `
-    <option value="${escapeHtml(ticket.ticket_id)}">
-      ${escapeHtml(ticket.asset_symbol)} · ${escapeHtml(String(ticket.action || 'BUY').toUpperCase())} · ${escapeHtml(String(ticket.suggested_quantity))}
-    </option>
-  `).join('');
-  renderSelectedFillTicketMeta(tickets[0]);
-}
-
-function renderSelectedFillTicketMeta(ticket) {
-  const meta = document.getElementById('alpha-fill-ticket-meta');
-  if (!meta) return;
-  if (!ticket) {
-    meta.innerHTML = alphaStatusMarkup('先创建建议单，再回填成交。');
-    return;
-  }
-  meta.innerHTML = `
-    <div class="alpha-ticket-meta-row">
-      <span>${escapeHtml(ticket.asset_symbol)}</span>
-      <span>${escapeHtml(String(ticket.action || 'BUY').toUpperCase())}</span>
-      <span>${escapeHtml(String(ticket.suggested_quantity || '--'))} @ ${escapeHtml(formatNumber(ticket.suggested_limit_price, 4))}</span>
-    </div>
-  `;
-}
-
-function handleAlphaFillTicketChange(event) {
-  const ticketId = event?.target?.value;
-  const ticket = alphaTicketCache.find((item) => item.ticket_id === ticketId) || null;
-  renderSelectedFillTicketMeta(ticket);
-  if (!ticket) return;
-  const qtyEl = document.getElementById('alpha-fill-qty');
-  const priceEl = document.getElementById('alpha-fill-price');
-  if (qtyEl && !qtyEl.value) qtyEl.value = String(ticket.suggested_quantity || '');
-  if (priceEl && !priceEl.value) priceEl.value = String(ticket.suggested_limit_price || '');
-  const priceMapEl = document.getElementById('alpha-rebuild-price-map');
-  if (priceMapEl && !priceMapEl.value && ticket.asset_symbol && ticket.suggested_limit_price) {
-    priceMapEl.value = JSON.stringify({ [ticket.asset_symbol]: Number(ticket.suggested_limit_price) });
-  }
 }
 
 async function loadAlphaWorkbench() {
@@ -325,10 +254,6 @@ async function loadAlphaWorkbench() {
   renderAlphaCandidates(data.alpha?.research?.latest_candidates || []);
   if (data.alpha?.execution_capability) {
     renderAlphaExecutionCapability(data.alpha.execution_capability);
-  }
-  const executedAtEl = document.getElementById('alpha-fill-executed-at');
-  if (executedAtEl && !executedAtEl.value) {
-    executedAtEl.value = alphaLocalDateTimeValue();
   }
 }
 
@@ -358,55 +283,6 @@ async function submitAlphaTicket(event) {
   } catch (error) {
     console.error('Failed to submit alpha ticket:', error);
     alert('创建建议单失败: ' + error.message);
-  }
-}
-
-async function submitAlphaManualFill(event) {
-  event.preventDefault();
-  const statusRoot = document.getElementById('alpha-fill-status');
-  try {
-    const ticketId = document.getElementById('alpha-fill-ticket').value.trim();
-    const executedAtInput = document.getElementById('alpha-fill-executed-at');
-    const executedAtValue = executedAtInput.value || alphaLocalDateTimeValue();
-    const openingCashValue = document.getElementById('alpha-rebuild-opening-cash').value;
-    const payload = {
-      operator_id: document.getElementById('alpha-fill-operator').value.trim(),
-      executed_quantity: Number(document.getElementById('alpha-fill-qty').value),
-      executed_price: Number(document.getElementById('alpha-fill-price').value),
-      executed_at: new Date(executedAtValue).toISOString(),
-      notes: document.getElementById('alpha-fill-notes').value.trim(),
-      rebuild_price_map: alphaParsePriceMap(document.getElementById('alpha-rebuild-price-map').value),
-    };
-    if (openingCashValue !== '') {
-      payload.rebuild_opening_cash = Number(openingCashValue);
-    }
-    if (!ticketId) {
-      throw new Error('请先选择建议单');
-    }
-    const res = await fetch(`${ALPHA_TICKETS_API}/${encodeURIComponent(ticketId)}/fills`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const body = await parseResponseBody(res);
-    if (!res.ok) {
-      throw new Error(extractErrorMessage(body, '记录成交失败'));
-    }
-    if (statusRoot) {
-      statusRoot.innerHTML = alphaStatusMarkup(
-        body.portfolio_rebuilt ? '成交已记录，组合快照已重建。' : '成交已记录，正在刷新持仓视图。',
-        'ok',
-      );
-    }
-    event.target.reset();
-    await loadAlphaWorkbench();
-  } catch (error) {
-    console.error('Failed to submit alpha manual fill:', error);
-    if (statusRoot) {
-      statusRoot.innerHTML = alphaStatusMarkup(error.message, 'err');
-    } else {
-      alert('记录成交失败: ' + error.message);
-    }
   }
 }
 
@@ -535,6 +411,7 @@ function renderAlphaReport(report, requestedSymbols = []) {
   const windowLabel = normalizeText(report?.backtest_window, '60d');
   const list = items.map((item) => {
     const symbol = normalizeText(item.symbol, '--');
+    const analysisContext = item.analysis_context || {};
     const position = item.position || item;
     const shadow = item.shadow || {};
     const backtest = item.backtest || {};
@@ -558,6 +435,8 @@ function renderAlphaReport(report, requestedSymbols = []) {
     const btStatus = normalizeText(backtest.status, 'no_data');
     const btScore = normalizeText(backtest.score, 'N/A');
     const recReason = normalizeText(recommendation.reason, '无明确建议');
+    const ratioText = analysisContext.position_ratio == null ? '--' : `${formatNumber(analysisContext.position_ratio, 2)}%`;
+    const buyTimeText = normalizeText(analysisContext.buy_time, '--');
 
     let riskNotesHtml = '';
     if (riskNotes.length) {
@@ -576,6 +455,10 @@ function renderAlphaReport(report, requestedSymbols = []) {
         <span class="alpha-report-grid-label">成本</span><span class="alpha-report-grid-value">${escapeHtml(avgCost)}</span>
         <span class="alpha-report-grid-label">现价</span><span class="alpha-report-grid-value">${escapeHtml(markPrice)}</span>
         <span class="alpha-report-grid-label">浮盈</span><span class="alpha-report-grid-value ${pnlClass}">${escapeHtml(pnlText)}</span>
+      </div>
+      <div class="alpha-report-grid">
+        <span class="alpha-report-grid-label">输入仓位</span><span class="alpha-report-grid-value">${escapeHtml(ratioText)}</span>
+        <span class="alpha-report-grid-label">买入时间</span><span class="alpha-report-grid-value">${escapeHtml(buyTimeText)}</span>
       </div>
       <div class="alpha-report-grid">
         <span class="alpha-report-grid-label">模拟建议</span><span class="alpha-report-grid-value">${escapeHtml(shadowAction)} (${escapeHtml(shadowConfidence)})</span>
@@ -605,6 +488,8 @@ async function loadAlphaReport() {
   const shadowToggle = document.getElementById('alpha-report-include-shadow');
   const backtestToggle = document.getElementById('alpha-report-include-backtest');
   const symbolInput = document.getElementById('alpha-report-symbol');
+  const ratioInput = document.getElementById('alpha-report-position-ratio');
+  const buyTimeInput = document.getElementById('alpha-report-buy-time');
   const body = document.getElementById('alpha-report-body');
   if (!body) return;
   const requestedSymbols = resolveAlphaReportSymbols();
@@ -616,6 +501,8 @@ async function loadAlphaReport() {
   const payload = {
     symbols: requestedSymbols,
     primary_symbol: requestedSymbols[0] || null,
+    position_ratio: ratioInput?.value === '' ? null : Number(ratioInput?.value),
+    buy_time: buyTimeInput?.value || null,
     include_shadow: shadowToggle?.checked !== false,
     include_backtest: backtestToggle?.checked !== false,
     backtest_window: windowSelect?.value || '60d',

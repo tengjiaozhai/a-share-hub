@@ -77,8 +77,12 @@ def test_dashboard_contains_holdings_and_history_ui(_patch_auth):
 def test_dashboard_contains_code_analysis_first_controls(_patch_auth):
     html = _dashboard_html()
     assert 'id="alpha-report-symbol"' in html
+    assert 'id="alpha-report-position-ratio"' in html
+    assert 'id="alpha-report-buy-time"' in html
     assert 'id="alpha-report-generate"' in html
     assert "股票代码" in html
+    assert "持仓仓位 (%)" in html
+    assert "买入时间" in html
     assert "分析股票" in html
 
 
@@ -92,14 +96,15 @@ def test_dashboard_removes_legacy_alpha_ops_sections(_patch_auth):
     assert "观察列表与持仓候选" not in html
 
 
-def test_dashboard_contains_alpha_manual_fill_entry_ui(_patch_auth):
+def test_dashboard_removes_alpha_manual_fill_entry_ui(_patch_auth):
     html = _dashboard_html()
-    assert 'id="alpha-fill-form"' in html
-    assert 'id="alpha-fill-ticket"' in html
-    assert 'id="alpha-fill-operator"' in html
-    assert 'id="alpha-fill-qty"' in html
-    assert 'id="alpha-fill-price"' in html
-    assert 'id="alpha-fill-executed-at"' in html
-    assert 'id="alpha-rebuild-opening-cash"' in html
-    assert 'id="alpha-rebuild-price-map"' in html
-    assert "submitAlphaManualFill" in html
+    assert 'id="alpha-fill-form"' not in html
+    assert 'id="alpha-fill-ticket"' not in html
+    assert 'id="alpha-fill-operator"' not in html
+    assert 'id="alpha-fill-qty"' not in html
+    assert 'id="alpha-fill-price"' not in html
+    assert 'id="alpha-fill-executed-at"' not in html
+    assert 'id="alpha-rebuild-opening-cash"' not in html
+    assert 'id="alpha-rebuild-price-map"' not in html
+    assert "submitAlphaManualFill" not in html
+    assert "手动回填成交" not in html

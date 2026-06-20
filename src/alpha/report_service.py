@@ -61,6 +61,18 @@ def normalize_report_symbols(symbols: list[str] | None) -> list[str]:
     return normalized
 
 
+def _normalize_analysis_input(payload: dict, symbols: list[str]) -> dict:
+    position_ratio = payload.get("position_ratio")
+    normalized_ratio = None if position_ratio is None else float(position_ratio)
+    buy_time = payload.get("buy_time")
+    normalized_buy_time = None if buy_time is None else str(buy_time)
+    return {
+        "symbols": symbols,
+        "position_ratio": normalized_ratio,
+        "buy_time": normalized_buy_time,
+    }
+
+
 def _build_fill_summary(fills_for_symbol: list[FillDict]) -> dict:
     """汇总单只标的的 fill 列表。"""
     buy_quantity = 0.0
@@ -254,6 +266,7 @@ class AlphaPortfolioReportService:
     def generate_report(self, payload: dict) -> dict:
         """主入口：拼装 {generated_at, portfolio_snapshot, items[]}。"""
         symbols = normalize_report_symbols(payload.get("symbols") or [])
+        analysis_input = _normalize_analysis_input(payload, symbols)
         include_shadow = bool(payload.get("include_shadow", True))
         include_backtest = bool(payload.get("include_backtest", True))
         backtest_window = _normalize_window(payload.get("backtest_window"))
@@ -313,6 +326,14 @@ class AlphaPortfolioReportService:
             items.append(
                 {
                     **position_section,
+                    "analysis_context": (
+                        {
+                            "position_ratio": analysis_input["position_ratio"],
+                            "buy_time": analysis_input["buy_time"],
+                        }
+                        if symbols and symbol in symbols
+                        else {}
+                    ),
                     "fill_summary": fill_summary,
                     "shadow": shadow,
                     "backtest": backtest,
@@ -323,6 +344,7 @@ class AlphaPortfolioReportService:
         return {
             "generated_at": datetime.now(UTC).astimezone().isoformat(),
             "portfolio_snapshot": snapshot or {},
+            "analysis_input": analysis_input,
             "backtest_window": backtest_window,
             "items": items,
         }

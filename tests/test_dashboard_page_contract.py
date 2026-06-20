@@ -14,6 +14,8 @@ def test_render_dashboard_html_contains_alpha_contract():
     assert "alpha-fill-history" in html
     assert "alpha-multi-leg-history" in html
     assert 'id="alpha-report-symbol"' in html
+    assert 'id="alpha-report-position-ratio"' in html
+    assert 'id="alpha-report-buy-time"' in html
     assert "分析股票" in html
     assert "const ALPHA_REPORT_API = '/api/v1/alpha/portfolio/report';" in html
     assert "loadAlphaReport" in html
@@ -161,21 +163,29 @@ def test_render_dashboard_html_contains_market_and_alpha_controls():
         'id="a-quotes-table"',
         'id="a-search-input"',
         'id="scan-btn"',
-        'id="alpha-fill-form"',
-        'id="alpha-fill-ticket"',
-        'id="alpha-fill-executed-at"',
-        'id="alpha-rebuild-opening-cash"',
-        'id="alpha-rebuild-price-map"',
         'id="alpha-report-symbol"',
+        'id="alpha-report-position-ratio"',
+        'id="alpha-report-buy-time"',
         "const ALPHA_ASSETS_API = '/api/v1/alpha/assets';",
         "const ALPHA_TICKETS_API = '/api/v1/alpha/tickets';",
         "const ALPHA_REPORT_API = '/api/v1/alpha/portfolio/report';",
-        'submitAlphaManualFill',
         'loadAlphaReport',
         'aLoadQuotes',
     ]
     for marker in required_markers:
         assert marker in html
+
+    forbidden_markers = [
+        'id="alpha-fill-form"',
+        'id="alpha-fill-ticket"',
+        'id="alpha-fill-executed-at"',
+        'id="alpha-rebuild-opening-cash"',
+        'id="alpha-rebuild-price-map"',
+        'submitAlphaManualFill',
+        'handleAlphaFillTicketChange',
+    ]
+    for marker in forbidden_markers:
+        assert marker not in html
 
 def test_dashboard_split_has_no_legacy_frontend_paths():
     from pathlib import Path
