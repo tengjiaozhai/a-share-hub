@@ -137,3 +137,24 @@ def authenticated_client(test_app, auth_token):
     client = TestClient(test_app)
     client.cookies.set(settings.auth_cookie_name, auth_token)
     return client
+
+
+@pytest.fixture
+def admin_auth_token():
+    settings = Settings()
+    return create_auth_token(TEST_USER_ID, settings)
+
+
+@pytest.fixture
+def authenticated_admin_client(test_app, admin_auth_token):
+    """认证为管理员用户（test-user 在 pg_store fixture 中是 admin 角色）"""
+    settings = Settings()
+    client = TestClient(test_app)
+    client.cookies.set(settings.auth_cookie_name, admin_auth_token)
+    return client
+
+
+@pytest.fixture
+def system_store(pg_store):
+    """与 test_app 共享的 SystemRuntimeStore（指向同一 engine）。"""
+    return SystemRuntimeStore(pg_store.engine)

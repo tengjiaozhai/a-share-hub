@@ -37,12 +37,18 @@ class SystemRuntimeStore:
                     "kill_switch_event_id": row.kill_switch_event_id,
                     "active": row.active,
                     "reason": row.reason,
+                    "actor_user_id": row.actor_user_id,
                     "created_at": row.created_at.isoformat(),
                 }
                 for row in rows
             ]
 
-    def insert_kill_switch_event(self, active: bool, reason: str | None = None) -> None:
+    def insert_kill_switch_event(
+        self,
+        actor_user_id: str,
+        active: bool,
+        reason: str | None = None,
+    ) -> None:
         event_id = f"kse-{uuid.uuid4().hex[:12]}"
         event_reason = reason or ""
         with self.engine.begin() as conn:
@@ -51,6 +57,7 @@ class SystemRuntimeStore:
                     kill_switch_event_id=event_id,
                     active=active,
                     reason=event_reason,
+                    actor_user_id=actor_user_id,
                 )
             )
             existing = conn.execute(select(KillSwitchRow).where(KillSwitchRow.id == 1)).scalar_one_or_none()

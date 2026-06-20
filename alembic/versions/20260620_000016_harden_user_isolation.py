@@ -64,6 +64,7 @@ def upgrade() -> None:
 
     _upgrade_alpha_watchlist(inspector)
     _upgrade_broker_events(inspector)
+    _upgrade_kill_switch_events(inspector)
 
 
 def _upgrade_alpha_watchlist(inspector) -> None:
@@ -156,9 +157,36 @@ def _upgrade_broker_events(inspector) -> None:
         op.create_index("ix_broker_events_user_id", "broker_events", ["user_id"], unique=False)
 
 
+def _upgrade_kill_switch_events(inspector) -> None:
+    """kill_switch_events: 添加 actor_user_id（nullable, 带索引）。
+
+    全局表：现有事件保留 actor_user_id=NULL（fail-fast 拒绝编造历史 actor）；
+    新事件必须由调用方显式写入。
+    """
+    if not _column_exists(inspector, "kill_switch_events", "actor_user_id"):
+        op.add_column(
+            "kill_switch_events",
+            sa.Column("actor_user_id", sa.String(length=64), nullable=True),
+        )
+
+    if not _index_exists(inspector, "kill_switch_events", "ix_kill_switch_events_actor_user_id"):
+        op.create_index(
+            "ix_kill_switch_events_actor_user_id",
+            "kill_switch_events",
+            ["actor_user_id"],
+            unique=False,
+        )
+
+
 def downgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
+
+    if _index_exists(inspector, "kill_switch_events", "ix_kill_switch_events_actor_user_id"):
+        op.drop_index("ix_kill_switch_events_actor_user_id", table_name="kill_switch_events")
+    if _column_exists(inspector, "kill_switch_events", "actor_user_id"):
+        with op.batch_alter_table("kill_switch_events") as batch_op:
+            batch_op.drop_column("actor_user_id")
 
     if _index_exists(inspector, "broker_events", "ix_broker_events_user_id"):
         op.drop_index("ix_broker_events_user_id", table_name="broker_events")

@@ -101,7 +101,9 @@ def run_decide_command(symbols: list[str], mock_llm: bool, store=None) -> dict:
 def run_halt_command(reason: str, resume: bool, store=None) -> dict:
     system_store = store if isinstance(store, SystemRuntimeStore) else _system_store()
     active = not resume
-    system_store.insert_kill_switch_event(active=active, reason=reason)
+    system_store.insert_kill_switch_event(
+        actor_user_id=SYSTEM_TENANT.user_id, active=active, reason=reason
+    )
     return {"status": "ok", "active": active, "reason": reason, "resume": resume}
 
 

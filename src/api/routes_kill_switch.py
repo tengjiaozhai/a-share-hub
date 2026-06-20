@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from src.api.auth_security import require_role
-from src.api.dependencies import get_current_user
+from src.api.dependencies import get_current_user, get_current_user_id
 from src.core.config import Settings
 from src.storage.dependencies import get_system_runtime_store
 from src.storage.redis_cache import RedisCache, should_use_redis_cache
@@ -14,24 +14,30 @@ router = APIRouter(prefix="/api/v1", dependencies=[Depends(get_current_user)])
 def activate_kill_switch(
     payload: dict | None = None,
     system_store: SystemRuntimeStore = Depends(get_system_runtime_store),
+    actor_user_id: str = Depends(get_current_user_id),
     _user: dict = Depends(require_role("admin")),
 ) -> dict:
     reason = _extract_reason(payload, default_reason="manual activate")
-    system_store.insert_kill_switch_event(active=True, reason=reason)
+    system_store.insert_kill_switch_event(
+        actor_user_id=actor_user_id, active=True, reason=reason
+    )
     _sync_cached_status(active=True)
-    return {"activated": True, "reason": reason}
+    return {"activated": True, "reason": reason, "actor_user_id": actor_user_id}
 
 
 @router.post("/kill-switch/deactivate")
 def deactivate_kill_switch(
     payload: dict | None = None,
     system_store: SystemRuntimeStore = Depends(get_system_runtime_store),
+    actor_user_id: str = Depends(get_current_user_id),
     _user: dict = Depends(require_role("admin")),
 ) -> dict:
     reason = _extract_reason(payload, default_reason="manual deactivate")
-    system_store.insert_kill_switch_event(active=False, reason=reason)
+    system_store.insert_kill_switch_event(
+        actor_user_id=actor_user_id, active=False, reason=reason
+    )
     _sync_cached_status(active=False)
-    return {"deactivated": True, "reason": reason}
+    return {"deactivated": True, "reason": reason, "actor_user_id": actor_user_id}
 
 
 @router.get("/kill-switch/status")

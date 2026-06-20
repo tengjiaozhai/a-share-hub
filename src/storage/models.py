@@ -137,6 +137,7 @@ class KillSwitchEventRow(Base):
     kill_switch_event_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+    actor_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
