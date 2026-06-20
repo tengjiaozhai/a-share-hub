@@ -1,71 +1,92 @@
 import pytest
-from unittest.mock import MagicMock
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
-from src.core.tenant import TenantContext
 from src.a_stock.watchlist import AShareWatchlistStore
-
+from src.core.tenant import TenantContext
+from src.storage.models import Base
 
 TEST_USER_ID = "test-user-1"
 
 
 @pytest.fixture
-def mock_db():
-    conn = MagicMock()
-    cursor = MagicMock()
-    conn.cursor.return_value.__enter__ = lambda s: cursor
-    conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
-    return conn, cursor
+def db_engine():
+    """创建内存 SQLite 数据库用于测试"""
+    engine = create_engine("sqlite:///:memory:", echo=False)
+    Base.metadata.create_all(engine)
+    yield engine
+    engine.dispose()
 
 
-def test_list_items(mock_db):
-    conn, cursor = mock_db
-    cursor.fetchone.return_value = {"count": 1}
-    cursor.fetchall.return_value = [
-        {"id": 1, "symbol": "600519.SH", "name": "贵州茅台", "sort_order": 0, "created_at": "2026-01-01"},
-    ]
-    store = AShareWatchlistStore(conn, TenantContext(TEST_USER_ID))
+@pytest.fixture
+def store(db_engine):
+    """创建 AShareWatchlistStore 实例"""
+    tenant = TenantContext(TEST_USER_ID)
+    return AShareWatchlistStore(db_engine, tenant)
+
+
+def test_list_items_empty(store):
+    """测试空列表"""
     items, total = store.list_items()
-    assert total == 1
-    assert len(items) == 1
-    assert items[0].symbol == "600519.SH"
-    assert "user_id" in cursor.execute.call_args[0][0].lower() or any(
-        "user_id" in str(arg).lower() for arg in cursor.execute.call_args[0][1]
-    )
+    assert total == 0
+    assert items == []
 
 
-def test_add_item(mock_db):
-    conn, cursor = mock_db
-    cursor.fetchone.return_value = {
-        "id": 1, "symbol": "600519.SH", "name": "贵州茅台", "sort_order": 0, "created_at": "2026-01-01",
-    }
-    store = AShareWatchlistStore(conn, TenantContext(TEST_USER_ID))
+def test_add_item(store):
+    """测试添加项目"""
     item = store.add("600519.SH", "贵州茅台")
     assert item.symbol == "600519.SH"
-    insert_args = cursor.execute.call_args[0][1]
-    assert TEST_USER_ID in insert_args
+    assert item.name == "贵州茅台"
+    assert item.id > 0
 
 
-def test_add_duplicate_raises(mock_db):
-    conn, cursor = mock_db
-    cursor.execute.side_effect = Exception("duplicate key")
-    store = AShareWatchlistStore(conn, TenantContext(TEST_USER_ID))
+def test_list_items(store):
+    """测试列出项目"""
+    # 添加两个项目
+    store.add("600519.SH", "贵州茅台", sort_order=1)
+    store.add("000858.SZ", "五粮液", sort_order=0)
+    
+    items, total = store.list_items()
+    assert total == 2
+    assert len(items) == 2
+    # 验证按 sort_order 排序
+    assert items[0].symbol == "000858.SZ"
+    assert items[1].symbol == "600519.SH"
+
+
+def test_add_duplicate_raises(store):
+    """测试添加重复项目抛出异常"""
+    store.add("600519.SH", "贵州茅台")
     with pytest.raises(ValueError, match="already exists"):
         store.add("600519.SH", "贵州茅台")
 
 
-def test_remove_item(mock_db):
-    conn, cursor = mock_db
-    cursor.rowcount = 1
-    store = AShareWatchlistStore(conn, TenantContext(TEST_USER_ID))
+def test_remove_item(store):
+    """测试删除项目"""
+    store.add("600519.SH", "贵州茅台")
     result = store.remove("600519.SH")
     assert result is True
-    delete_args = cursor.execute.call_args[0][1]
-    assert TEST_USER_ID in delete_args
+    
+    items, total = store.list_items()
+    assert total == 0
 
 
-def test_remove_not_found(mock_db):
-    conn, cursor = mock_db
-    cursor.rowcount = 0
-    store = AShareWatchlistStore(conn, TenantContext(TEST_USER_ID))
+def test_remove_not_found(store):
+    """测试删除不存在的项目"""
     result = store.remove("INVALID")
     assert result is False
+
+
+def test_get_by_symbol(store):
+    """测试按代码查询"""
+    store.add("600519.SH", "贵州茅台")
+    item = store.get_by_symbol("600519.SH")
+    assert item is not None
+    assert item.symbol == "600519.SH"
+    assert item.name == "贵州茅台"
+
+
+def test_get_by_symbol_not_found(store):
+    """测试查询不存在的项目"""
+    item = store.get_by_symbol("INVALID")
+    assert item is None

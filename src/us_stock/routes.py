@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.api.dependencies import get_current_user, get_tenant_context
 from src.core.tenant import TenantContext
+from src.storage.dependencies import get_runtime_engine
 from src.us_stock.binance_asset import get_binance_us_assets
 from src.us_stock.watchlist import WatchlistStore
 from src.us_stock.yahoo_provider import YahooProvider
@@ -17,9 +18,6 @@ router = APIRouter(
 )
 
 _yahoo_provider: YahooProvider | None = None
-# 修复：原模块级单例在第一次调用时被绑定到某 user_id，后续所有请求都拿到错绑定的 store。
-# 改为 per-user 缓存：每个 user_id 复用独立连接。
-_watchlist_stores: dict[str, WatchlistStore] = {}
 
 
 def _get_yahoo_provider() -> YahooProvider:
@@ -30,21 +28,8 @@ def _get_yahoo_provider() -> YahooProvider:
 
 
 def _get_watchlist_store(tenant: TenantContext) -> WatchlistStore:
-    cached = _watchlist_stores.get(tenant.user_id)
-    if cached is not None:
-        return cached
-    import psycopg
-
-    from src.core.config import Settings
-    from src.storage.connection_url import build_psycopg_dsn
-    settings = Settings()
-    database_url = settings.database_url
-    if not database_url:
-        raise HTTPException(status_code=503, detail="DATABASE_URL not configured")
-    conn = psycopg.connect(build_psycopg_dsn(database_url), row_factory=psycopg.rows.dict_row)
-    store = WatchlistStore(conn, tenant)
-    _watchlist_stores[tenant.user_id] = store
-    return store
+    engine = get_runtime_engine()
+    return WatchlistStore(engine, tenant)
 
 
 @router.get("/quotes")

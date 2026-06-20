@@ -1318,17 +1318,10 @@ def scan_us_stock_pool(
     top_n = int(cfg.get("top_n", 10))
 
     # 获取当前用户的美股 watchlist
-    import psycopg
-    settings = Settings()
-    database_url = settings.database_url
-    if not database_url:
-        return {"status": "no_database", "buy": [], "sell": [], "hold": [], "total_scanned": 0}
-
-    from src.storage.connection_url import build_psycopg_dsn
-    conn = psycopg.connect(build_psycopg_dsn(database_url), row_factory=psycopg.rows.dict_row)
-    store = WatchlistStore(conn, TenantContext(user_id))
+    from src.storage.dependencies import get_runtime_engine
+    engine = get_runtime_engine()
+    store = WatchlistStore(engine, TenantContext(user_id))
     stock_list_items, _ = store.list_items(page=1, page_size=1000)
-    conn.close()
 
     if not stock_list_items:
         return {"status": "no_catalog", "buy": [], "sell": [], "hold": [], "total_scanned": 0}

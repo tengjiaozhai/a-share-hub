@@ -1,17 +1,20 @@
 import logging
-from typing import Any
+
+from sqlalchemy import func, select, delete as sa_delete
+from sqlalchemy.orm import Session
 
 from src.a_stock.models import AStockWatchlistItem
 from src.core.tenant import TenantContext
+from src.storage.models import AStockWatchlistRow
 
 logger = logging.getLogger(__name__)
 
 
 class AShareWatchlistStore:
-    """A 股自选列表 CRUD。"""
+    """A 股自选列表 CRUD，基于 SQLAlchemy engine。"""
 
-    def __init__(self, conn: Any, tenant: TenantContext):
-        self._conn = conn
+    def __init__(self, engine, tenant: TenantContext):
+        self._engine = engine
         self._tenant = tenant
 
     @property
@@ -20,76 +23,81 @@ class AShareWatchlistStore:
 
     def list_items(self, page: int = 1, page_size: int = 20) -> tuple[list[AStockWatchlistItem], int]:
         offset = (page - 1) * page_size
-        with self._conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM a_share_watchlist WHERE user_id = %s", (self._user_id,))
-            total = cur.fetchone()["count"]
-            cur.execute(
-                "SELECT id, symbol, name, sort_order, created_at FROM a_share_watchlist "
-                "WHERE user_id = %s ORDER BY sort_order, id LIMIT %s OFFSET %s",
-                (self._user_id, page_size, offset),
-            )
-            rows = cur.fetchall()
+        with Session(self._engine) as session:
+            total = session.scalar(
+                select(func.count()).select_from(AStockWatchlistRow).where(
+                    AStockWatchlistRow.user_id == self._user_id
+                )
+            ) or 0
+            rows = session.scalars(
+                select(AStockWatchlistRow)
+                .where(AStockWatchlistRow.user_id == self._user_id)
+                .order_by(AStockWatchlistRow.sort_order, AStockWatchlistRow.id)
+                .limit(page_size)
+                .offset(offset)
+            ).all()
         items = [
             AStockWatchlistItem(
-                id=row["id"],
-                symbol=row["symbol"],
-                name=row["name"],
-                sort_order=row["sort_order"],
-                created_at=row["created_at"],
+                id=row.id,
+                symbol=row.symbol,
+                name=row.name,
+                sort_order=row.sort_order,
+                created_at=row.created_at,
             )
             for row in rows
         ]
         return items, total
 
     def add(self, symbol: str, name: str, sort_order: int = 0) -> AStockWatchlistItem:
-        try:
-            with self._conn.cursor() as cur:
-                cur.execute(
-                    "INSERT INTO a_share_watchlist (user_id, symbol, name, sort_order) "
-                    "VALUES (%s, %s, %s, %s) "
-                    "RETURNING id, symbol, name, sort_order, created_at",
-                    (self._user_id, symbol.upper(), name, sort_order),
-                )
-                row = cur.fetchone()
-                self._conn.commit()
-        except Exception as e:
-            self._conn.rollback()
-            if "duplicate key" in str(e).lower() or "unique" in str(e).lower():
-                raise ValueError(f"Symbol {symbol} already exists in watchlist") from e
-            raise
+        from sqlalchemy.exc import IntegrityError
 
+        row = AStockWatchlistRow(
+            user_id=self._user_id,
+            symbol=symbol.upper(),
+            name=name,
+            sort_order=sort_order,
+        )
+        with Session(self._engine) as session:
+            session.add(row)
+            try:
+                session.commit()
+            except IntegrityError as e:
+                session.rollback()
+                raise ValueError(f"Symbol {symbol} already exists in watchlist") from e
+            session.refresh(row)
         return AStockWatchlistItem(
-            id=row["id"],
-            symbol=row["symbol"],
-            name=row["name"],
-            sort_order=row["sort_order"],
-            created_at=row["created_at"],
+            id=row.id,
+            symbol=row.symbol,
+            name=row.name,
+            sort_order=row.sort_order,
+            created_at=row.created_at,
         )
 
     def remove(self, symbol: str) -> bool:
-        with self._conn.cursor() as cur:
-            cur.execute(
-                "DELETE FROM a_share_watchlist WHERE user_id = %s AND symbol = %s",
-                (self._user_id, symbol.upper()),
+        with Session(self._engine) as session:
+            result = session.execute(
+                sa_delete(AStockWatchlistRow).where(
+                    AStockWatchlistRow.user_id == self._user_id,
+                    AStockWatchlistRow.symbol == symbol.upper(),
+                )
             )
-            deleted = cur.rowcount > 0
-            self._conn.commit()
-        return deleted
+            session.commit()
+            return result.rowcount > 0
 
     def get_by_symbol(self, symbol: str) -> AStockWatchlistItem | None:
-        with self._conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, symbol, name, sort_order, created_at FROM a_share_watchlist "
-                "WHERE user_id = %s AND symbol = %s",
-                (self._user_id, symbol.upper()),
+        with Session(self._engine) as session:
+            row = session.scalar(
+                select(AStockWatchlistRow).where(
+                    AStockWatchlistRow.user_id == self._user_id,
+                    AStockWatchlistRow.symbol == symbol.upper(),
+                )
             )
-            row = cur.fetchone()
         if not row:
             return None
         return AStockWatchlistItem(
-            id=row["id"],
-            symbol=row["symbol"],
-            name=row["name"],
-            sort_order=row["sort_order"],
-            created_at=row["created_at"],
+            id=row.id,
+            symbol=row.symbol,
+            name=row.name,
+            sort_order=row.sort_order,
+            created_at=row.created_at,
         )
