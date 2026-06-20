@@ -84,15 +84,15 @@ def test_runtime_store_manages_alpha_watchlist_items(tmp_path):
     Base.metadata.create_all(engine)
     store = RuntimeStore(engine)
 
-    store.add_alpha_watchlist_item(symbol="AAPLx", underlying_symbol="AAPL", priority=1)
-    store.add_alpha_watchlist_item(symbol="SPYx", underlying_symbol="SPY", priority=2)
+    store.add_alpha_watchlist_item(user_id="test-user", symbol="AAPLx", underlying_symbol="AAPL", priority=1)
+    store.add_alpha_watchlist_item(user_id="test-user", symbol="SPYx", underlying_symbol="SPY", priority=2)
 
-    items = store.list_alpha_watchlist_items()
+    items = store.list_alpha_watchlist_items("test-user")
 
     assert [item["symbol"] for item in items] == ["AAPLx", "SPYx"]
 
-    store.remove_alpha_watchlist_item(symbol="SPYx")
-    assert [item["symbol"] for item in store.list_alpha_watchlist_items()] == ["AAPLx"]
+    store.remove_alpha_watchlist_item(user_id="test-user", symbol="SPYx")
+    assert [item["symbol"] for item in store.list_alpha_watchlist_items("test-user")] == ["AAPLx"]
 
 
 def test_runtime_store_persists_alpha_api_order_attempt(tmp_path):

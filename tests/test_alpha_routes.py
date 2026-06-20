@@ -5,7 +5,7 @@ from src.api import routes_alpha
 from src.main import build_app
 
 
-def test_alpha_assets_endpoint_returns_normalized_rows(monkeypatch):
+def test_alpha_assets_endpoint_returns_normalized_rows(authenticated_client, monkeypatch):
     from src.api import routes_alpha
 
     class FakeService:
@@ -29,7 +29,7 @@ def test_alpha_assets_endpoint_returns_normalized_rows(monkeypatch):
 
     app = build_app()
     app.dependency_overrides[routes_alpha.get_alpha_service] = override_get_alpha_service
-    client = TestClient(app)
+    client = authenticated_client
 
     response = client.get("/api/v1/alpha/assets")
 
@@ -39,8 +39,8 @@ def test_alpha_assets_endpoint_returns_normalized_rows(monkeypatch):
     assert body["items"][0]["market_status"] == "TRADING"
 
 
-def test_alpha_ticket_api_supports_create_approve_and_fill(test_app):
-    client = TestClient(test_app)
+def test_alpha_ticket_api_supports_create_approve_and_fill(authenticated_client, test_app):
+    client = authenticated_client
 
     create_res = client.post(
         "/api/v1/alpha/tickets",
@@ -89,8 +89,8 @@ def test_alpha_ticket_api_supports_create_approve_and_fill(test_app):
     assert workbench_res.json()["alpha"]["tickets"][0]["asset_symbol"] == "AAPLx"
 
 
-def test_alpha_ticket_api_returns_404_for_nonexistent_ticket(test_app):
-    client = TestClient(test_app)
+def test_alpha_ticket_api_returns_404_for_nonexistent_ticket(authenticated_client, test_app):
+    client = authenticated_client
 
     approve_res = client.post(
         "/api/v1/alpha/tickets/nonexistent-ticket/approve",
@@ -110,7 +110,7 @@ def test_alpha_ticket_api_returns_404_for_nonexistent_ticket(test_app):
     assert fill_res.status_code == 404
 
 
-def test_alpha_reconciliation_route_returns_run_id(test_app, pg_store):
+def test_alpha_reconciliation_route_returns_run_id(authenticated_client, test_app, pg_store):
     pg_store.replace_alpha_positions(
         user_id="test-user",
         positions=[{"symbol": "AAPLx", "quantity": 1.2, "avg_cost": 201.0, "mark_price": 225.0}],
@@ -122,7 +122,7 @@ def test_alpha_reconciliation_route_returns_run_id(test_app, pg_store):
         unrealized_pnl=28.8,
         nav=8_798.8,
     )
-    client = TestClient(test_app)
+    client = authenticated_client
 
     response = client.post(
         "/api/v1/alpha/reconciliation/run",
@@ -134,7 +134,7 @@ def test_alpha_reconciliation_route_returns_run_id(test_app, pg_store):
     assert response.json()["status"] == "MISMATCH"
 
 
-def test_alpha_watchlist_api_supports_list_and_add():
+def test_alpha_watchlist_api_supports_list_and_add(authenticated_client, ):
     from unittest.mock import MagicMock
 
     mock_store = MagicMock()
@@ -146,7 +146,7 @@ def test_alpha_watchlist_api_supports_list_and_add():
 
     app = build_app()
     app.dependency_overrides[get_runtime_store] = lambda: mock_store
-    client = TestClient(app)
+    client = authenticated_client
 
     add_res = client.post(
         "/api/v1/alpha/watchlist",
@@ -155,7 +155,7 @@ def test_alpha_watchlist_api_supports_list_and_add():
     assert add_res.status_code == 200
     assert add_res.json()["stored"] is True
     assert add_res.json()["symbol"] == "AAPLx"
-    mock_store.add_alpha_watchlist_item.assert_called_once_with(symbol="AAPLx", underlying_symbol="AAPL", priority=1)
+    mock_store.add_alpha_watchlist_item.assert_called_once_with(user_id="test-user", symbol="AAPLx", underlying_symbol="AAPL", priority=1)
 
     list_res = client.get("/api/v1/alpha/watchlist")
     assert list_res.status_code == 200
@@ -164,7 +164,7 @@ def test_alpha_watchlist_api_supports_list_and_add():
     assert items[0]["symbol"] == "AAPLx"
 
 
-def test_alpha_research_scan_endpoint_returns_ranked_candidates():
+def test_alpha_research_scan_endpoint_returns_ranked_candidates(authenticated_client, ):
     from unittest.mock import MagicMock
 
     mock_store = MagicMock()
@@ -191,7 +191,7 @@ def test_alpha_research_scan_endpoint_returns_ranked_candidates():
     app = build_app()
     app.dependency_overrides[get_runtime_store] = lambda: mock_store
     app.dependency_overrides[routes_alpha.get_alpha_research_service] = override_get_alpha_research_service
-    client = TestClient(app)
+    client = authenticated_client
 
     response = client.post("/api/v1/alpha/research/scan")
     assert response.status_code == 200
@@ -208,7 +208,7 @@ def test_alpha_research_scan_endpoint_returns_ranked_candidates():
     assert items[1]["portfolio_guidance"] == "ignore_no_position"
 
 
-def test_alpha_portfolio_rebuild_endpoint_rebuilds_from_all_fills(test_app, pg_store):
+def test_alpha_portfolio_rebuild_endpoint_rebuilds_from_all_fills(authenticated_client, test_app, pg_store):
     buy_ticket_id = pg_store.insert_alpha_ticket(
         user_id="test-user",
         asset_symbol="AAPLx",
@@ -245,7 +245,7 @@ def test_alpha_portfolio_rebuild_endpoint_rebuilds_from_all_fills(test_app, pg_s
         executed_price=210.0,
         notes="sell fill",
     )
-    client = TestClient(test_app)
+    client = authenticated_client
 
     response = client.post(
         "/api/v1/alpha/portfolio/rebuilds",
@@ -263,7 +263,7 @@ def test_alpha_portfolio_rebuild_endpoint_rebuilds_from_all_fills(test_app, pg_s
     assert len(portfolio["fills"]) == 2
 
 
-def test_alpha_fill_can_rebuild_portfolio_immediately(test_app, pg_store):
+def test_alpha_fill_can_rebuild_portfolio_immediately(authenticated_client, test_app, pg_store):
     ticket_id = pg_store.insert_alpha_ticket(
         user_id="test-user",
         asset_symbol="AAPLx",
@@ -274,7 +274,7 @@ def test_alpha_fill_can_rebuild_portfolio_immediately(test_app, pg_store):
         suggested_limit_price=200.0,
         expires_at="2026-06-01T16:00:00+08:00",
     )
-    client = TestClient(test_app)
+    client = authenticated_client
 
     response = client.post(
         f"/api/v1/alpha/tickets/{ticket_id}/fills",
@@ -298,7 +298,7 @@ def test_alpha_fill_can_rebuild_portfolio_immediately(test_app, pg_store):
     assert body["portfolio"]["fills"][0]["executed_at"] == "2026-06-01T10:30:00+08:00"
 
 
-def test_alpha_research_candidate_can_be_promoted_to_ticket(test_app, pg_store, monkeypatch):
+def test_alpha_research_candidate_can_be_promoted_to_ticket(authenticated_client, test_app, pg_store, monkeypatch):
     from src.api import routes_alpha
 
     class FakeResearchService:
@@ -319,8 +319,8 @@ def test_alpha_research_candidate_can_be_promoted_to_ticket(test_app, pg_store, 
         yield FakeResearchService()
 
     test_app.dependency_overrides[routes_alpha.get_alpha_research_service] = override_get_alpha_research_service
-    pg_store.add_alpha_watchlist_item(symbol="AAPLx", underlying_symbol="AAPL", priority=1)
-    client = TestClient(test_app)
+    pg_store.add_alpha_watchlist_item(user_id="test-user", symbol="AAPLx", underlying_symbol="AAPL", priority=1)
+    client = authenticated_client
 
     response = client.post("/api/v1/alpha/research/propose-top-ticket", json={"thesis_prefix": "auto"})
 
@@ -329,7 +329,7 @@ def test_alpha_research_candidate_can_be_promoted_to_ticket(test_app, pg_store, 
     assert response.json()["ticket_id"].startswith("alpha-ticket-")
 
 
-def test_alpha_capabilities_report_manual_mode(monkeypatch):
+def test_alpha_capabilities_report_manual_mode(authenticated_client, monkeypatch):
     from src.api import routes_alpha
 
     class FakeExecutionService:
@@ -339,7 +339,7 @@ def test_alpha_capabilities_report_manual_mode(monkeypatch):
     monkeypatch.setattr(routes_alpha, "_get_alpha_execution_service", lambda: FakeExecutionService())
 
     app = build_app()
-    client = TestClient(app)
+    client = authenticated_client
 
     response = client.get("/api/v1/alpha/capabilities")
 
@@ -347,7 +347,7 @@ def test_alpha_capabilities_report_manual_mode(monkeypatch):
     assert response.json()["mode"] == "manual"
 
 
-def test_generate_portfolio_report_endpoint(test_app, pg_store):
+def test_generate_portfolio_report_endpoint(authenticated_client, test_app, pg_store):
     ticket_id = pg_store.insert_alpha_ticket(
         user_id="test-user",
         asset_symbol="AAPLx",
@@ -411,7 +411,7 @@ def _authenticated_client(test_app):
     return client
 
 
-def test_alpha_submit_returns_409_when_capability_disabled(monkeypatch):
+def test_alpha_submit_returns_409_when_capability_disabled(authenticated_client, monkeypatch):
     from src.api import routes_alpha
 
     class FakeExecutionService:
@@ -424,7 +424,7 @@ def test_alpha_submit_returns_409_when_capability_disabled(monkeypatch):
     monkeypatch.setattr(routes_alpha, "_get_alpha_execution_service", lambda: FakeExecutionService())
 
     app = build_app()
-    client = TestClient(app)
+    client = authenticated_client
 
     response = client.post(
         "/api/v1/alpha/orders/submit",

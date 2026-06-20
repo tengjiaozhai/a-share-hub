@@ -133,34 +133,48 @@ async def list_alpha_assets(service: AlphaMarketService = Depends(get_alpha_serv
 
 
 @router.post("/tickets")
-def create_alpha_ticket(payload: CreateAlphaTicketRequest, store: RuntimeStore = Depends(get_runtime_store)) -> dict:
-    ticket_id = store.insert_alpha_ticket(**payload.model_dump())
+def create_alpha_ticket(
+    payload: CreateAlphaTicketRequest,
+    store: RuntimeStore = Depends(get_runtime_store),
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
+    ticket_id = store.insert_alpha_ticket(user_id=user_id, **payload.model_dump())
     return {"ticket_id": ticket_id, "status": "PROPOSED"}
 
 
 @router.post("/tickets/{ticket_id}/approve")
-def approve_alpha_ticket(ticket_id: str, payload: ApproveAlphaTicketRequest, store: RuntimeStore = Depends(get_runtime_store)) -> dict:
-    tickets = store.list_alpha_tickets()
+def approve_alpha_ticket(
+    ticket_id: str,
+    payload: ApproveAlphaTicketRequest,
+    store: RuntimeStore = Depends(get_runtime_store),
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
+    tickets = store.list_alpha_tickets(user_id)
     ticket_exists = any(t["ticket_id"] == ticket_id for t in tickets)
     if not ticket_exists:
         raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} not found")
-    store.approve_alpha_ticket(ticket_id=ticket_id, operator_id=payload.operator_id)
+    store.approve_alpha_ticket(user_id=user_id, ticket_id=ticket_id, operator_id=payload.operator_id)
     return {"ticket_id": ticket_id, "status": "APPROVED"}
 
 
 @router.post("/tickets/{ticket_id}/fills")
-def record_alpha_fill(ticket_id: str, payload: RecordAlphaFillRequest, store: RuntimeStore = Depends(get_runtime_store)) -> dict:
-    tickets = store.list_alpha_tickets()
+def record_alpha_fill(
+    ticket_id: str,
+    payload: RecordAlphaFillRequest,
+    store: RuntimeStore = Depends(get_runtime_store),
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
+    tickets = store.list_alpha_tickets(user_id)
     ticket_exists = any(t["ticket_id"] == ticket_id for t in tickets)
     if not ticket_exists:
         raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} not found")
     payload_dict = payload.model_dump()
     rebuild_opening_cash = payload_dict.pop("rebuild_opening_cash")
     rebuild_price_map = payload_dict.pop("rebuild_price_map")
-    fill_id = store.insert_alpha_manual_fill(ticket_id=ticket_id, **payload_dict)
+    fill_id = store.insert_alpha_manual_fill(user_id=user_id, ticket_id=ticket_id, **payload_dict)
     response = {"ticket_id": ticket_id, "fill_id": fill_id, "recorded": True, "portfolio_rebuilt": False}
     if rebuild_opening_cash is not None:
-        response["portfolio"] = AlphaPortfolioService(store).rebuild_portfolio(
+        response["portfolio"] = AlphaPortfolioService(store, user_id=user_id).rebuild_portfolio(
             opening_cash=rebuild_opening_cash,
             price_map=rebuild_price_map,
         )
@@ -169,16 +183,20 @@ def record_alpha_fill(ticket_id: str, payload: RecordAlphaFillRequest, store: Ru
 
 
 @router.get("/portfolio")
-def get_alpha_portfolio(store: RuntimeStore = Depends(get_runtime_store)) -> dict:
-    return AlphaPortfolioService(store).load_portfolio()
+def get_alpha_portfolio(
+    store: RuntimeStore = Depends(get_runtime_store),
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
+    return AlphaPortfolioService(store, user_id=user_id).load_portfolio()
 
 
 @router.post("/portfolio/rebuilds")
 def rebuild_alpha_portfolio(
     payload: RebuildAlphaPortfolioRequest,
     store: RuntimeStore = Depends(get_runtime_store),
+    user_id: str = Depends(get_current_user_id),
 ) -> dict:
-    return AlphaPortfolioService(store).rebuild_portfolio(
+    return AlphaPortfolioService(store, user_id=user_id).rebuild_portfolio(
         opening_cash=payload.opening_cash,
         price_map=payload.price_map,
     )
@@ -195,9 +213,13 @@ def generate_portfolio_report(
 
 
 @router.post("/reconciliation/run")
-def run_alpha_reconciliation(payload: dict, store: RuntimeStore = Depends(get_runtime_store)) -> dict:
-    latest = store.get_latest_alpha_portfolio_snapshot() or {"cash_balance": 0.0}
-    internal_positions = {row["symbol"]: row["quantity"] for row in store.list_alpha_positions()}
+def run_alpha_reconciliation(
+    payload: dict,
+    store: RuntimeStore = Depends(get_runtime_store),
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
+    latest = store.get_latest_alpha_portfolio_snapshot(user_id) or {"cash_balance": 0.0}
+    internal_positions = {row["symbol"]: row["quantity"] for row in store.list_alpha_positions(user_id)}
     result = reconcile_alpha_positions(
         internal_positions=internal_positions,
         external_positions=payload["external_positions"],
@@ -205,6 +227,7 @@ def run_alpha_reconciliation(payload: dict, store: RuntimeStore = Depends(get_ru
         external_cash=payload["external_cash"],
     )
     run_id = store.insert_alpha_reconciliation_run(
+        user_id=user_id,
         source="manual",
         status=result["status"],
         discrepancies=result["discrepancies"],
@@ -217,7 +240,7 @@ def list_alpha_watchlist(
     store: RuntimeStore = Depends(get_runtime_store),
     user_id: str = Depends(get_current_user_id),
 ) -> dict:
-    return {"items": store.list_alpha_watchlist_items()}
+    return {"items": store.list_alpha_watchlist_items(user_id)}
 
 
 class AddAlphaWatchlistRequest(BaseModel):
@@ -232,7 +255,7 @@ def add_alpha_watchlist(
     store: RuntimeStore = Depends(get_runtime_store),
     user_id: str = Depends(get_current_user_id),
 ) -> dict:
-    store.add_alpha_watchlist_item(**payload.model_dump())
+    store.add_alpha_watchlist_item(user_id=user_id, **payload.model_dump())
     return {"stored": True, "symbol": payload.symbol}
 
 
@@ -267,11 +290,12 @@ def _apply_holdings_guidance(items: list[dict], positions: list[dict]) -> list[d
 @router.post("/research/scan")
 async def scan_alpha_watchlist(
     store: RuntimeStore = Depends(get_runtime_store),
+    user_id: str = Depends(get_current_user_id),
     research_service: AlphaResearchService = Depends(get_alpha_research_service),
 ) -> dict:
-    symbols = [item["symbol"] for item in store.list_alpha_watchlist_items()]
+    symbols = [item["symbol"] for item in store.list_alpha_watchlist_items(user_id)]
     ranked = await research_service.rank_watchlist(symbols)
-    return {"items": _apply_holdings_guidance(ranked, store.list_alpha_positions())}
+    return {"items": _apply_holdings_guidance(ranked, store.list_alpha_positions(user_id))}
 
 
 class ProposeTopTicketRequest(BaseModel):
@@ -283,9 +307,10 @@ class ProposeTopTicketRequest(BaseModel):
 async def propose_top_alpha_ticket(
     payload: ProposeTopTicketRequest,
     store: RuntimeStore = Depends(get_runtime_store),
+    user_id: str = Depends(get_current_user_id),
     research_service: AlphaResearchService = Depends(get_alpha_research_service),
 ) -> dict:
-    symbols = [item["symbol"] for item in store.list_alpha_watchlist_items()]
+    symbols = [item["symbol"] for item in store.list_alpha_watchlist_items(user_id)]
     if not symbols:
         raise HTTPException(status_code=400, detail="Watchlist is empty")
     ranked = await research_service.rank_watchlist(symbols)
@@ -294,7 +319,7 @@ async def propose_top_alpha_ticket(
     top = ranked[0]
     ticket_payload = research_service.build_ticket_from_signal(top, thesis_prefix=payload.thesis_prefix)
     ticket_payload["expires_at"] = payload.expires_at or "2026-06-01T16:00:00+08:00"
-    ticket_id = store.insert_alpha_ticket(**ticket_payload)
+    ticket_id = store.insert_alpha_ticket(user_id=user_id, **ticket_payload)
     return {"ticket_id": ticket_id, **ticket_payload}
 
 
@@ -312,12 +337,17 @@ def preview_alpha_order(payload: dict) -> dict:
 
 
 @router.post("/orders/submit")
-def submit_alpha_order(payload: dict, store=Depends(get_runtime_store)) -> dict:
+def submit_alpha_order(
+    payload: dict,
+    store=Depends(get_runtime_store),
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
     request = AlphaExecutionRequest(**payload)
     submission = _get_alpha_execution_service().build_submission(request)
     if not submission["enabled"]:
         raise HTTPException(status_code=409, detail=submission["reason"])
     attempt_id = store.insert_alpha_api_order_attempt(
+        user_id=user_id,
         ticket_id=request.ticket_id,
         asset_symbol=request.asset_symbol,
         action=request.action,

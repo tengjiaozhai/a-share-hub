@@ -1090,27 +1090,31 @@ class RuntimeStore:
                 for row in rows
             ]
 
-    def add_alpha_watchlist_item(self, symbol: str, underlying_symbol: str, priority: int) -> None:
-        # Watchlist 由 Worktree 2 维护，这里保留兼容
+    def add_alpha_watchlist_item(self, user_id: str, symbol: str, underlying_symbol: str, priority: int) -> None:
         with self.engine.begin() as conn:
             conn.execute(
                 AlphaWatchlistItemRow.__table__.insert().values(
+                    user_id=user_id,
                     symbol=symbol,
                     underlying_symbol=underlying_symbol,
                     priority=priority,
                 )
             )
 
-    def remove_alpha_watchlist_item(self, symbol: str) -> None:
+    def remove_alpha_watchlist_item(self, user_id: str, symbol: str) -> None:
         with self.engine.begin() as conn:
             conn.execute(
-                AlphaWatchlistItemRow.__table__.delete().where(AlphaWatchlistItemRow.symbol == symbol)
+                AlphaWatchlistItemRow.__table__.delete().where(
+                    (AlphaWatchlistItemRow.user_id == user_id) & (AlphaWatchlistItemRow.symbol == symbol)
+                )
             )
 
-    def list_alpha_watchlist_items(self) -> list[dict]:
+    def list_alpha_watchlist_items(self, user_id: str) -> list[dict]:
         with self.engine.begin() as conn:
             rows = conn.execute(
-                select(AlphaWatchlistItemRow).order_by(AlphaWatchlistItemRow.priority, AlphaWatchlistItemRow.symbol)
+                select(AlphaWatchlistItemRow)
+                .where(AlphaWatchlistItemRow.user_id == user_id)
+                .order_by(AlphaWatchlistItemRow.priority, AlphaWatchlistItemRow.symbol)
             ).fetchall()
             return [
                 {
@@ -1121,6 +1125,9 @@ class RuntimeStore:
                 }
                 for row in rows
             ]
+
+
+
 
     def insert_alpha_api_order_attempt(
         self,
