@@ -14,7 +14,7 @@ from src.agents.llm_client import LLMClient
 from src.alpha.execution_service import AlphaExecutionService
 from src.alpha.portfolio_service import AlphaPortfolioService
 from src.api.dashboard_page.render import render_dashboard_html
-from src.api.dependencies import get_current_user_id
+from src.api.dependencies import get_current_user, get_current_user_id
 from src.core.config import Settings
 from src.core.market_rules import resolve_lot_size
 from src.data.providers.akshare_provider import AkshareProvider
@@ -76,7 +76,7 @@ def _probe_services() -> dict:
 
     return {"database": "ok", "llm": llm_status, "market": market_status}
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 _HISTORY_LIMIT = 100
 _HISTORY_CURSOR_SEPARATOR = "|"

@@ -1,8 +1,14 @@
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
-router = APIRouter(prefix="/api/v1/crypto", tags=["crypto"])
+from src.api.dependencies import get_current_user
+
+router = APIRouter(
+    prefix="/api/v1/crypto",
+    tags=["crypto"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 @router.get("/status")

@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends
 
 from src.api.auth_security import require_role
+from src.api.dependencies import get_current_user
 from src.core.config import Settings
 from src.storage.dependencies import get_runtime_store
 from src.storage.redis_cache import RedisCache, should_use_redis_cache
 
-router = APIRouter(prefix="/api/v1")
+router = APIRouter(prefix="/api/v1", dependencies=[Depends(get_current_user)])
 
 
 @router.post("/kill-switch/activate")

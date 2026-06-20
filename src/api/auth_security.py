@@ -4,7 +4,6 @@ import hmac
 import json
 import secrets
 import time
-from urllib.parse import quote
 
 from fastapi import HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -13,21 +12,6 @@ from src.core.config import Settings
 from src.storage.auth_store import AuthStore
 from src.storage.dependencies import get_runtime_store
 
-PROTECTED_EXACT = {"/dashboard"}
-PROTECTED_PREFIXES = (
-    "/api/v1/dashboard",
-    "/api/v1/market",
-    "/api/v1/alpha",
-    "/api/v1/us-stock",
-    "/api/v1/a-stock",
-    "/api/v1/decision-runs",
-    "/api/v1/execution-plans",
-    "/api/v1/portfolio-targets",
-    "/api/v1/reconciliation",
-    "/api/v1/kill-switch",
-    "/api/v1/broker-events",
-    "/api/v1/crypto",
-)
 PUBLIC_EXACT = {
     "/login",
     "/register",
@@ -95,25 +79,16 @@ def get_current_user_from_request(request: Request) -> dict | None:
 
 
 async def auth_middleware(request: Request, call_next):
-    path = request.url.path
     user = get_current_user_from_request(request)
     request.state.user = user
 
-    if path in {"/login", "/register"} and user:
+    if request.url.path in {"/login", "/register"} and user:
         return RedirectResponse("/dashboard", status_code=303)
 
-    if _is_protected_path(path) and not user:
-        if path == "/dashboard":
-            return RedirectResponse(f"/login?next={quote(str(request.url.path))}", status_code=303)
-        return JSONResponse({"detail": "Not authenticated"}, status_code=401)
+    if request.url.path == "/dashboard" and not user:
+        return RedirectResponse("/login?next=/dashboard", status_code=303)
 
     return await call_next(request)
-
-
-def _is_protected_path(path: str) -> bool:
-    if path in PUBLIC_EXACT or path.startswith(PUBLIC_PREFIXES):
-        return False
-    return path in PROTECTED_EXACT or path.startswith(PROTECTED_PREFIXES)
 
 
 def _public_user(user: dict) -> dict:

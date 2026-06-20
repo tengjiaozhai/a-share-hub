@@ -2,14 +2,18 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from src.api.dependencies import get_current_user_id
+from src.api.dependencies import get_current_user, get_current_user_id
 from src.us_stock.binance_asset import get_binance_us_assets
 from src.us_stock.watchlist import WatchlistStore
 from src.us_stock.yahoo_provider import YahooProvider
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/us-stock", tags=["us-stock"])
+router = APIRouter(
+    prefix="/api/v1/us-stock",
+    tags=["us-stock"],
+    dependencies=[Depends(get_current_user)],
+)
 
 _yahoo_provider: YahooProvider | None = None
 # 修复：原模块级单例在第一次调用时被绑定到某 user_id，后续所有请求都拿到错绑定的 store。

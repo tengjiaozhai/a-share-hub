@@ -14,7 +14,7 @@ from src.alpha.report_service import AlphaPortfolioReportService
 from src.alpha.research_service import AlphaResearchService
 from src.alpha.service import AlphaMarketService
 from src.alpha.signal_engine import AlphaSignalEngine
-from src.api.dependencies import get_current_user_id
+from src.api.dependencies import get_current_user, get_current_user_id
 from src.storage.dependencies import get_runtime_store
 from src.storage.runtime_store import RuntimeStore
 
@@ -22,7 +22,11 @@ from src.storage.runtime_store import RuntimeStore
 def _get_alpha_execution_service() -> AlphaExecutionService:
     return AlphaExecutionService(mode="manual", gateway=None)
 
-router = APIRouter(prefix="/api/v1/alpha", tags=["alpha"])
+router = APIRouter(
+    prefix="/api/v1/alpha",
+    tags=["alpha"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 class CreateAlphaTicketRequest(BaseModel):

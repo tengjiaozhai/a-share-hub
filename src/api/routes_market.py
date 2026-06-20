@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from src.api.dependencies import get_current_user
 from src.data.providers.akshare_errors import AkshareBreakerOpenError, AkshareUpstreamError
 from src.data.providers.akshare_provider import AkshareProvider
 
-router = APIRouter(prefix="/api/v1/market")
+router = APIRouter(prefix="/api/v1/market", dependencies=[Depends(get_current_user)])
 
 _akshare_provider: AkshareProvider | None = None
 

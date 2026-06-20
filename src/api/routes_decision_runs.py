@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from src.api.dependencies import get_current_user_id
+from src.api.dependencies import get_current_user, get_current_user_id
 from src.domain.interfaces.decision_run_repository import DecisionRunRepository
 from src.domain.value_objects.symbol import Symbol
 from src.storage.dependencies import get_decision_run_repository
 from src.use_cases.create_decision_run import CreateDecisionRunRequest, CreateDecisionRunUseCase
 
-router = APIRouter(prefix="/api/v1")
+router = APIRouter(prefix="/api/v1", dependencies=[Depends(get_current_user)])
 
 
 @router.get("/decision-runs")

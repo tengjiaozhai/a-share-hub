@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends
 
-from src.api.dependencies import get_current_user_id
+from src.api.dependencies import get_current_user, get_current_user_id
 from src.storage.dependencies import get_runtime_store
 
-router = APIRouter(prefix="/api/v1")
+router = APIRouter(prefix="/api/v1", dependencies=[Depends(get_current_user)])
 
 
 @router.get("/portfolio-targets/active")

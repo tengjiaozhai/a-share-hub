@@ -3,11 +3,15 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.a_stock.watchlist import AShareWatchlistStore
-from src.api.dependencies import get_current_user_id
+from src.api.dependencies import get_current_user, get_current_user_id
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/a-stock", tags=["a-stock"])
+router = APIRouter(
+    prefix="/api/v1/a-stock",
+    tags=["a-stock"],
+    dependencies=[Depends(get_current_user)],
+)
 
 # 修复：原模块级单例在第一次调用时被绑定到某 user_id，后续所有请求都拿到错绑定的 store。
 # 改为 per-user 缓存：每个 user_id 复用独立连接池。

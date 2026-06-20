@@ -17,10 +17,16 @@ def repository():
 def client(repository):
     from src.main import build_app
     from src.storage.dependencies import get_decision_run_repository
-    from src.api.dependencies import get_current_user_id
+    from src.api.dependencies import get_current_user, get_current_user_id
 
     app = build_app()
     app.dependency_overrides[get_decision_run_repository] = lambda: repository
+    app.dependency_overrides[get_current_user] = lambda: {
+        "user_id": TEST_USER_ID,
+        "username": "test-user",
+        "email": "test@example.com",
+        "role": "user",
+    }
     app.dependency_overrides[get_current_user_id] = lambda: TEST_USER_ID
 
     return TestClient(app)
