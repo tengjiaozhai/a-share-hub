@@ -38,6 +38,7 @@ logs/
 
 # 临时文件
 /tmp/
+.worktrees/
 *.tmp
 *.bak
 
