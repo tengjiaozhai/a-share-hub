@@ -55,3 +55,14 @@ class AuthStore:
                 .where(AppUserRow.user_id == user_id)
                 .values(last_login_at=datetime.utcnow())
             )
+
+    def set_role(self, user_id: str, role: str) -> bool:
+        if role not in {"user", "admin"}:
+            raise ValueError(f"unsupported role: {role}")
+        with self.engine.begin() as conn:
+            result = conn.execute(
+                AppUserRow.__table__.update()
+                .where(AppUserRow.user_id == user_id)
+                .values(role=role)
+            )
+        return result.rowcount == 1

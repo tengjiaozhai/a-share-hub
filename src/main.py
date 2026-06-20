@@ -253,6 +253,11 @@ def build_cli_parser() -> argparse.ArgumentParser:
     # scheduler
     subparsers.add_parser("scheduler", help="启动独立日频调度器")
 
+    # set-user-role
+    role_parser = subparsers.add_parser("set-user-role", help="显式赋予用户角色")
+    role_parser.add_argument("--user-id", required=True)
+    role_parser.add_argument("--role", required=True, choices=("user", "admin"))
+
     return parser
 
 
@@ -290,6 +295,13 @@ def dispatch_command(args: argparse.Namespace) -> None:
 
         logging.basicConfig(level=logging.INFO)
         asyncio.run(run_scheduler_forever())
+    elif args.command == "set-user-role":
+        from src.storage.auth_store import AuthStore
+
+        store = AuthStore(get_runtime_store().engine)
+        if not store.set_role(args.user_id, args.role):
+            raise SystemExit(f"user not found: {args.user_id}")
+        print(f"updated {args.user_id} role to {args.role}")
     elif args.command == "serve" or args.command is None:
         import logging
 

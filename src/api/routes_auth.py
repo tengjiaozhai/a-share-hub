@@ -52,8 +52,7 @@ async def register(request: Request):
     if store.get_user_by_account(username) or store.get_user_by_account(email):
         return _error("/register", "用户名或邮箱已存在", next_url, wants_json, status_code=409)
 
-    role = "admin" if username == "tengjiaozhai" else "user"
-    user = store.create_user(username, email, hash_password(password), role)
+    user = store.create_user(username, email, hash_password(password), role="user")
     return _login_response(user, next_url, wants_json)
 
 
