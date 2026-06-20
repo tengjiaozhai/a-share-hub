@@ -59,13 +59,9 @@ async def test_unimplemented_daily_trading_marks_run_and_lock_failed(monkeypatch
     engine = create_engine("sqlite:///:memory:", future=True)
     PaperBase.metadata.create_all(engine)
 
-    class FakeRuntimeStore:
-        def __init__(self, engine):
-            self.engine = engine
-
     monkeypatch.setattr(
-        "src.scheduler.daily_scheduler.get_runtime_store",
-        lambda: FakeRuntimeStore(engine),
+        "src.scheduler.daily_scheduler.get_runtime_engine",
+        lambda: engine,
     )
 
     scheduler = DailyScheduler(calendar=FakeCalendar(is_trading_day=True))
@@ -91,13 +87,9 @@ async def test_non_trading_day_creates_skipped_run_without_executing(monkeypatch
     engine = create_engine("sqlite:///:memory:", future=True)
     PaperBase.metadata.create_all(engine)
 
-    class FakeRuntimeStore:
-        def __init__(self, engine):
-            self.engine = engine
-
     monkeypatch.setattr(
-        "src.scheduler.daily_scheduler.get_runtime_store",
-        lambda: FakeRuntimeStore(engine),
+        "src.scheduler.daily_scheduler.get_runtime_engine",
+        lambda: engine,
     )
 
     scheduler = DailyScheduler(calendar=FakeCalendar(is_trading_day=False, reason="A股休市"))
@@ -118,13 +110,9 @@ async def test_existing_skipped_run_blocks_duplicate_daily_job(monkeypatch):
     engine = create_engine("sqlite:///:memory:", future=True)
     PaperBase.metadata.create_all(engine)
 
-    class FakeRuntimeStore:
-        def __init__(self, engine):
-            self.engine = engine
-
     monkeypatch.setattr(
-        "src.scheduler.daily_scheduler.get_runtime_store",
-        lambda: FakeRuntimeStore(engine),
+        "src.scheduler.daily_scheduler.get_runtime_engine",
+        lambda: engine,
     )
 
     today = datetime.now(CN_TZ).date()

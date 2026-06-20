@@ -69,7 +69,15 @@ class PaperLedgerStore:
         params: dict,
         watchlist: list,
     ) -> PaperRunRow:
-        """创建运行记录"""
+        """创建运行记录（account 必须属于当前租户）"""
+        account = self._session.execute(
+            select(PaperAccountRow).where(
+                PaperAccountRow.account_id == account_id,
+                PaperAccountRow.user_id == self.user_id,
+            )
+        ).scalar_one_or_none()
+        if account is None:
+            raise LookupError(f"paper account not found: {account_id}")
         run = PaperRunRow(
             run_id=f"run-{uuid.uuid4().hex[:12]}",
             user_id=self.user_id,
@@ -157,7 +165,15 @@ class PaperLedgerStore:
         quantity: int,
         avg_cost: float,
     ):
-        """更新持仓"""
+        """更新持仓（account 必须属于当前租户）"""
+        account = self._session.execute(
+            select(PaperAccountRow).where(
+                PaperAccountRow.account_id == account_id,
+                PaperAccountRow.user_id == self.user_id,
+            )
+        ).scalar_one_or_none()
+        if account is None:
+            raise LookupError(f"paper account not found: {account_id}")
         position = self.get_position(account_id, symbol)
         if position is None:
             position = PaperPositionRow(
@@ -195,7 +211,15 @@ class PaperLedgerStore:
         run_id: str | None = None,
         source: str = "auto",
     ) -> PaperNavDailyRow:
-        """创建净值快照"""
+        """创建净值快照（account 必须属于当前租户）"""
+        account = self._session.execute(
+            select(PaperAccountRow).where(
+                PaperAccountRow.account_id == account_id,
+                PaperAccountRow.user_id == self.user_id,
+            )
+        ).scalar_one_or_none()
+        if account is None:
+            raise LookupError(f"paper account not found: {account_id}")
         nav_row = PaperNavDailyRow(
             nav_id=f"nav-{self.user_id}-{account_id}-{trade_date.isoformat()}-{source}",
             user_id=self.user_id,

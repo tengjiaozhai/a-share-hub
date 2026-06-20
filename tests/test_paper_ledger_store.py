@@ -1,12 +1,12 @@
 from datetime import date, datetime, timedelta
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from src.core.tenant import TenantContext
 from src.paper_ledger.models import PaperBase, ScheduledJobLockRow
-from src.core.tenant import TenantContext
 from src.paper_ledger.store import PaperLedgerStore
 
 TEST_USER_ID = "test-user"
@@ -260,3 +260,98 @@ def test_expired_running_job_lock_can_be_reclaimed():
     assert lock.lock_owner == "worker-2"
     assert lock.status == "running"
     assert lock.finished_at is None
+
+
+def test_run_status_update_cannot_cross_tenants(session=None):
+    session = setup_db()
+    from datetime import date as _date
+    alice = PaperLedgerStore(session, TenantContext("alice"))
+    bob = PaperLedgerStore(session, TenantContext("bob"))
+    account = alice.get_or_create_account("a", "manual")
+    run = alice.create_run(account.account_id, "a", _date.today(), "manual", {}, [])
+
+    with pytest.raises(LookupError, match="paper run not found"):
+        bob.update_run_status(run.run_id, "success")
+
+
+def test_create_fill_requires_run_owned_by_tenant():
+    session = setup_db()
+    from datetime import date as _date
+    alice = PaperLedgerStore(session, TenantContext("alice"))
+    bob = PaperLedgerStore(session, TenantContext("bob"))
+    account = alice.get_or_create_account("a", "manual")
+    run = alice.create_run(account.account_id, "a", _date.today(), "manual", {}, [])
+
+    with pytest.raises(LookupError, match="paper run not found"):
+        bob.create_fill(run.run_id, account.account_id, "600519.SH", "BUY", 100, 10.0)
+
+
+def test_create_run_rejects_cross_tenant_account():
+    session = setup_db()
+    from datetime import date as _date
+    alice = PaperLedgerStore(session, TenantContext("alice"))
+    bob = PaperLedgerStore(session, TenantContext("bob"))
+    alice_account = alice.get_or_create_account("a", "manual")
+
+    with pytest.raises(LookupError, match="paper account not found"):
+        bob.create_run(
+            account_id=alice_account.account_id,
+            market="a",
+            trade_date=_date.today(),
+            run_source="manual",
+            params={},
+            watchlist=[],
+        )
+
+
+def test_create_fill_rejects_cross_tenant_account():
+    session = setup_db()
+    from datetime import date as _date
+    alice = PaperLedgerStore(session, TenantContext("alice"))
+    bob = PaperLedgerStore(session, TenantContext("bob"))
+    alice_account = alice.get_or_create_account("a", "manual")
+    alice_run = alice.create_run(
+        account_id=alice_account.account_id, market="a", trade_date=_date.today(),
+        run_source="manual", params={}, watchlist=[],
+    )
+    bob_account = bob.get_or_create_account("a", "manual")
+    bob_run = bob.create_run(
+        account_id=bob_account.account_id, market="a", trade_date=_date.today(),
+        run_source="manual", params={}, watchlist=[],
+    )
+
+    with pytest.raises(LookupError, match="paper account not found"):
+        bob.create_fill(bob_run.run_id, alice_account.account_id, "600519.SH", "BUY", 100, 10.0)
+
+
+def test_create_nav_snapshot_rejects_cross_tenant_account():
+    session = setup_db()
+    from datetime import date as _date
+    alice = PaperLedgerStore(session, TenantContext("alice"))
+    bob = PaperLedgerStore(session, TenantContext("bob"))
+    alice_account = alice.get_or_create_account("a", "manual")
+
+    with pytest.raises(LookupError, match="paper account not found"):
+        bob.create_nav_snapshot(
+            account_id=alice_account.account_id,
+            trade_date=_date.today(),
+            nav=100.0,
+            cash=50.0,
+            positions_value=50.0,
+            source="auto",
+        )
+
+
+def test_update_position_rejects_cross_tenant_account():
+    session = setup_db()
+    alice = PaperLedgerStore(session, TenantContext("alice"))
+    bob = PaperLedgerStore(session, TenantContext("bob"))
+    alice_account = alice.get_or_create_account("a", "manual")
+
+    with pytest.raises(LookupError, match="paper account not found"):
+        bob.update_position(
+            account_id=alice_account.account_id,
+            symbol="600519.SH",
+            quantity=100,
+            avg_cost=10.0,
+        )
