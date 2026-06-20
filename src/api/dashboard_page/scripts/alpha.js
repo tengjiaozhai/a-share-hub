@@ -57,10 +57,78 @@ function parseAlphaReportSymbols(raw) {
     .filter(Boolean)));
 }
 
-function resolveAlphaReportSymbols() {
-  const input = document.getElementById('alpha-report-symbol');
-  const typedSymbols = parseAlphaReportSymbols(input?.value);
-  return typedSymbols.length ? typedSymbols : alphaPortfolioSymbols;
+function createAlphaLotRow(lot = {}) {
+  return `<div class="alpha-lot-row" data-alpha-lot-row>
+    <div class="alpha-lot-index">批次</div>
+    <label class="alpha-field">
+      <span>买入日期</span>
+      <input type="date" data-alpha-lot-buy-date value="${escapeHtml(lot.buy_date || '')}" />
+    </label>
+    <label class="alpha-field">
+      <span>买入价格</span>
+      <input type="number" min="0" step="0.0001" data-alpha-lot-buy-price value="${escapeHtml(lot.buy_price ?? '')}" placeholder="如 18.56" />
+    </label>
+    <label class="alpha-field">
+      <span>数量</span>
+      <input type="number" min="0" step="0.0001" data-alpha-lot-quantity value="${escapeHtml(lot.quantity ?? '')}" placeholder="如 200" />
+    </label>
+    <button type="button" class="alpha-builder-remove alpha-builder-remove-lot" data-alpha-remove-lot>删除批次</button>
+  </div>`;
+}
+
+function createAlphaStockCard(position = {}) {
+  const symbol = String(position.symbol || '').trim().toUpperCase();
+  const lots = Array.isArray(position.lots) && position.lots.length ? position.lots : [{}];
+  return `<article class="alpha-stock-card" data-alpha-stock-card>
+    <div class="alpha-stock-card-head">
+      <label class="alpha-field alpha-stock-symbol-field">
+        <span>股票代码</span>
+        <input data-alpha-symbol value="${escapeHtml(symbol)}" placeholder="如 MU / 600519 / 000001.SZ" />
+      </label>
+      <button type="button" class="alpha-builder-remove alpha-builder-remove-stock" data-alpha-remove-stock>删除股票</button>
+    </div>
+    <div class="alpha-stock-card-lots" data-alpha-lots>
+      ${lots.map((lot) => createAlphaLotRow(lot)).join('')}
+    </div>
+    <div class="alpha-stock-card-actions">
+      <button type="button" class="alpha-builder-add-lot" data-alpha-add-lot>新增批次</button>
+    </div>
+  </article>`;
+}
+
+function appendAlphaStockCard(position = {}) {
+  const root = document.getElementById('alpha-stock-cards');
+  if (!root) return;
+  root.insertAdjacentHTML('beforeend', createAlphaStockCard(position));
+}
+
+function ensureAlphaAnalysisBuilder() {
+  const root = document.getElementById('alpha-stock-cards');
+  if (!root) return;
+  if (!root.querySelector('[data-alpha-stock-card]')) {
+    appendAlphaStockCard();
+  }
+}
+
+function collectAlphaReportPositions() {
+  const cards = Array.from(document.querySelectorAll('[data-alpha-stock-card]'));
+  return cards.map((card) => {
+    const symbol = String(card.querySelector('[data-alpha-symbol]')?.value || '').trim().toUpperCase();
+    const lots = Array.from(card.querySelectorAll('[data-alpha-lot-row]')).map((row) => {
+      const buyDate = String(row.querySelector('[data-alpha-lot-buy-date]')?.value || '').trim();
+      const buyPrice = String(row.querySelector('[data-alpha-lot-buy-price]')?.value || '').trim();
+      const quantity = String(row.querySelector('[data-alpha-lot-quantity]')?.value || '').trim();
+      if (!buyDate && !buyPrice && !quantity) {
+        return null;
+      }
+      return {
+        buy_date: buyDate || null,
+        buy_price: buyPrice === '' ? null : Number(buyPrice),
+        quantity: quantity === '' ? null : Number(quantity),
+      };
+    }).filter(Boolean);
+    return { symbol, lots };
+  }).filter((position) => position.symbol);
 }
 
 function groupAlphaFillsBySymbol(fills) {
@@ -403,7 +471,7 @@ function renderAlphaReport(report, requestedSymbols = []) {
   const items = toList(report?.items);
   if (!items.length) {
     const emptyNote = requestedSymbols.length
-      ? `未返回 ${requestedSymbols.join(', ')} 的分析结果。若后端尚未支持空仓代码分析，请对接 report 接口的 symbols / primary_symbol 入参。`
+      ? `未返回 ${requestedSymbols.join(', ')} 的分析结果。请检查输入股票代码，或留空走当前持仓分析。`
       : '当前无持仓可分析';
     body.innerHTML = `<div class="alpha-report-empty">${escapeHtml(emptyNote)}</div>`;
     return;
@@ -435,8 +503,18 @@ function renderAlphaReport(report, requestedSymbols = []) {
     const btStatus = normalizeText(backtest.status, 'no_data');
     const btScore = normalizeText(backtest.score, 'N/A');
     const recReason = normalizeText(recommendation.reason, '无明确建议');
-    const ratioText = analysisContext.position_ratio == null ? '--' : `${formatNumber(analysisContext.position_ratio, 2)}%`;
-    const buyTimeText = normalizeText(analysisContext.buy_time, '--');
+    const lotCount = Number(analysisContext.lot_count || 0);
+    const totalInputQuantity = analysisContext.total_quantity == null
+      ? '--'
+      : formatNumber(analysisContext.total_quantity, 4);
+    const latestBuyDate = normalizeText(analysisContext.last_buy_date, '--');
+    const firstBuyDate = normalizeText(analysisContext.first_buy_date, '--');
+    const weightedBuyPrice = analysisContext.weighted_avg_cost == null
+      ? '--'
+      : formatNumber(analysisContext.weighted_avg_cost, 4);
+    const totalInputCost = analysisContext.total_cost == null
+      ? '--'
+      : formatCurrency(analysisContext.total_cost);
 
     let riskNotesHtml = '';
     if (riskNotes.length) {
@@ -457,10 +535,14 @@ function renderAlphaReport(report, requestedSymbols = []) {
         <span class="alpha-report-grid-label">浮盈</span><span class="alpha-report-grid-value ${pnlClass}">${escapeHtml(pnlText)}</span>
       </div>
       <div class="alpha-report-grid">
-        <span class="alpha-report-grid-label">输入仓位</span><span class="alpha-report-grid-value">${escapeHtml(ratioText)}</span>
-        <span class="alpha-report-grid-label">买入时间</span><span class="alpha-report-grid-value">${escapeHtml(buyTimeText)}</span>
+        <span class="alpha-report-grid-label">买入批次</span><span class="alpha-report-grid-value">${escapeHtml(String(lotCount || 0))}</span>
+        <span class="alpha-report-grid-label">累计数量</span><span class="alpha-report-grid-value">${escapeHtml(String(totalInputQuantity))}</span>
+        <span class="alpha-report-grid-label">累计投入</span><span class="alpha-report-grid-value">${escapeHtml(totalInputCost)}</span>
+        <span class="alpha-report-grid-label">加权均价</span><span class="alpha-report-grid-value">${escapeHtml(weightedBuyPrice)}</span>
       </div>
       <div class="alpha-report-grid">
+        <span class="alpha-report-grid-label">首次买入</span><span class="alpha-report-grid-value">${escapeHtml(firstBuyDate)}</span>
+        <span class="alpha-report-grid-label">最近买入</span><span class="alpha-report-grid-value">${escapeHtml(latestBuyDate)}</span>
         <span class="alpha-report-grid-label">模拟建议</span><span class="alpha-report-grid-value">${escapeHtml(shadowAction)} (${escapeHtml(shadowConfidence)})</span>
         <span class="alpha-report-grid-label">综合建议</span><span class="alpha-report-grid-value">${escapeHtml(actionLabel)} (${escapeHtml(recConfidence)})</span>
       </div>
@@ -487,22 +569,16 @@ async function loadAlphaReport() {
   const windowSelect = document.getElementById('alpha-report-window');
   const shadowToggle = document.getElementById('alpha-report-include-shadow');
   const backtestToggle = document.getElementById('alpha-report-include-backtest');
-  const symbolInput = document.getElementById('alpha-report-symbol');
-  const ratioInput = document.getElementById('alpha-report-position-ratio');
-  const buyTimeInput = document.getElementById('alpha-report-buy-time');
   const body = document.getElementById('alpha-report-body');
   if (!body) return;
-  const requestedSymbols = resolveAlphaReportSymbols();
-  if (symbolInput) {
-    symbolInput.value = parseAlphaReportSymbols(symbolInput.value).join(', ');
-  }
+  const positions = collectAlphaReportPositions();
+  const requestedSymbols = positions.length
+    ? positions.map((position) => position.symbol)
+    : alphaPortfolioSymbols;
 
-  // Integration note: backend can accept explicit symbol analysis via symbols[] and primary_symbol.
   const payload = {
+    positions: positions,
     symbols: requestedSymbols,
-    primary_symbol: requestedSymbols[0] || null,
-    position_ratio: ratioInput?.value === '' ? null : Number(ratioInput?.value),
-    buy_time: buyTimeInput?.value || null,
     include_shadow: shadowToggle?.checked !== false,
     include_backtest: backtestToggle?.checked !== false,
     backtest_window: windowSelect?.value || '60d',
@@ -533,3 +609,31 @@ async function loadAlphaReport() {
 }
 
 document.getElementById('alpha-report-generate')?.addEventListener('click', loadAlphaReport);
+document.getElementById('alpha-add-stock-card')?.addEventListener('click', () => appendAlphaStockCard());
+document.getElementById('alpha-analysis-builder')?.addEventListener('click', (event) => {
+  const trigger = event.target.closest('button');
+  if (!trigger) return;
+  if (trigger.matches('[data-alpha-add-lot]')) {
+    const stockCard = trigger.closest('[data-alpha-stock-card]');
+    const lotsRoot = stockCard?.querySelector('[data-alpha-lots]');
+    if (lotsRoot) {
+      lotsRoot.insertAdjacentHTML('beforeend', createAlphaLotRow());
+    }
+    return;
+  }
+  if (trigger.matches('[data-alpha-remove-lot]')) {
+    const stockCard = trigger.closest('[data-alpha-stock-card]');
+    const lots = stockCard?.querySelectorAll('[data-alpha-lot-row]') || [];
+    if (lots.length > 1) {
+      trigger.closest('[data-alpha-lot-row]')?.remove();
+    }
+    return;
+  }
+  if (trigger.matches('[data-alpha-remove-stock]')) {
+    const cards = document.querySelectorAll('[data-alpha-stock-card]');
+    if (cards.length > 1) {
+      trigger.closest('[data-alpha-stock-card]')?.remove();
+    }
+  }
+});
+ensureAlphaAnalysisBuilder();

@@ -366,8 +366,18 @@ def test_generate_portfolio_report_endpoint(authenticated_client, test_app, pg_s
         json={
             "symbols": ["AAPLx"],
             "opening_cash": 10_000.0,
-            "position_ratio": 25,
-            "buy_time": "2026-06-01T09:30:00+08:00",
+            "positions": [
+                {
+                    "symbol": "AAPLx",
+                    "lots": [
+                        {
+                            "buy_date": "2026-06-01T09:30:00+08:00",
+                            "buy_price": 200.0,
+                            "quantity": 2.0,
+                        }
+                    ],
+                }
+            ],
         },
     )
 
@@ -377,16 +387,30 @@ def test_generate_portfolio_report_endpoint(authenticated_client, test_app, pg_s
     assert "portfolio_snapshot" in body
     assert body["analysis_input"] == {
         "symbols": ["AAPLx"],
-        "position_ratio": 25.0,
-        "buy_time": "2026-06-01T09:30:00+08:00",
+        "positions": [
+            {
+                "symbol": "AAPLx",
+                "lots": [
+                    {
+                        "buy_date": "2026-06-01T09:30:00+08:00",
+                        "buy_price": 200.0,
+                        "quantity": 2.0,
+                    }
+                ],
+            }
+        ],
     }
     assert len(body["items"]) == 1
     item = body["items"][0]
     assert item["symbol"] == "AAPLx"
     assert item["unrealized_pnl"] == 20.0
     assert item["analysis_context"] == {
-        "position_ratio": 25.0,
-        "buy_time": "2026-06-01T09:30:00+08:00",
+        "lot_count": 1,
+        "total_quantity": 2.0,
+        "total_cost": 400.0,
+        "weighted_avg_cost": 200.0,
+        "first_buy_date": "2026-06-01T09:30:00+08:00",
+        "last_buy_date": "2026-06-01T09:30:00+08:00",
     }
     assert item["recommendation"]["action"] in {"HOLD", "ADD", "REDUCE", "EXIT", "WATCH"}
 
@@ -411,8 +435,7 @@ def test_generate_portfolio_report_endpoint_normalizes_symbols_before_service(
                 "backtest_window": payload["backtest_window"],
                 "analysis_input": {
                     "symbols": payload["symbols"],
-                    "position_ratio": payload["position_ratio"],
-                    "buy_time": payload["buy_time"],
+                    "positions": payload["positions"],
                 },
                 "items": [],
             }
@@ -424,19 +447,45 @@ def test_generate_portfolio_report_endpoint_normalizes_symbols_before_service(
         "/api/v1/alpha/portfolio/report",
         json={
             "symbols": ["600519", "msft", "NVDA.US", "000001.SZ"],
+            "positions": [
+                {
+                    "symbol": "600519",
+                    "lots": [
+                        {"buy_date": "2026-06-20", "buy_price": 1500, "quantity": 100},
+                    ],
+                },
+                {
+                    "symbol": "msft",
+                    "lots": [
+                        {"buy_date": "2026-06-18", "buy_price": 420.5, "quantity": 2},
+                        {"buy_date": "2026-06-19", "buy_price": 425.0, "quantity": 1},
+                    ],
+                },
+            ],
             "include_shadow": True,
             "include_backtest": True,
             "backtest_window": "60d",
             "opening_cash": 10_000.0,
-            "position_ratio": 35,
-            "buy_time": "2026-06-20",
         },
     )
 
     assert response.status_code == 200
     assert captured_payload["symbols"] == ["600519.SH", "MSFT.US", "NVDA.US", "000001.SZ"]
-    assert captured_payload["position_ratio"] == 35.0
-    assert captured_payload["buy_time"] == "2026-06-20"
+    assert captured_payload["positions"] == [
+        {
+            "symbol": "600519.SH",
+            "lots": [
+                {"buy_date": "2026-06-20", "buy_price": 1500.0, "quantity": 100.0},
+            ],
+        },
+        {
+            "symbol": "MSFT.US",
+            "lots": [
+                {"buy_date": "2026-06-18", "buy_price": 420.5, "quantity": 2.0},
+                {"buy_date": "2026-06-19", "buy_price": 425.0, "quantity": 1.0},
+            ],
+        },
+    ]
 
 
 def test_generate_portfolio_report_endpoint_returns_analysis_context_for_requested_symbols(
@@ -456,8 +505,7 @@ def test_generate_portfolio_report_endpoint_returns_analysis_context_for_request
                 "backtest_window": payload["backtest_window"],
                 "analysis_input": {
                     "symbols": payload["symbols"],
-                    "position_ratio": payload["position_ratio"],
-                    "buy_time": payload["buy_time"],
+                    "positions": payload["positions"],
                 },
                 "items": [
                     {
@@ -478,8 +526,12 @@ def test_generate_portfolio_report_endpoint_returns_analysis_context_for_request
                         },
                         "recommendation": {"action": "WATCH", "confidence": 0.4, "reason": "test"},
                         "analysis_context": {
-                            "position_ratio": 50.0,
-                            "buy_time": "2026-06-01T09:30:00+08:00",
+                            "lot_count": 2,
+                            "total_quantity": 3.0,
+                            "total_cost": 1266.0,
+                            "weighted_avg_cost": 422.0,
+                            "first_buy_date": "2026-06-01T09:30:00+08:00",
+                            "last_buy_date": "2026-06-03T09:30:00+08:00",
                         },
                     }
                 ],
@@ -492,12 +544,27 @@ def test_generate_portfolio_report_endpoint_returns_analysis_context_for_request
         "/api/v1/alpha/portfolio/report",
         json={
             "symbols": ["msft"],
+            "positions": [
+                {
+                    "symbol": "msft",
+                    "lots": [
+                        {
+                            "buy_date": "2026-06-01T09:30:00+08:00",
+                            "buy_price": 420.0,
+                            "quantity": 2.0,
+                        },
+                        {
+                            "buy_date": "2026-06-03T09:30:00+08:00",
+                            "buy_price": 426.0,
+                            "quantity": 1.0,
+                        },
+                    ],
+                }
+            ],
             "include_shadow": False,
             "include_backtest": False,
             "backtest_window": "30d",
             "opening_cash": 10_000.0,
-            "position_ratio": 50,
-            "buy_time": "2026-06-01T09:30:00+08:00",
         },
     )
 
@@ -505,13 +572,32 @@ def test_generate_portfolio_report_endpoint_returns_analysis_context_for_request
     body = response.json()
     assert body["analysis_input"] == {
         "symbols": ["MSFT.US"],
-        "position_ratio": 50.0,
-        "buy_time": "2026-06-01T09:30:00+08:00",
+        "positions": [
+            {
+                "symbol": "MSFT.US",
+                "lots": [
+                    {
+                        "buy_date": "2026-06-01T09:30:00+08:00",
+                        "buy_price": 420.0,
+                        "quantity": 2.0,
+                    },
+                    {
+                        "buy_date": "2026-06-03T09:30:00+08:00",
+                        "buy_price": 426.0,
+                        "quantity": 1.0,
+                    },
+                ],
+            }
+        ],
     }
     assert body["items"][0]["symbol"] == "MSFT.US"
     assert body["items"][0]["analysis_context"] == {
-        "position_ratio": 50.0,
-        "buy_time": "2026-06-01T09:30:00+08:00",
+        "lot_count": 2,
+        "total_quantity": 3.0,
+        "total_cost": 1266.0,
+        "weighted_avg_cost": 422.0,
+        "first_buy_date": "2026-06-01T09:30:00+08:00",
+        "last_buy_date": "2026-06-03T09:30:00+08:00",
     }
 
 

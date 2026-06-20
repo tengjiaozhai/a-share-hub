@@ -61,15 +61,61 @@ def normalize_report_symbols(symbols: list[str] | None) -> list[str]:
     return normalized
 
 
+def normalize_report_positions(positions: list[dict] | None) -> list[dict]:
+    normalized_positions: list[dict] = []
+    for position in positions or []:
+        symbol = normalize_report_symbol(position.get("symbol"))
+        if not symbol:
+            continue
+
+        normalized_lots: list[dict] = []
+        for lot in position.get("lots") or []:
+            buy_date = str(lot.get("buy_date") or "").strip()
+            quantity = float(lot.get("quantity", 0.0) or 0.0)
+            buy_price = float(lot.get("buy_price", 0.0) or 0.0)
+            if not buy_date or quantity <= 0:
+                continue
+            normalized_lots.append(
+                {
+                    "buy_date": buy_date,
+                    "buy_price": buy_price,
+                    "quantity": quantity,
+                }
+            )
+
+        normalized_positions.append({"symbol": symbol, "lots": normalized_lots})
+    return normalized_positions
+
+
 def _normalize_analysis_input(payload: dict, symbols: list[str]) -> dict:
-    position_ratio = payload.get("position_ratio")
-    normalized_ratio = None if position_ratio is None else float(position_ratio)
-    buy_time = payload.get("buy_time")
-    normalized_buy_time = None if buy_time is None else str(buy_time)
+    normalized_positions = normalize_report_positions(payload.get("positions"))
     return {
         "symbols": symbols,
-        "position_ratio": normalized_ratio,
-        "buy_time": normalized_buy_time,
+        "positions": normalized_positions,
+    }
+
+
+def _build_analysis_context(position: dict | None) -> dict:
+    if not position:
+        return {}
+    lots = position.get("lots") or []
+    if not lots:
+        return {}
+
+    total_quantity = sum(float(lot.get("quantity", 0.0) or 0.0) for lot in lots)
+    total_cost = sum(
+        float(lot.get("quantity", 0.0) or 0.0) * float(lot.get("buy_price", 0.0) or 0.0)
+        for lot in lots
+    )
+    buy_dates = [str(lot.get("buy_date")) for lot in lots if lot.get("buy_date")]
+    weighted_avg_cost = 0.0 if total_quantity == 0 else round(total_cost / total_quantity, 6)
+    return {
+        "lot_count": len(lots),
+        "total_quantity": round(total_quantity, 6),
+        "total_cost": round(total_cost, 6),
+        "weighted_avg_cost": weighted_avg_cost,
+        "first_buy_date": min(buy_dates) if buy_dates else None,
+        "last_buy_date": max(buy_dates) if buy_dates else None,
     }
 
 
@@ -265,8 +311,12 @@ class AlphaPortfolioReportService:
 
     def generate_report(self, payload: dict) -> dict:
         """主入口：拼装 {generated_at, portfolio_snapshot, items[]}。"""
+        normalized_positions = normalize_report_positions(payload.get("positions"))
         symbols = normalize_report_symbols(payload.get("symbols") or [])
+        if normalized_positions and not symbols:
+            symbols = [position["symbol"] for position in normalized_positions]
         analysis_input = _normalize_analysis_input(payload, symbols)
+        requested_positions = {position["symbol"]: position for position in analysis_input["positions"]}
         include_shadow = bool(payload.get("include_shadow", True))
         include_backtest = bool(payload.get("include_backtest", True))
         backtest_window = _normalize_window(payload.get("backtest_window"))
@@ -326,14 +376,7 @@ class AlphaPortfolioReportService:
             items.append(
                 {
                     **position_section,
-                    "analysis_context": (
-                        {
-                            "position_ratio": analysis_input["position_ratio"],
-                            "buy_time": analysis_input["buy_time"],
-                        }
-                        if symbols and symbol in symbols
-                        else {}
-                    ),
+                    "analysis_context": _build_analysis_context(requested_positions.get(symbol)),
                     "fill_summary": fill_summary,
                     "shadow": shadow,
                     "backtest": backtest,

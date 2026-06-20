@@ -74,16 +74,27 @@ def test_dashboard_contains_holdings_and_history_ui(_patch_auth):
     assert "成交 / Multi-leg 历史" in html
 
 
-def test_dashboard_contains_code_analysis_first_controls(_patch_auth):
+def test_dashboard_contains_positions_builder_controls(_patch_auth):
     html = _dashboard_html()
-    assert 'id="alpha-report-symbol"' in html
-    assert 'id="alpha-report-position-ratio"' in html
-    assert 'id="alpha-report-buy-time"' in html
+    assert 'id="alpha-analysis-builder"' in html
+    assert 'id="alpha-stock-cards"' in html
+    assert 'id="alpha-add-stock-card"' in html
     assert 'id="alpha-report-generate"' in html
-    assert "股票代码" in html
-    assert "持仓仓位 (%)" in html
-    assert "买入时间" in html
-    assert "分析股票" in html
+    assert "分析标的" in html
+    assert "加仓批次" in html
+    assert "买入日期" in html
+    assert "买入价格" in html
+    assert "数量" in html
+    assert "新增股票" in html
+    assert "生成分析" in html
+
+
+def test_dashboard_forbids_legacy_ratio_and_buy_time_controls(_patch_auth):
+    html = _dashboard_html()
+    assert 'id="alpha-report-position-ratio"' not in html
+    assert 'id="alpha-report-buy-time"' not in html
+    assert "持仓仓位 (%)" not in html
+    assert "买入时间" not in html
 
 
 def test_dashboard_removes_legacy_alpha_ops_sections(_patch_auth):

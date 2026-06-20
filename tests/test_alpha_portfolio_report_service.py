@@ -136,6 +136,75 @@ def test_generate_report_empty_symbols_uses_all_holdings(tmp_path):
     symbols = {item["symbol"] for item in report["items"]}
     assert symbols == {"AAPLx", "TSLAx"}
 
+def test_generate_report_uses_positions_input_for_analysis_context(tmp_path):
+    store = _bootstrap_store(tmp_path)
+    _seed_holdings(store)
+
+    service = AlphaPortfolioReportService(
+        store=store,
+        shadow_opinion_provider=_patched_shadow_provider(store),
+        backtest_provider=_no_data_backtest_provider(store),
+    )
+
+    report = service.generate_report(
+        {
+            "symbols": ["AAPLx"],
+            "positions": [
+                {
+                    "symbol": "AAPLx",
+                    "lots": [
+                        {"buy_date": "2026-06-01", "buy_price": 200.0, "quantity": 2.0},
+                        {"buy_date": "2026-06-05", "buy_price": 220.0, "quantity": 1.0},
+                    ],
+                }
+            ],
+            "opening_cash": 10_000.0,
+        }
+    )
+
+    assert report["analysis_input"] == {
+        "symbols": ["AAPLx"],
+        "positions": [
+            {
+                "symbol": "AAPLx",
+                "lots": [
+                    {"buy_date": "2026-06-01", "buy_price": 200.0, "quantity": 2.0},
+                    {"buy_date": "2026-06-05", "buy_price": 220.0, "quantity": 1.0},
+                ],
+            }
+        ],
+    }
+    assert report["items"][0]["analysis_context"] == {
+        "lot_count": 2,
+        "total_quantity": 3.0,
+        "total_cost": 620.0,
+        "weighted_avg_cost": pytest.approx(206.666667),
+        "first_buy_date": "2026-06-01",
+        "last_buy_date": "2026-06-05",
+    }
+
+def test_generate_report_empty_positions_falls_back_to_stored_holdings(tmp_path):
+    store = _bootstrap_store(tmp_path)
+    _seed_holdings(store)
+
+    service = AlphaPortfolioReportService(
+        store=store,
+        shadow_opinion_provider=_patched_shadow_provider(store),
+        backtest_provider=_no_data_backtest_provider(store),
+    )
+
+    report = service.generate_report(
+        {
+            "symbols": [],
+            "positions": [],
+            "opening_cash": 10_000.0,
+        }
+    )
+
+    assert [item["symbol"] for item in report["items"]] == ["AAPLx"]
+    assert report["analysis_input"] == {"symbols": [], "positions": []}
+    assert report["items"][0]["analysis_context"] == {}
+
 def test_generate_report_filters_to_requested_symbols(tmp_path):
     store = _bootstrap_store(tmp_path)
 

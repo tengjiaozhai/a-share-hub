@@ -10,7 +10,7 @@ from src.alpha.execution_models import AlphaExecutionRequest
 from src.alpha.execution_service import AlphaExecutionService
 from src.alpha.portfolio_service import AlphaPortfolioService
 from src.alpha.reconciliation import reconcile_alpha_positions
-from src.alpha.report_service import AlphaPortfolioReportService, normalize_report_symbols
+from src.alpha.report_service import AlphaPortfolioReportService, normalize_report_positions, normalize_report_symbols
 from src.alpha.research_service import AlphaResearchService
 from src.alpha.service import AlphaMarketService
 from src.alpha.signal_engine import AlphaSignalEngine
@@ -58,9 +58,17 @@ class RebuildAlphaPortfolioRequest(BaseModel):
 
 
 class GeneratePortfolioReportRequest(BaseModel):
+    class PositionLot(BaseModel):
+        buy_date: str
+        buy_price: float
+        quantity: float
+
+    class PositionInput(BaseModel):
+        symbol: str
+        lots: list["GeneratePortfolioReportRequest.PositionLot"] = []
+
     symbols: list[str] = []
-    position_ratio: float | None = None
-    buy_time: str | None = None
+    positions: list[PositionInput] = []
     include_shadow: bool = True
     include_backtest: bool = True
     backtest_window: str = "60d"
@@ -210,6 +218,7 @@ def generate_portfolio_report(
     service = AlphaPortfolioReportService(store=store)
     request_payload = payload.model_dump()
     request_payload["symbols"] = normalize_report_symbols(request_payload.get("symbols"))
+    request_payload["positions"] = normalize_report_positions(request_payload.get("positions"))
     return service.generate_report(request_payload)
 
 

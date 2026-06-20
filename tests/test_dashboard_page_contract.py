@@ -13,12 +13,39 @@ def test_render_dashboard_html_contains_alpha_contract():
     assert "alpha-holdings-summary" in html
     assert "alpha-fill-history" in html
     assert "alpha-multi-leg-history" in html
-    assert 'id="alpha-report-symbol"' in html
-    assert 'id="alpha-report-position-ratio"' in html
-    assert 'id="alpha-report-buy-time"' in html
-    assert "分析股票" in html
+    assert 'id="alpha-analysis-builder"' in html
+    assert 'id="alpha-stock-cards"' in html
+    assert 'id="alpha-add-stock-card"' in html
+    assert "生成分析" in html
     assert "const ALPHA_REPORT_API = '/api/v1/alpha/portfolio/report';" in html
     assert "loadAlphaReport" in html
+
+
+def test_render_dashboard_html_removes_legacy_alpha_inputs():
+    html = render_dashboard_html()
+    assert 'id="alpha-report-symbol"' not in html
+    assert 'id="alpha-report-position-ratio"' not in html
+    assert 'id="alpha-report-buy-time"' not in html
+    assert "分析股票" not in html
+
+
+def test_render_dashboard_html_contains_alpha_builder_javascript_contract():
+    html = render_dashboard_html()
+    required_markers = [
+        "createAlphaStockCard",
+        "createAlphaLotRow",
+        "collectAlphaReportPositions",
+        "alpha-add-stock-card",
+        "data-alpha-add-lot",
+        "data-alpha-remove-stock",
+        "data-alpha-remove-lot",
+        "positions: positions",
+        "analysisContext.lot_count",
+        "analysisContext.total_cost",
+        "analysisContext.weighted_avg_cost",
+    ]
+    for marker in required_markers:
+        assert marker in html
 
 def test_render_dashboard_html_contains_market_contract():
     html = render_dashboard_html()
@@ -163,9 +190,9 @@ def test_render_dashboard_html_contains_market_and_alpha_controls():
         'id="a-quotes-table"',
         'id="a-search-input"',
         'id="scan-btn"',
-        'id="alpha-report-symbol"',
-        'id="alpha-report-position-ratio"',
-        'id="alpha-report-buy-time"',
+        'id="alpha-analysis-builder"',
+        'id="alpha-stock-cards"',
+        'id="alpha-add-stock-card"',
         "const ALPHA_ASSETS_API = '/api/v1/alpha/assets';",
         "const ALPHA_TICKETS_API = '/api/v1/alpha/tickets';",
         "const ALPHA_REPORT_API = '/api/v1/alpha/portfolio/report';",

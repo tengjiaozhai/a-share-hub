@@ -1526,8 +1526,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   .alpha-ops-grid-compact { padding-bottom: 14px; }
   .alpha-history-grid { padding: 14px 14px 0; }
   .alpha-data-grid { padding: 14px 14px 20px; }
-  .alpha-report-toolbar { grid-template-columns: 1fr; }
+  .alpha-report-toolbar { justify-content: stretch; }
   .alpha-report-trigger { width: 100%; }
+  .alpha-builder-head,
+  .alpha-stock-card-head,
+  .alpha-lot-row,
+  .alpha-builder-legend { grid-template-columns: 1fr; }
+  .alpha-builder-head,
+  .alpha-stock-card-head { flex-direction: column; align-items: stretch; }
+  .alpha-lot-index,
+  .alpha-builder-add-stock,
+  .alpha-builder-add-lot,
+  .alpha-builder-remove { width: 100%; }
   .alpha-form-row { grid-template-columns: 1fr; }
   .alpha-ticket-item { grid-template-columns: 1fr auto; gap: 4px; }
   .alpha-asset-item { grid-template-columns: 1fr auto; gap: 4px; }
@@ -2159,31 +2169,26 @@ html[data-theme='coinbase-institutional'] {
 }
 .alpha-report-card-primary {
   min-height: 420px;
+  background:
+    linear-gradient(180deg, rgba(77,212,198,.06), rgba(77,212,198,0) 22%),
+    var(--panel);
+  border: 1px solid rgba(77,212,198,.16);
+  box-shadow: 0 18px 40px rgba(0,0,0,.22);
 }
 .alpha-report-body-primary {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 .alpha-report-toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  justify-content: flex-end;
   gap: 10px;
   align-items: end;
 }
-.alpha-report-symbol-field {
-  gap: 6px;
-}
-.alpha-report-symbol-field input {
-  min-height: 42px;
-  padding: 10px 12px;
-  font-size: 13px;
-  font-family: var(--font-mono);
-  letter-spacing: .2px;
-}
 .alpha-report-trigger {
-  min-width: 120px;
-  min-height: 42px;
+  min-width: 132px;
+  min-height: 44px;
 }
 .alpha-report-select {
   background: var(--panel-2);
@@ -2241,16 +2246,16 @@ html[data-theme='coinbase-institutional'] {
 .alpha-report-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 .alpha-report-item {
-  background: var(--panel-2);
-  border: 1px solid var(--stroke);
-  border-radius: 12px;
-  padding: 12px;
+  background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.015));
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 16px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   animation: alpha-report-fade 0.3s ease-out both;
 }
 @keyframes alpha-report-fade {
@@ -2288,7 +2293,7 @@ html[data-theme='coinbase-institutional'] {
 .alpha-report-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 4px 8px;
+  gap: 6px 10px;
   font-size: 11px;
 }
 .alpha-report-grid-label {
@@ -2325,4 +2330,144 @@ html[data-theme='coinbase-institutional'] {
 .alpha-report-risk ul {
   margin: 0;
   padding-left: 16px;
+}
+.alpha-analysis-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid rgba(77,212,198,.16);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(77,212,198,.05), rgba(16,25,34,.88));
+}
+.alpha-builder-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.alpha-builder-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--fg);
+}
+.alpha-builder-caption {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--dim);
+  line-height: 1.5;
+}
+.alpha-builder-add-stock,
+.alpha-builder-add-lot,
+.alpha-builder-remove {
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  background: rgba(255,255,255,.04);
+  color: var(--fg);
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.alpha-builder-add-stock,
+.alpha-builder-add-lot {
+  border-color: rgba(77,212,198,.24);
+  color: var(--accent);
+}
+.alpha-builder-remove {
+  color: var(--muted);
+}
+.alpha-stock-cards {
+  display: grid;
+  gap: 12px;
+}
+.alpha-stock-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(11,17,23,.72);
+}
+.alpha-stock-card-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+.alpha-stock-symbol-field {
+  flex: 1;
+}
+.alpha-stock-symbol-field input,
+.alpha-lot-row input {
+  min-height: 42px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: rgba(255,255,255,.03);
+  color: var(--fg);
+  font-size: 13px;
+}
+.alpha-stock-symbol-field input {
+  font-family: var(--font-mono);
+  letter-spacing: .2px;
+}
+.alpha-stock-symbol-field input:focus,
+.alpha-lot-row input:focus {
+  outline: none;
+  border-color: rgba(77,212,198,.35);
+  box-shadow: 0 0 0 3px rgba(77,212,198,.12);
+}
+.alpha-stock-card-lots {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.alpha-lot-row {
+  display: grid;
+  grid-template-columns: 64px repeat(3, minmax(0, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.02);
+  border: 1px solid rgba(255,255,255,.05);
+}
+.alpha-lot-row .alpha-field {
+  gap: 6px;
+}
+.alpha-lot-row .alpha-field span,
+.alpha-stock-symbol-field span {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.alpha-lot-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  border-radius: 10px;
+  background: rgba(77,212,198,.08);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+.alpha-stock-card-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+.alpha-builder-legend {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding-top: 2px;
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: .8px;
+  text-transform: uppercase;
 }
