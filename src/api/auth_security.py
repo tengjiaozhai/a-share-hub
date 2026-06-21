@@ -6,7 +6,7 @@ import secrets
 import time
 
 from fastapi import HTTPException, Request, status
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 
 from src.core.config import Settings
 from src.storage.auth_store import AuthStore

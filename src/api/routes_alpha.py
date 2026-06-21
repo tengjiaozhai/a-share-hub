@@ -14,7 +14,7 @@ from src.alpha.report_service import AlphaPortfolioReportService, normalize_repo
 from src.alpha.research_service import AlphaResearchService
 from src.alpha.service import AlphaMarketService
 from src.alpha.signal_engine import AlphaSignalEngine
-from src.api.dependencies import get_current_user, get_current_user_id, get_user_runtime_store
+from src.api.dependencies import get_current_user, get_user_runtime_store
 from src.storage.runtime_store import RuntimeStore
 
 

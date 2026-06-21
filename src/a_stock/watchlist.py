@@ -1,6 +1,7 @@
 import logging
 
-from sqlalchemy import func, select, delete as sa_delete
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from src.a_stock.models import AStockWatchlistItem

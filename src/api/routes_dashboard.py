@@ -1131,7 +1131,6 @@ def run_backtest(config: dict) -> dict:
         try:
             if use_yahoo:
                 # 美股：使用 YahooProvider 获取 K 线
-                from datetime import timedelta as td
                 period_days = (end_date - data_start).days
                 if period_days <= 30:
                     period = "1mo"
