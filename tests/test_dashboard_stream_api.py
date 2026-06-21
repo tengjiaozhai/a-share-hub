@@ -88,7 +88,6 @@ def test_run_events_route_streams_ordered_event_log(authenticated_client, pg_sto
         latest_workbench={"latest_run": {"run_context_id": "wrk-001"}},
     )
 
-<<<<<<< HEAD
     with authenticated_client.stream("GET", "/api/v1/dashboard/runs/wrk-001/events") as response:
         body = "".join(chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk for chunk in response.iter_text())
 

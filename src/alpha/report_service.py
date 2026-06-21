@@ -87,8 +87,7 @@ def normalize_report_positions(positions: list[dict] | None) -> list[dict]:
     return normalized_positions
 
 
-def _normalize_analysis_input(payload: dict, symbols: list[str]) -> dict:
-    normalized_positions = normalize_report_positions(payload.get("positions"))
+def _normalize_analysis_input(symbols: list[str], normalized_positions: list[dict]) -> dict:
     return {
         "symbols": symbols,
         "positions": normalized_positions,
@@ -315,7 +314,7 @@ class AlphaPortfolioReportService:
         symbols = normalize_report_symbols(payload.get("symbols") or [])
         if normalized_positions and not symbols:
             symbols = [position["symbol"] for position in normalized_positions]
-        analysis_input = _normalize_analysis_input(payload, symbols)
+        analysis_input = _normalize_analysis_input(symbols, normalized_positions)
         requested_positions = {position["symbol"]: position for position in analysis_input["positions"]}
         include_shadow = bool(payload.get("include_shadow", True))
         include_backtest = bool(payload.get("include_backtest", True))

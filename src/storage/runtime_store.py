@@ -1210,6 +1210,7 @@ class RuntimeStore:
             values = {
                 "run_context_id": run_context_id,
                 "user_id": self.user_id,
+                "market": market or _extract_market_from_workbench(latest_workbench) or self.get_dashboard_run_market(run_context_id, latest_workbench=latest_workbench) or "a",
                 "trade_date": trade_date,
                 "decision_mode": decision_mode,
                 "execution_mode": execution_mode,
