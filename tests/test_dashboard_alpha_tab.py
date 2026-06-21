@@ -78,6 +78,7 @@ def test_dashboard_contains_positions_builder_controls(_patch_auth):
     assert 'id="alpha-analysis-builder"' in html
     assert 'id="alpha-stock-cards"' in html
     assert 'id="alpha-add-stock-card"' in html
+    assert 'id="alpha-analysis-save"' in html
     assert 'id="alpha-report-generate"' in html
     assert "分析标的" in html
     assert "加仓批次" in html
@@ -86,6 +87,45 @@ def test_dashboard_contains_positions_builder_controls(_patch_auth):
     assert "数量" in html
     assert "新增股票" in html
     assert "生成分析" in html
+
+
+def test_dashboard_contains_saved_holdings_entry_history_controls(_patch_auth):
+    html = _dashboard_html()
+    assert 'id="alpha-holdings-records"' in html
+    assert "已保存买入记录" in html
+    assert "ALPHA_HOLDINGS_API" in html
+    assert "loadAlphaHoldingsEntries" in html
+    assert "renderAlphaHoldingsEntries" in html
+    assert "data-alpha-edit-entry" in html
+    assert "data-alpha-delete-entry" in html
+
+
+def test_dashboard_removes_analysis_positions_preferences_path(_patch_auth):
+    html = _dashboard_html()
+    assert "analysis_positions" not in html
+
+
+def test_dashboard_contains_saved_holdings_history_ui(_patch_auth):
+    html = _dashboard_html()
+    assert 'id="alpha-saved-holdings"' in html
+    assert 'data-alpha-saved-holding-id' in html
+    assert 'data-alpha-history-edit' in html
+    assert 'data-alpha-history-delete' in html
+    assert "已保存买入记录 / 历史" in html
+    assert "renderAlphaSavedHoldings" in html
+    assert "loadAlphaSavedHoldings" in html
+    assert "saveAlphaHoldings" in html
+    assert "updateAlphaHolding" in html
+    assert "deleteAlphaHolding" in html
+
+
+def test_dashboard_uses_holdings_api_for_alpha_history(_patch_auth):
+    html = _dashboard_html()
+    assert "const ALPHA_HOLDINGS_API = '/api/v1/alpha/holdings';" in html
+    assert "fetch(ALPHA_HOLDINGS_API" in html
+    assert "analysis_positions" not in html
+    assert "saveAlphaAnalysisPositions" not in html
+    assert "loadAlphaAnalysisPositions" not in html
 
 
 def test_dashboard_forbids_legacy_ratio_and_buy_time_controls(_patch_auth):

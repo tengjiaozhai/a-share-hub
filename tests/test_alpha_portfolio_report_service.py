@@ -379,3 +379,42 @@ def test_build_shadow_section_returns_empty_when_no_workbench():
 
     result = _build_shadow_section(None, "AAPLx")
     assert result == {"action": "UNKNOWN", "confidence": 0, "reason": "无最近模拟交易"}
+
+
+def test_generate_report_uses_saved_holdings_entries_when_no_input_positions(tmp_path):
+    store = _bootstrap_store(tmp_path)
+    store.insert_alpha_holdings_entry(
+        symbol="MSFT.US",
+        buy_date="2026-06-18",
+        buy_price=420.0,
+        quantity=2.0,
+    )
+    store.insert_alpha_holdings_entry(
+        symbol="MSFT.US",
+        buy_date="2026-06-19",
+        buy_price=426.0,
+        quantity=1.0,
+    )
+    AlphaPortfolioService(store).rebuild_from_holdings_entries(price_map={"MSFT.US": 430.0})
+
+    service = AlphaPortfolioReportService(
+        store=store,
+        shadow_opinion_provider=_patched_shadow_provider(store),
+        backtest_provider=_no_data_backtest_provider(store),
+    )
+
+    report = service.generate_report({"symbols": [], "positions": [], "opening_cash": 10_000.0})
+
+    assert [item["symbol"] for item in report["items"]] == ["MSFT.US"]
+    item = report["items"][0]
+    assert item["quantity"] == 3.0
+    assert round(item["avg_cost"], 6) == round((420.0 * 2.0 + 426.0 * 1.0) / 3.0, 6)
+    assert item["mark_price"] == 430.0
+    assert item["analysis_context"] == {
+        "lot_count": 2,
+        "total_quantity": 3.0,
+        "total_cost": 1266.0,
+        "weighted_avg_cost": 422.0,
+        "first_buy_date": "2026-06-18",
+        "last_buy_date": "2026-06-19",
+    }

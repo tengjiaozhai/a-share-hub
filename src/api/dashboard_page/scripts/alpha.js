@@ -1,8 +1,10 @@
 // Alpha 持仓助手
 const ALPHA_REPORT_API = '/api/v1/alpha/portfolio/report';
+const ALPHA_HOLDINGS_API = '/api/v1/alpha/holdings';
 const VALID_REPORT_ACTIONS = ['HOLD', 'ADD', 'REDUCE', 'EXIT', 'WATCH'];
 
 let alphaPortfolioSymbols = [];
+let alphaEditingHoldingId = null;
 
 function alphaActionClass(action) {
   const normalized = String(action || 'HOLD').toLowerCase();
@@ -108,6 +110,43 @@ function collectAlphaReportPositions() {
     }).filter(Boolean);
     return { symbol, lots };
   }).filter((position) => position.symbol);
+}
+
+function collectAlphaHoldingEntries() {
+  return collectAlphaReportPositions().flatMap((position) => position.lots.map((lot) => ({
+    symbol: position.symbol,
+    buy_date: lot.buy_date,
+    buy_price: lot.buy_price,
+    quantity: lot.quantity,
+  }))).filter((entry) => entry.symbol && entry.buy_date && Number(entry.buy_price) > 0 && Number(entry.quantity) > 0);
+}
+
+function resetAlphaBuilder(positions = [{}]) {
+  const root = document.getElementById('alpha-stock-cards');
+  if (!root) return;
+  root.innerHTML = '';
+  positions.forEach((position) => appendAlphaStockCard(position));
+  ensureAlphaAnalysisBuilder();
+  const saveButton = document.getElementById('alpha-analysis-save');
+  if (saveButton) {
+    delete saveButton.dataset.alphaEditEntryId;
+  }
+}
+
+function beginAlphaHoldingEdit(entry) {
+  alphaEditingHoldingId = entry.entry_id;
+  resetAlphaBuilder([{
+    symbol: entry.symbol,
+    lots: [{
+      buy_date: entry.buy_date,
+      buy_price: entry.buy_price,
+      quantity: entry.quantity,
+    }],
+  }]);
+  const saveButton = document.getElementById('alpha-analysis-save');
+  if (saveButton) {
+    saveButton.dataset.alphaEditEntryId = entry.entry_id;
+  }
 }
 
 function groupAlphaFillsBySymbol(fills) {
@@ -235,6 +274,29 @@ function renderAlphaPortfolio(portfolio) {
   renderAlphaMultiLegHistory(fills);
 }
 
+function renderAlphaSavedHoldings(items) {
+  const root = document.getElementById('alpha-holdings-records');
+  if (!root) return;
+  if (!items.length) {
+    root.innerHTML = '<div class="alpha-empty-state">暂无已保存买入记录</div>';
+    return;
+  }
+  root.innerHTML = items.map((item) => `
+    <div class="alpha-fill-row" data-alpha-saved-holding-id="${escapeHtml(item.entry_id)}">
+      <div>
+        <div class="alpha-fill-symbol">${escapeHtml(item.symbol)}</div>
+        <div class="alpha-fill-meta">${escapeHtml(item.buy_date)} / ${escapeHtml(formatNumber(item.buy_price, 4))} / ${escapeHtml(formatNumber(item.quantity, 4))}</div>
+      </div>
+      <div class="alpha-stock-card-actions">
+        <button type="button" class="alpha-builder-add-lot" data-alpha-history-edit data-alpha-edit-entry="${escapeHtml(item.entry_id)}">编辑</button>
+        <button type="button" class="alpha-builder-remove" data-alpha-history-delete data-alpha-delete-entry="${escapeHtml(item.entry_id)}">删除</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+const renderAlphaHoldingsEntries = renderAlphaSavedHoldings;
+
 async function loadAlphaWorkbench() {
   const res = await fetch(WORKBENCH_API);
   if (!res.ok) {
@@ -243,6 +305,18 @@ async function loadAlphaWorkbench() {
   const data = await res.json();
   renderAlphaPortfolio(data.alpha?.portfolio || {});
 }
+
+async function loadAlphaSavedHoldings() {
+  const res = await fetch(ALPHA_HOLDINGS_API);
+  if (!res.ok) {
+    throw new Error('alpha holdings load failed');
+  }
+  const data = await res.json();
+  renderAlphaSavedHoldings(toList(data.items));
+  return toList(data.items);
+}
+
+const loadAlphaHoldingsEntries = loadAlphaSavedHoldings;
 
 function renderAlphaReport(report, requestedSymbols = []) {
   const body = document.getElementById('alpha-report-body');
@@ -415,31 +489,78 @@ document.getElementById('alpha-analysis-builder')?.addEventListener('click', (ev
     }
   }
 });
-async function saveAlphaAnalysisPositions() {
+
+async function updateAlphaHolding(entryId, payload) {
+  const res = await fetch(`${ALPHA_HOLDINGS_API}/${encodeURIComponent(entryId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await parseResponseBody(res);
+  if (!res.ok) {
+    throw new Error(extractErrorMessage(data, `更新失败 (${res.status})`));
+  }
+  return data;
+}
+
+async function deleteAlphaHolding(entryId) {
+  const res = await fetch(`${ALPHA_HOLDINGS_API}/${encodeURIComponent(entryId)}`, {
+    method: 'DELETE',
+  });
+  const data = await parseResponseBody(res);
+  if (!res.ok) {
+    throw new Error(extractErrorMessage(data, `删除失败 (${res.status})`));
+  }
+  alphaEditingHoldingId = null;
+  resetAlphaBuilder();
+  await loadAlphaSavedHoldings();
+  await loadAlphaWorkbench();
+  await loadAlphaReport();
+  return data;
+}
+
+async function saveAlphaHoldings() {
   const btn = document.getElementById('alpha-analysis-save');
+  const editingEntryId = btn?.dataset?.alphaEditEntryId || alphaEditingHoldingId;
   if (btn) {
     btn.disabled = true;
     btn.textContent = '保存中...';
   }
 
-  const positions = collectAlphaReportPositions();
+  const entries = collectAlphaHoldingEntries();
 
   try {
-    const res = await fetch(PREFS_API, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ analysis_positions: positions }),
-    });
-
-    if (res.ok) {
-      if (btn) {
-        btn.textContent = '已保存';
-        setTimeout(() => { btn.textContent = '保存'; btn.disabled = false; }, 2000);
-      }
-      showToast('持仓分析已保存', 'success');
-    } else {
-      throw new Error('保存失败');
+    if (!entries.length) {
+      throw new Error('请至少填写一条有效的买入记录');
     }
+    if (editingEntryId) {
+      if (entries.length !== 1) {
+        throw new Error('编辑模式一次只能保存一条记录');
+      }
+      await updateAlphaHolding(editingEntryId, entries[0]);
+    } else {
+      await Promise.all(entries.map(async (entry) => {
+        const res = await fetch(ALPHA_HOLDINGS_API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(entry),
+        });
+        const data = await parseResponseBody(res);
+        if (!res.ok) {
+          throw new Error(extractErrorMessage(data, `保存失败 (${res.status})`));
+        }
+      }));
+    }
+    alphaEditingHoldingId = null;
+    resetAlphaBuilder();
+    await loadAlphaSavedHoldings();
+    await loadAlphaWorkbench();
+    await loadAlphaReport();
+    if (btn) {
+      btn.textContent = '已保存';
+      setTimeout(() => { btn.textContent = '保存'; btn.disabled = false; }, 2000);
+    }
+    showToast('持仓分析已保存', 'success');
   } catch (error) {
     if (btn) {
       btn.textContent = '保存失败';
@@ -450,26 +571,22 @@ async function saveAlphaAnalysisPositions() {
   }
 }
 
-async function loadAlphaAnalysisPositions() {
-  try {
-    const res = await fetch(PREFS_API);
-    if (!res.ok) return;
-
-    const prefs = await res.json();
-    const positions = prefs.analysis_positions || [];
-
-    if (positions.length > 0) {
-      const root = document.getElementById('alpha-stock-cards');
-      if (root) {
-        root.innerHTML = '';
-        positions.forEach((position) => appendAlphaStockCard(position));
-      }
-    }
-  } catch (error) {
-    console.error('加载持仓分析失败:', error);
+document.getElementById('alpha-saved-holdings')?.addEventListener('click', async (event) => {
+  const trigger = event.target.closest('button');
+  if (!trigger) return;
+  const entryId = trigger.getAttribute('data-alpha-edit-entry') || trigger.getAttribute('data-alpha-delete-entry');
+  if (!entryId) return;
+  const items = await loadAlphaSavedHoldings();
+  const entry = items.find((item) => item.entry_id === entryId);
+  if (trigger.matches('[data-alpha-history-edit]') || trigger.matches('[data-alpha-edit-entry]')) {
+    if (entry) beginAlphaHoldingEdit(entry);
+    return;
   }
-}
+  if (trigger.matches('[data-alpha-history-delete]') || trigger.matches('[data-alpha-delete-entry]')) {
+    await deleteAlphaHolding(entryId);
+  }
+});
 
-document.getElementById('alpha-analysis-save')?.addEventListener('click', saveAlphaAnalysisPositions);
+document.getElementById('alpha-analysis-save')?.addEventListener('click', saveAlphaHoldings);
 ensureAlphaAnalysisBuilder();
-loadAlphaAnalysisPositions();
+loadAlphaSavedHoldings().catch((error) => console.error('加载已保存持仓失败:', error));

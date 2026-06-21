@@ -13,11 +13,14 @@ def test_render_dashboard_html_contains_alpha_contract():
     assert "alpha-holdings-summary" in html
     assert "alpha-fill-history" in html
     assert "alpha-multi-leg-history" in html
+    assert 'id="alpha-saved-holdings"' in html
     assert 'id="alpha-analysis-builder"' in html
     assert 'id="alpha-stock-cards"' in html
     assert 'id="alpha-add-stock-card"' in html
+    assert 'id="alpha-analysis-save"' in html
     assert "生成分析" in html
     assert "const ALPHA_REPORT_API = '/api/v1/alpha/portfolio/report';" in html
+    assert "const ALPHA_HOLDINGS_API = '/api/v1/alpha/holdings';" in html
     assert "loadAlphaReport" in html
 
 
@@ -35,6 +38,13 @@ def test_render_dashboard_html_contains_alpha_builder_javascript_contract():
         "createAlphaStockCard",
         "createAlphaLotRow",
         "collectAlphaReportPositions",
+        "renderAlphaSavedHoldings",
+        "loadAlphaSavedHoldings",
+        "saveAlphaHoldings",
+        "updateAlphaHolding",
+        "deleteAlphaHolding",
+        "data-alpha-history-edit",
+        "data-alpha-history-delete",
         "alpha-add-stock-card",
         "data-alpha-add-lot",
         "data-alpha-remove-stock",
@@ -46,6 +56,17 @@ def test_render_dashboard_html_contains_alpha_builder_javascript_contract():
     ]
     for marker in required_markers:
         assert marker in html
+
+
+def test_render_dashboard_html_removes_legacy_alpha_preferences_path():
+    html = render_dashboard_html()
+    forbidden_markers = [
+        "analysis_positions",
+        "saveAlphaAnalysisPositions",
+        "loadAlphaAnalysisPositions",
+    ]
+    for marker in forbidden_markers:
+        assert marker not in html
 
 def test_render_dashboard_html_contains_market_contract():
     html = render_dashboard_html()
