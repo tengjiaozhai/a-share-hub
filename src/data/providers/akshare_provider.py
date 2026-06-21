@@ -6,7 +6,6 @@ import pandas as pd
 import requests
 
 from src.data.providers.akshare_catalog import StockCatalogCache, normalize_symbol
-from src.data.providers.akshare_errors import AkshareBreakerOpenError, AkshareUpstreamError
 from src.data.providers.akshare_snapshot_cache import SpotSnapshotCache
 from src.data.providers.base import DataProvider, MarketSnapshot
 

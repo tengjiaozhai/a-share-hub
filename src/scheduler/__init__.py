@@ -1,1 +1,1 @@
-from src.scheduler.daily_scheduler import DailyScheduler
+from src.scheduler.daily_scheduler import DailyScheduler as DailyScheduler
