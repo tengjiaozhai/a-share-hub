@@ -1137,78 +1137,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .alpha-inline-status.warn { color: var(--warn); }
 .alpha-inline-status.err { color: var(--red); }
 .alpha-inline-status.info { color: var(--dim); }
-.alpha-ticket-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 16px;
-  padding: 0 5px;
-  border-radius: 8px;
-  background: var(--surface2);
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 700;
-  margin-left: auto;
-}
-.alpha-ticket-item {
-  display: grid;
-  grid-template-columns: 1fr auto auto auto;
-  gap: 10px;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--stroke);
-  font-size: 12px;
-}
-.alpha-ticket-item:last-child { border-bottom: none; }
-.alpha-ticket-symbol {
-  font-weight: 700;
-  color: var(--fg);
-}
-.alpha-ticket-underlying {
-  font-size: 10px;
-  color: var(--dim);
-}
-.alpha-ticket-action {
-  font-size: 10px;
-  font-weight: 700;
-  padding: 1px 6px;
-  border-radius: 3px;
-  text-transform: uppercase;
-}
-.alpha-ticket-action.buy {
-  background: rgba(34,197,94,.12);
-  color: var(--green);
-}
-.alpha-ticket-action.sell {
-  background: rgba(239,68,68,.12);
-  color: var(--red);
-}
-.alpha-ticket-qty-price {
-  font-size: 11px;
-  color: var(--muted);
-  text-align: right;
-}
-.alpha-ticket-status {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: .4px;
-  padding: 2px 6px;
-  border-radius: 3px;
-}
-.alpha-ticket-status.pending {
-  background: rgba(247,185,85,.1);
-  color: var(--warn);
-}
-.alpha-ticket-status.filled {
-  background: rgba(34,197,94,.1);
-  color: var(--green);
-}
-.alpha-ticket-status.rejected {
-  background: rgba(242,109,109,.1);
-  color: var(--danger);
-}
 .alpha-empty-state {
   display: flex;
   align-items: center;
@@ -1227,45 +1155,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .alpha-support-stack {
   display: grid;
   gap: 14px;
-}
-.alpha-assets-body { padding: 0; }
-.alpha-asset-item {
-  display: grid;
-  grid-template-columns: 1fr 1.2fr auto auto;
-  gap: 10px;
-  align-items: center;
-  padding: 8px 14px;
-  border-bottom: 1px solid var(--stroke);
-  font-size: 12px;
-}
-.alpha-asset-item:last-child { border-bottom: none; }
-.alpha-asset-symbol {
-  font-weight: 700;
-  color: var(--fg);
-}
-.alpha-asset-underlying {
-  color: var(--muted);
-  font-size: 11px;
-}
-.alpha-asset-badge {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 3px;
-  text-transform: uppercase;
-  letter-spacing: .4px;
-}
-.alpha-asset-badge.active {
-  background: rgba(34,197,94,.1);
-  color: var(--green);
-}
-.alpha-asset-badge.inactive {
-  background: rgba(148,163,184,.08);
-  color: var(--dim);
-}
-.alpha-asset-badge.suspended {
-  background: rgba(247,185,85,.1);
-  color: var(--warn);
 }
 .alpha-action-bar {
   display: flex;
@@ -1307,85 +1196,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   margin-bottom: 6px;
   padding-bottom: 4px;
   border-bottom: 1px solid var(--stroke);
-}
-.alpha-watch-item {
-  display: grid;
-  grid-template-columns: 1fr 1fr auto;
-  gap: 8px;
-  align-items: center;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--stroke);
-  font-size: 11px;
-}
-.alpha-watch-item:last-child { border-bottom: none; }
-.alpha-watch-symbol {
-  font-weight: 600;
-  color: var(--fg);
-}
-.alpha-watch-underlying {
-  color: var(--muted);
-}
-.alpha-watch-priority {
-  font-size: 10px;
-  color: var(--dim);
-}
-.alpha-candidate-item {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 8px;
-  align-items: center;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--stroke);
-  font-size: 11px;
-}
-.alpha-candidate-item:last-child { border-bottom: none; }
-.alpha-candidate-symbol {
-  font-weight: 700;
-  color: var(--fg);
-}
-.alpha-candidate-action {
-  font-size: 10px;
-  font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 3px;
-  text-transform: uppercase;
-}
-.alpha-candidate-action.buy {
-  background: rgba(34,197,94,.1);
-  color: var(--green);
-}
-.alpha-candidate-action.sell {
-  background: rgba(239,68,68,.1);
-  color: var(--red);
-}
-.alpha-candidate-action.hold {
-  background: rgba(148,163,184,.08);
-  color: var(--muted);
-}
-.alpha-candidate-score {
-  font-size: 10px;
-  color: var(--muted);
-  text-align: right;
-}
-.alpha-candidate-rich {
-  grid-template-columns: 1.1fr auto auto;
-}
-.alpha-candidate-guidance {
-  font-size: 10px;
-  color: var(--dim);
-  margin-top: 2px;
-}
-.alpha-candidate-metrics {
-  display: grid;
-  justify-items: end;
-  gap: 4px;
-}
-.alpha-candidate-guidance-tag {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: rgba(77,212,198,.08);
-  color: var(--accent);
 }
 .alpha-holdings-summary,
 .alpha-portfolio-summary {
@@ -1496,16 +1306,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   font-size: 11px;
   color: var(--muted);
 }
-.alpha-exception-json {
-  color: var(--red);
-  font-size: 12px;
-  line-height: 1.5;
-  word-break: break-word;
-}
-.alpha-ok-note {
-  color: var(--green);
-  font-size: 12px;
-}
 
 /* Alpha responsive */
 @media (max-width: 1023px) {
@@ -1539,9 +1339,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   .alpha-builder-add-lot,
   .alpha-builder-remove { width: 100%; }
   .alpha-form-row { grid-template-columns: 1fr; }
-  .alpha-ticket-item { grid-template-columns: 1fr auto; gap: 4px; }
-  .alpha-asset-item { grid-template-columns: 1fr auto; gap: 4px; }
-  .alpha-action-bar { flex-direction: column; }
   .alpha-fill-row { grid-template-columns: 1fr auto; }
   .alpha-holdings-summary,
   .alpha-portfolio-summary { grid-template-columns: 1fr; }

@@ -152,8 +152,7 @@ function switchView(btn, viewId) {
   if (viewId === 'view-market') {
     marketInit();
   } else if (viewId === 'view-alpha') {
-    loadAlphaAssets();
-    loadAlphaTickets();
+    loadAlphaWorkbench();
   }
 }
 

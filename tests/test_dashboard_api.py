@@ -123,14 +123,6 @@ def test_kill_switch_events_are_visible_in_workbench_history(authenticated_clien
     )
 
 def test_workbench_payload_includes_alpha_panel(authenticated_client, test_app, pg_store):
-    ticket_id = pg_store.insert_alpha_ticket(asset_symbol="AAPLx",
-        underlying_symbol="AAPL",
-        action="BUY",
-        thesis="discount to reference",
-        suggested_quantity=2.0,
-        suggested_limit_price=210.5,
-        expires_at="2026-06-01T16:00:00+08:00",
-    )
     client = authenticated_client
 
     response = client.get("/api/v1/dashboard/workbench")
@@ -138,9 +130,9 @@ def test_workbench_payload_includes_alpha_panel(authenticated_client, test_app, 
     assert response.status_code == 200
     payload = response.json()
     assert "alpha" in payload
-    assert payload["alpha"]["tickets"][0]["ticket_id"] == ticket_id
+    assert "portfolio" in payload["alpha"]
 
-def test_workbench_payload_includes_alpha_portfolio_and_exceptions(authenticated_client, test_app, pg_store):
+def test_workbench_payload_includes_alpha_portfolio(authenticated_client, test_app, pg_store):
     ticket_id = pg_store.insert_alpha_ticket(asset_symbol="AAPLx",
         underlying_symbol="AAPL",
         action="BUY",
@@ -164,10 +156,6 @@ def test_workbench_payload_includes_alpha_portfolio_and_exceptions(authenticated
         unrealized_pnl=28.8,
         nav=8_798.8,
     )
-    pg_store.insert_alpha_reconciliation_run(source="manual",
-        status="MISMATCH",
-        discrepancies={"positions": {"AAPLx": {"internal": 1.2, "external": 1.0}}},
-    )
     client = authenticated_client
 
     response = client.get("/api/v1/dashboard/workbench")
@@ -176,8 +164,6 @@ def test_workbench_payload_includes_alpha_portfolio_and_exceptions(authenticated
     payload = response.json()
     assert payload["alpha"]["portfolio"]["snapshot"]["nav"] == 8_798.8
     assert payload["alpha"]["portfolio"]["fills"][0]["asset_symbol"] == "AAPLx"
-    assert "fills" not in payload["alpha"]
-    assert payload["alpha"]["exceptions"]["latest_status"] == "MISMATCH"
 
 def test_workbench_uses_authoritative_target_quantity_and_reconcile_items(authenticated_client, test_app, pg_store):
     pg_store.upsert_dashboard_run_summary(run_context_id="wrk-001",

@@ -193,8 +193,6 @@ def test_render_dashboard_html_contains_market_and_alpha_controls():
         'id="alpha-analysis-builder"',
         'id="alpha-stock-cards"',
         'id="alpha-add-stock-card"',
-        "const ALPHA_ASSETS_API = '/api/v1/alpha/assets';",
-        "const ALPHA_TICKETS_API = '/api/v1/alpha/tickets';",
         "const ALPHA_REPORT_API = '/api/v1/alpha/portfolio/report';",
         'loadAlphaReport',
         'aLoadQuotes',

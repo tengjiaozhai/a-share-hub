@@ -12,7 +12,6 @@ from fastapi.responses import HTMLResponse
 from sse_starlette.sse import EventSourceResponse
 
 from src.agents.llm_client import LLMClient
-from src.alpha.execution_service import AlphaExecutionService
 from src.alpha.portfolio_service import AlphaPortfolioService
 from src.api.dashboard_page.render import render_dashboard_html
 from src.api.dependencies import get_current_user, get_current_user_id, get_user_runtime_store
@@ -42,14 +41,6 @@ def _today_close_cst() -> datetime:
 
 _llm_client: LLMClient | None = None
 _akshare: AkshareProvider | None = None
-_alpha_execution_service: AlphaExecutionService | None = None
-
-
-def _get_alpha_execution_service() -> AlphaExecutionService:
-    global _alpha_execution_service
-    if _alpha_execution_service is None:
-        _alpha_execution_service = AlphaExecutionService(mode="manual", gateway=None)
-    return _alpha_execution_service
 
 
 def _get_llm() -> LLMClient:
@@ -87,24 +78,9 @@ _HISTORY_CURSOR_SEPARATOR = "|"
 
 
 def _build_alpha_panel_payload(store: RuntimeStore, user_id: str) -> dict:
-    tickets = store.list_alpha_tickets()
     portfolio = AlphaPortfolioService(store).load_portfolio()
-    recon_runs = store.list_alpha_reconciliation_runs()
-    latest_recon = recon_runs[0] if recon_runs else None
-    capability = _get_alpha_execution_service().get_capability()
-    capability_payload = capability if isinstance(capability, dict) else capability.__dict__
     return {
-        "tickets": tickets,
         "portfolio": portfolio,
-        "exceptions": {
-            "latest_status": latest_recon["status"] if latest_recon else "UNKNOWN",
-            "latest_discrepancies": latest_recon["discrepancies"] if latest_recon else {},
-        },
-        "research": {
-            "watchlist": store.list_alpha_watchlist_items(),
-            "latest_candidates": [],
-        },
-        "execution_capability": capability_payload,
     }
 
 
@@ -324,6 +300,7 @@ def get_performance(
     user_id: str = Depends(get_current_user_id),
 ) -> dict:
     from sqlalchemy.orm import Session as OrmSession
+
     from src.paper_ledger.store import PaperLedgerStore
 
     engine = store.engine
@@ -374,6 +351,7 @@ def get_history(
     user_id: str = Depends(get_current_user_id),
 ) -> dict:
     from sqlalchemy.orm import Session as OrmSession
+
     from src.paper_ledger.store import PaperLedgerStore
 
     fetch_limit = max(limit * 4, 100)
@@ -605,6 +583,7 @@ def _load_paper_nav_history(store, market: str = "a", user_id: str | None = None
     """从 paper_ledger 加载净值历史；如未初始化则返回空列表"""
     try:
         from sqlalchemy.orm import Session
+
         from src.paper_ledger.store import PaperLedgerStore
         from src.storage.dependencies import get_runtime_store
 
@@ -632,6 +611,7 @@ def _load_automation_state(store, market: str = "a", user_id: str | None = None)
     try:
         from sqlalchemy import select
         from sqlalchemy.orm import Session
+
         from src.paper_ledger.models import PaperRunRow
         from src.storage.dependencies import get_runtime_store
 
@@ -1378,7 +1358,7 @@ def save_preferences(
 ) -> dict:
     """保存用户偏好设置。"""
     allowed_keys = {"watchlist", "market", "capital_base", "max_position_ratio", "stop_loss_ratio",
-                    "max_daily_loss_ratio", "execution_mode", "theme_id"}
+                    "max_daily_loss_ratio", "execution_mode", "theme_id", "analysis_positions"}
     filtered = {k: v for k, v in config.items() if k in allowed_keys}
     if "theme_id" in filtered and filtered["theme_id"] not in _THEME_IDS:
         raise HTTPException(status_code=400, detail="invalid theme_id")

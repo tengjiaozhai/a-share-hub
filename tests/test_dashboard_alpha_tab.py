@@ -56,7 +56,6 @@ def test_dashboard_contains_holdings_analysis_tab(_patch_auth):
     html = _dashboard_html()
     assert "view-alpha" in html
     assert "持仓分析" in html
-    assert "const ALPHA_ASSETS_API = '/api/v1/alpha/assets';" in html
     assert "const ALPHA_REPORT_API = '/api/v1/alpha/portfolio/report';" in html
     assert "loadAlphaReport" in html
 

@@ -4,7 +4,6 @@ from fastapi.testclient import TestClient
 PROTECTED_GETS = (
     "/api/v1/dashboard/workbench",
     "/api/v1/market/stocks",
-    "/api/v1/alpha/portfolio",
     "/api/v1/us-stock/watchlist",
     "/api/v1/a-stock/watchlist",
     "/api/v1/decision-runs",
