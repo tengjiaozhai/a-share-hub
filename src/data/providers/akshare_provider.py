@@ -196,7 +196,7 @@ class AkshareProvider(DataProvider):
 
     def get_realtime_quote(self, symbol: str) -> Optional[MarketSnapshot]:
         """先做 symbol 格式校验，再从腾讯行情取快照。
-        
+
         格式非法（无法推断交易所）→ KeyError
         腾讯接口失败 → AkshareUpstreamError
         腾讯返回空（symbol 不存在）→ KeyError

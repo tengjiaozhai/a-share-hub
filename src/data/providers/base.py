@@ -23,28 +23,28 @@ class MarketSnapshot(BaseModel):
 
 class DataProvider(ABC):
     """数据提供者基类"""
-    
+
     @abstractmethod
     def get_realtime_quote(self, symbol: str) -> Optional[MarketSnapshot]:
         """获取实时行情快照"""
         pass
-    
+
     @abstractmethod
     def get_history(
-        self, 
-        symbol: str, 
-        start_date: datetime, 
+        self,
+        symbol: str,
+        start_date: datetime,
         end_date: datetime,
         freq: str = "daily"
     ) -> pd.DataFrame:
         """获取历史数据"""
         pass
-    
+
     @abstractmethod
     def get_stock_list(self) -> pd.DataFrame:
         """获取股票列表"""
         pass
-    
+
     @abstractmethod
     def is_available(self) -> bool:
         """检查数据源是否可用"""

@@ -9,12 +9,12 @@ logger = logging.getLogger(__name__)
 
 class ProviderChain(DataProvider):
     """数据提供者链，按优先级尝试多个数据源"""
-    
+
     def __init__(self, providers: List[DataProvider]):
         if not providers:
             raise ValueError("至少需要一个数据提供者")
         self._providers = providers
-    
+
     def get_realtime_quote(self, symbol: str) -> Optional[MarketSnapshot]:
         """按优先级获取实时行情"""
         for provider in self._providers:
@@ -26,14 +26,14 @@ class ProviderChain(DataProvider):
                         return result
             except Exception as e:
                 logger.warning(f"{type(provider).__name__} 获取实时行情失败: {e}")
-        
+
         logger.error(f"所有数据提供者都无法获取 {symbol} 的实时行情")
         return None
-    
+
     def get_history(
-        self, 
-        symbol: str, 
-        start_date: datetime, 
+        self,
+        symbol: str,
+        start_date: datetime,
         end_date: datetime,
         freq: str = "daily"
     ) -> pd.DataFrame:
@@ -47,10 +47,10 @@ class ProviderChain(DataProvider):
                         return result
             except Exception as e:
                 logger.warning(f"{type(provider).__name__} 获取历史数据失败: {e}")
-        
+
         logger.error(f"所有数据提供者都无法获取 {symbol} 的历史数据")
         return pd.DataFrame()
-    
+
     def get_stock_list(self) -> pd.DataFrame:
         """按优先级获取股票列表"""
         for provider in self._providers:
@@ -62,14 +62,14 @@ class ProviderChain(DataProvider):
                         return result
             except Exception as e:
                 logger.warning(f"{type(provider).__name__} 获取股票列表失败: {e}")
-        
+
         logger.error("所有数据提供者都无法获取股票列表")
         return pd.DataFrame()
-    
+
     def is_available(self) -> bool:
         """检查是否有任何数据提供者可用"""
         return any(provider.is_available() for provider in self._providers)
-    
+
     def add_provider(self, provider: DataProvider, index: Optional[int] = None):
         """添加数据提供者"""
         if index is None:
@@ -77,7 +77,7 @@ class ProviderChain(DataProvider):
         else:
             self._providers.insert(index, provider)
         logger.info(f"添加数据提供者: {type(provider).__name__}")
-    
+
     def remove_provider(self, provider_type: type):
         """移除指定类型的数据提供者"""
         self._providers = [p for p in self._providers if not isinstance(p, provider_type)]

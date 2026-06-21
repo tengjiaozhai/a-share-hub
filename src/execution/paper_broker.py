@@ -20,7 +20,7 @@ class PaperBroker:
     def simulate_fill(self, order_id: str) -> Dict[str, Any]:
         """模拟成交"""
         event_id = f"evt_{uuid.uuid4().hex[:12]}"  # 生成唯一的事件ID
-        
+
         if random.random() < self.fill_rate:
             return {
                 "event_type": "FILLED",

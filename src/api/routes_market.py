@@ -46,7 +46,7 @@ def list_market_stocks(
     limit: int = Query(20, ge=1, le=200),
 ) -> list[dict]:
     provider = _get_akshare_provider()
-    
+
     # Try akshare first
     if provider.is_available():
         try:
@@ -67,12 +67,12 @@ def list_market_stocks(
                 return result
         except Exception:
             pass
-    
+
     # Fallback to local data
     q = query.strip().lower()
     if not q:
         return list(_LOCAL_STOCKS.values())[:limit]
-    
+
     results = []
     for code, info in _LOCAL_STOCKS.items():
         if q in code or q in info["name"].lower():
@@ -159,14 +159,14 @@ def list_us_stocks(
     """获取美股知名股票列表，支持搜索过滤。"""
     import requests
     import pandas as pd
-    
+
     # 使用 Session 并禁用代理
     session = requests.Session()
     session.trust_env = False
-    
+
     # 搜索过滤（先过滤，减少 API 调用次数）
     q = query.strip()
-    
+
     # 1. 获取美股股票数据（从 Stooq）
     stocks_records = []
     for stock in _US_STOCKS_LIST:
@@ -174,7 +174,7 @@ def list_us_stocks(
         if q:
             if not (q.lower() in stock["symbol"].lower() or q.lower() in stock["name"].lower()):
                 continue
-        
+
         quote = _fetch_stooq_quote(session, stock["stooq_symbol"])
         if quote:
             stocks_records.append({
@@ -183,7 +183,7 @@ def list_us_stocks(
                 "type": "stock",
                 **quote,
             })
-    
+
     # 2. 获取美股指数数据（从 Stooq）
     indices_records = []
     for index in _US_INDICES:
@@ -191,7 +191,7 @@ def list_us_stocks(
         if q:
             if not (q.lower() in index["symbol"].lower() or q.lower() in index["name"].lower()):
                 continue
-        
+
         quote = _fetch_stooq_quote(session, index["stooq_symbol"])
         if quote:
             indices_records.append({
@@ -200,13 +200,13 @@ def list_us_stocks(
                 "type": "index",
                 **quote,
             })
-    
+
     # 合并股票和指数
     all_records = stocks_records + indices_records
     df = pd.DataFrame(all_records)
-    
+
     return df.head(limit).to_dict("records")
-    
+
     # 搜索过滤
     q = query.strip()
     if q:
@@ -214,7 +214,7 @@ def list_us_stocks(
             df["symbol"].str.contains(q, case=False, na=False)
             | df["name"].str.contains(q, case=False, na=False)
         ]
-    
+
     return df.head(limit).to_dict("records")
 
 
@@ -239,7 +239,7 @@ def get_bulk_quotes(symbols: list[str]) -> list[dict]:
     import logging
     logger = logging.getLogger(__name__)
     logger.info(f"get_bulk_quotes called with symbols: {symbols}")
-    
+
     from src.data.providers.akshare_provider import _fetch_tencent_quotes_batch
     if not symbols:
         return []
