@@ -1,5 +1,5 @@
-from src.alpha.analysis_risk import evaluate_risk
 from src.alpha.analysis_models import AnalysisSnapshot, ResearchPlan, TraderProposal
+from src.alpha.analysis_risk import evaluate_risk
 
 
 def _snapshot() -> AnalysisSnapshot:
