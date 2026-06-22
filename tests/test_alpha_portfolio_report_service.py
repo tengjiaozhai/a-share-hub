@@ -165,6 +165,33 @@ def test_report_persists_visible_failure_without_mock_decision(tmp_path):
     assert "DeepSeek timeout" in item["error"]
 
 
+class RaisingSnapshotBuilder:
+    def __init__(self, exception):
+        self.exception = exception
+
+    def build(self, **kwargs):
+        raise self.exception
+
+
+def test_report_catches_unexpected_snapshot_exception(tmp_path):
+    store = _bootstrap_store(tmp_path)
+    _seed_analysis_holding(store)
+    service = AlphaPortfolioReportService(
+        store=store,
+        snapshot_builder=RaisingSnapshotBuilder(RuntimeError("yfinance rate limited")),
+        research_manager=FakeResearchManager(BULLISH_RESEARCH),
+        trader=FakeTrader(BUY_PROPOSAL),
+        model_name="deepseek-v4-pro",
+        max_position_ratio=0.2,
+    )
+    item = service.generate_report({"symbols": ["600703.SH"]})["items"][0]
+
+    assert item["status"] == "failed"
+    assert item["snapshot"] is None
+    assert item["research"] is None
+    assert "yfinance rate limited" in item["error"]
+
+
 def test_normalize_report_symbol_a_share():
     assert normalize_report_symbol("600519") == "600519.SH"
 

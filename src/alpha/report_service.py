@@ -308,7 +308,7 @@ class AlphaPortfolioReportService:
                     trader_result,
                     max_position_ratio=self._max_position_ratio,
                 )
-            except (ValueError, AnalysisAgentError) as exc:
+            except Exception as exc:
                 status = "failed"
                 error = str(exc)
 

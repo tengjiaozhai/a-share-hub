@@ -81,29 +81,32 @@ def _build_report_service(store: RuntimeStore) -> AlphaPortfolioReportService:
     def history_loader(symbol: str) -> list[dict]:
         end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=120)
-        if symbol.upper().endswith(".US"):
-            from src.us_stock.yahoo_provider import YahooProvider
+        try:
+            if symbol.upper().endswith(".US"):
+                from src.us_stock.yahoo_provider import YahooProvider
 
-            klines = YahooProvider().get_kline(symbol[:-3], interval="1d", range_str="6mo")
-            return [
-                {
-                    "date": (
-                        k.timestamp.strftime("%Y-%m-%d")
-                        if hasattr(k.timestamp, "strftime")
-                        else str(k.timestamp)[:10]
-                    ),
-                    "close": k.close,
-                    "volume": k.volume,
-                }
-                for k in klines
-            ]
-        else:
-            from src.data.providers.akshare_provider import AkshareProvider
+                klines = YahooProvider().get_kline(symbol[:-3], interval="1d", range_str="6mo")
+                return [
+                    {
+                        "date": (
+                            k.timestamp.strftime("%Y-%m-%d")
+                            if hasattr(k.timestamp, "strftime")
+                            else str(k.timestamp)[:10]
+                        ),
+                        "close": k.close,
+                        "volume": k.volume,
+                    }
+                    for k in klines
+                ]
+            else:
+                from src.data.providers.akshare_provider import AkshareProvider
 
-            bars = AkshareProvider().get_history(symbol, start_date, end_date)
-            if bars is None or getattr(bars, "empty", True):
-                return []
-            return bars.to_dict("records")
+                bars = AkshareProvider().get_history(symbol, start_date, end_date)
+                if bars is None or getattr(bars, "empty", True):
+                    return []
+                return bars.to_dict("records")
+        except Exception:
+            return []
 
     def fundamental_loader(symbol: str) -> dict:
         if symbol.upper().endswith(".US"):
