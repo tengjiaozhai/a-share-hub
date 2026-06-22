@@ -232,6 +232,8 @@ class AlphaHoldingsEntryRow(Base):
     buy_date: Mapped[str] = mapped_column(String(32), nullable=False)
     buy_price: Mapped[float] = mapped_column(Float, nullable=False)
     quantity: Mapped[float] = mapped_column(Float, nullable=False)
+    stop_loss_ratio: Mapped[float] = mapped_column(Float, nullable=False, default=-0.08)
+    take_profit_ratio: Mapped[float] = mapped_column(Float, nullable=False, default=0.20)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False

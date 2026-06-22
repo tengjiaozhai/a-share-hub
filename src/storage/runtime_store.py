@@ -983,6 +983,8 @@ class RuntimeStore:
         buy_date: str,
         buy_price: float,
         quantity: float,
+        stop_loss_ratio: float = -0.08,
+        take_profit_ratio: float = 0.20,
     ) -> str:
         entry_id = f"alpha-hold-{uuid.uuid4().hex[:12]}"
         with self.engine.begin() as conn:
@@ -994,6 +996,8 @@ class RuntimeStore:
                     buy_date=buy_date,
                     buy_price=buy_price,
                     quantity=quantity,
+                    stop_loss_ratio=stop_loss_ratio,
+                    take_profit_ratio=take_profit_ratio,
                 )
             )
         return entry_id
@@ -1016,6 +1020,8 @@ class RuntimeStore:
                     "buy_date": row.buy_date,
                     "buy_price": row.buy_price,
                     "quantity": row.quantity,
+                    "stop_loss_ratio": row.stop_loss_ratio,
+                    "take_profit_ratio": row.take_profit_ratio,
                     "created_at": _cst_iso(row.created_at),
                     "updated_at": _cst_iso(row.updated_at),
                 }
@@ -1029,6 +1035,8 @@ class RuntimeStore:
         buy_date: str,
         buy_price: float,
         quantity: float,
+        stop_loss_ratio: float = -0.08,
+        take_profit_ratio: float = 0.20,
     ) -> None:
         with self.engine.begin() as conn:
             conn.execute(
@@ -1040,6 +1048,8 @@ class RuntimeStore:
                     buy_date=buy_date,
                     buy_price=buy_price,
                     quantity=quantity,
+                    stop_loss_ratio=stop_loss_ratio,
+                    take_profit_ratio=take_profit_ratio,
                     updated_at=datetime.utcnow(),
                 )
             )

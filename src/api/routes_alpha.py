@@ -19,6 +19,8 @@ def _normalize_holdings_entry(payload: dict) -> dict:
     buy_date = str(payload.get("buy_date") or "").strip()
     buy_price = float(payload.get("buy_price", 0.0) or 0.0)
     quantity = float(payload.get("quantity", 0.0) or 0.0)
+    stop_loss_ratio = float(payload.get("stop_loss_ratio", -0.08) or -0.08)
+    take_profit_ratio = float(payload.get("take_profit_ratio", 0.20) or 0.20)
     if not symbol or not buy_date or buy_price <= 0 or quantity <= 0:
         raise HTTPException(status_code=400, detail="invalid holdings entry")
     return {
@@ -26,6 +28,8 @@ def _normalize_holdings_entry(payload: dict) -> dict:
         "buy_date": buy_date,
         "buy_price": buy_price,
         "quantity": quantity,
+        "stop_loss_ratio": stop_loss_ratio,
+        "take_profit_ratio": take_profit_ratio,
     }
 
 
@@ -147,3 +151,102 @@ def delete_holdings_entry(entry_id: str, store: RuntimeStore = Depends(get_user_
     store.delete_alpha_holdings_entry(entry_id)
     _rebuild_holdings_portfolio(store)
     return {"ok": True}
+
+
+def _classify_market(symbol: str) -> str:
+    return "us" if symbol.upper().endswith(".US") else "a"
+
+
+@router.get("/holdings/summary")
+def get_holdings_summary(store: RuntimeStore = Depends(get_user_runtime_store)) -> dict:
+    entries = store.list_alpha_holdings_entries()
+    positions_by_symbol: dict[str, list[dict]] = {}
+    for entry in entries:
+        positions_by_symbol.setdefault(entry["symbol"], []).append(entry)
+
+    aggregate: dict[str, dict] = {}
+
+    for symbol, lots in positions_by_symbol.items():
+        market = _classify_market(symbol)
+        currency = "USD" if market == "us" else "CNY"
+        total_quantity = sum(float(lot["quantity"]) for lot in lots)
+        total_cost = sum(float(lot["buy_price"]) * float(lot["quantity"]) for lot in lots)
+        weighted_avg_cost = total_cost / total_quantity if total_quantity > 0 else 0.0
+        first_buy_date = min(lot["buy_date"] for lot in lots)
+        last_buy_date = max(lot["buy_date"] for lot in lots)
+
+        latest_price: float | None = None
+        try:
+            price_map = _latest_close_price_map([symbol])
+            latest_price = price_map.get(symbol)
+        except Exception:
+            latest_price = None
+
+        market_value = latest_price * total_quantity if latest_price is not None else 0.0
+        if latest_price is not None and weighted_avg_cost > 0:
+            unrealized_pnl = (latest_price - weighted_avg_cost) * total_quantity
+            unrealized_pnl_ratio = (latest_price - weighted_avg_cost) / weighted_avg_cost
+        else:
+            unrealized_pnl = 0.0
+            unrealized_pnl_ratio = 0.0
+
+        if unrealized_pnl_ratio <= -0.08:
+            alert_level = "stop_loss"
+        elif unrealized_pnl_ratio >= 0.20:
+            alert_level = "take_profit"
+        else:
+            alert_level = "ok"
+
+        bucket = aggregate.setdefault(
+            market,
+            {
+                "market": market,
+                "currency": currency,
+                "holdings_count": 0,
+                "lots_count": 0,
+                "total_cost": 0.0,
+                "market_value": 0.0,
+                "unrealized_pnl": 0.0,
+                "_weighted_cost_sum": 0.0,
+            },
+        )
+        bucket["holdings_count"] += 1
+        bucket["lots_count"] += len(lots)
+        bucket["total_cost"] += total_cost
+        bucket["market_value"] += market_value
+        bucket["unrealized_pnl"] += unrealized_pnl
+        bucket["_weighted_cost_sum"] += total_cost
+
+    summary: list[dict] = []
+    for market_key in ("a", "us"):
+        bucket = aggregate.get(market_key)
+        if not bucket:
+            summary.append(
+                {
+                    "market": market_key,
+                    "currency": "USD" if market_key == "us" else "CNY",
+                    "holdings_count": 0,
+                    "lots_count": 0,
+                    "total_cost": 0,
+                    "market_value": 0,
+                    "unrealized_pnl": 0,
+                    "unrealized_pnl_ratio": 0,
+                }
+            )
+            continue
+        cost = bucket["_weighted_cost_sum"]
+        ratio = bucket["unrealized_pnl"] / cost if cost > 0 else 0.0
+        summary.append(
+            {
+                "market": bucket["market"],
+                "currency": bucket["currency"],
+                "holdings_count": bucket["holdings_count"],
+                "lots_count": bucket["lots_count"],
+                "total_cost": bucket["total_cost"],
+                "market_value": bucket["market_value"],
+                "unrealized_pnl": bucket["unrealized_pnl"],
+                "unrealized_pnl_ratio": ratio,
+            }
+        )
+
+    return {"summary": summary}
