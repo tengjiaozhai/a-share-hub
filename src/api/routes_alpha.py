@@ -2,8 +2,13 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from src.alpha.report_service import AlphaPortfolioReportService, normalize_report_positions, normalize_report_symbols
 from src.alpha.portfolio_service import AlphaPortfolioService
+from src.alpha.report_service import (
+    AlphaPortfolioReportService,
+    normalize_report_positions,
+    normalize_report_symbol,
+    normalize_report_symbols,
+)
 from src.api.dependencies import get_current_user, get_user_runtime_store
 from src.storage.runtime_store import RuntimeStore
 
@@ -64,6 +69,67 @@ def _rebuild_holdings_portfolio(store: RuntimeStore) -> None:
     )
 
 
+def _build_report_service(store: RuntimeStore) -> AlphaPortfolioReportService:
+    from src.agents.llm_client import LLMClient
+    from src.alpha.analysis_agents import ResearchManager, Trader
+    from src.alpha.analysis_snapshot import AnalysisSnapshotBuilder
+    from src.core.config import Settings
+
+    settings = Settings()
+    llm = LLMClient(settings)
+
+    def history_loader(symbol: str) -> list[dict]:
+        end_date = datetime.utcnow()
+        start_date = end_date - timedelta(days=120)
+        if symbol.upper().endswith(".US"):
+            from src.us_stock.yahoo_provider import YahooProvider
+
+            klines = YahooProvider().get_kline(symbol[:-3], interval="1d", range_str="6mo")
+            return [
+                {
+                    "date": (
+                        k.timestamp.strftime("%Y-%m-%d")
+                        if hasattr(k.timestamp, "strftime")
+                        else str(k.timestamp)[:10]
+                    ),
+                    "close": k.close,
+                    "volume": k.volume,
+                }
+                for k in klines
+            ]
+        else:
+            from src.data.providers.akshare_provider import AkshareProvider
+
+            bars = AkshareProvider().get_history(symbol, start_date, end_date)
+            if bars is None or getattr(bars, "empty", True):
+                return []
+            return bars.to_dict("records")
+
+    def fundamental_loader(symbol: str) -> dict:
+        if symbol.upper().endswith(".US"):
+            from src.us_stock.yahoo_provider import YahooProvider
+
+            try:
+                return YahooProvider().get_fundamental(symbol[:-3])
+            except Exception:
+                return {"status": "error"}
+        return {"status": "ok"}
+
+    snapshot_builder = AnalysisSnapshotBuilder(
+        history_loader=history_loader,
+        fundamental_loader=fundamental_loader,
+    )
+
+    return AlphaPortfolioReportService(
+        store=store,
+        snapshot_builder=snapshot_builder,
+        research_manager=ResearchManager(llm),
+        trader=Trader(llm),
+        model_name=settings.llm_model,
+        max_position_ratio=0.2,
+    )
+
+
 class GeneratePortfolioReportRequest:
     class PositionLot:
         def __init__(self, buy_date: str, buy_price: float, quantity: float) -> None:
@@ -80,14 +146,12 @@ class GeneratePortfolioReportRequest:
         self,
         symbols: list[str] | None = None,
         positions: list[dict] | None = None,
-        include_shadow: bool = True,
         include_backtest: bool = True,
         backtest_window: str = "60d",
         opening_cash: float = 10_000.0,
     ) -> None:
         self.symbols = symbols or []
         self.positions = positions or []
-        self.include_shadow = include_shadow
         self.include_backtest = include_backtest
         self.backtest_window = backtest_window
         self.opening_cash = opening_cash
@@ -96,7 +160,6 @@ class GeneratePortfolioReportRequest:
         return {
             "symbols": self.symbols,
             "positions": self.positions,
-            "include_shadow": self.include_shadow,
             "include_backtest": self.include_backtest,
             "backtest_window": self.backtest_window,
             "opening_cash": self.opening_cash,
@@ -108,11 +171,10 @@ def generate_portfolio_report(
     payload: dict,
     store: RuntimeStore = Depends(get_user_runtime_store),
 ) -> dict:
-    service = AlphaPortfolioReportService(store=store)
+    service = _build_report_service(store)
     request_payload = {
         "symbols": payload.get("symbols", []),
         "positions": payload.get("positions", []),
-        "include_shadow": payload.get("include_shadow", True),
         "include_backtest": payload.get("include_backtest", True),
         "backtest_window": payload.get("backtest_window", "60d"),
         "opening_cash": payload.get("opening_cash", 10_000.0),
@@ -120,6 +182,17 @@ def generate_portfolio_report(
     request_payload["symbols"] = normalize_report_symbols(request_payload.get("symbols"))
     request_payload["positions"] = normalize_report_positions(request_payload.get("positions"))
     return service.generate_report(request_payload)
+
+
+@router.get("/analysis-runs")
+def list_analysis_runs(
+    symbol: str | None = None,
+    limit: int = 20,
+    store: RuntimeStore = Depends(get_user_runtime_store),
+) -> dict:
+    normalized = normalize_report_symbol(symbol) if symbol else None
+    safe_limit = min(max(limit, 1), 100)
+    return {"items": store.list_alpha_analysis_runs(symbol=normalized, limit=safe_limit)}
 
 
 @router.get("/holdings")
