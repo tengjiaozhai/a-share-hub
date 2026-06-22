@@ -778,12 +778,16 @@ function runStatusClass(status) {
   return 'info';
 }
 
-function formatSignedCurrency(raw) {
+function currencyForMarket(market) {
+  return market === 'us' ? 'USD' : 'CNY';
+}
+
+function formatSignedCurrency(raw, currency = 'CNY') {
   if (raw === null || raw === undefined || raw === '') return '--';
   const n = Number(raw);
   if (!Number.isFinite(n)) return normalizeText(raw);
   const sign = n > 0 ? '+' : '';
-  return `${sign}CNY ${n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `${sign}${currency} ${n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function getCaseCounts(snapshot) {
@@ -921,7 +925,7 @@ function renderCaseSummaryChips(meta, counts) {
   if (!chips) return;
   const sourceLabel = runSourceLabel(meta?.source);
   const statusLabel = runStatusLabel(meta?.status);
-  const pnlText = meta ? formatSignedCurrency(meta.net_pnl) : '--';
+  const pnlText = meta ? formatSignedCurrency(meta.net_pnl, currencyForMarket(meta.market)) : '--';
   const watchlistText = meta ? `${meta.watchlist_count ?? 0} 只` : '--';
   const decisionText = counts ? `${counts.decisions.length} 条` : '--';
   const targetText = counts ? `${counts.targets.length} 条` : '--';
@@ -1080,7 +1084,7 @@ function renderCaseSnapshot(meta, snapshot) {
     execution_fee_total: null,
     unrealized_pnl: null,
   };
-  renderRunPnlSummary(pnlSummary);
+  renderRunPnlSummary(pnlSummary, currencyForMarket(meta?.market));
   renderTimeline(latestRun);
   renderDecisions(counts.decisions);
   renderOrders(counts.orders);
@@ -1117,7 +1121,7 @@ function renderActiveCase() {
         </div>
         <div class="overview-card">
           <span class="overview-label">净值</span>
-          <strong class="overview-value">${escapeHtml(formatSignedCurrency(meta.net_pnl))}</strong>
+          <strong class="overview-value">${escapeHtml(formatSignedCurrency(meta.net_pnl, currencyForMarket(meta.market)))}</strong>
           <span class="overview-sub">历史运行摘要</span>
         </div>
         <div class="overview-empty">
@@ -1134,7 +1138,7 @@ function renderActiveCase() {
         <span class="case-chip">${escapeHtml(meta.market || '--')}</span>
         <span class="case-chip">${escapeHtml(meta.trade_date || '--')}</span>
         <span class="case-chip">${escapeHtml(`观察 ${meta.watchlist_count ?? 0} 只`)}</span>
-        <span class="case-chip pnl">${escapeHtml(formatSignedCurrency(meta.net_pnl))}</span>
+        <span class="case-chip pnl">${escapeHtml(formatSignedCurrency(meta.net_pnl, currencyForMarket(meta.market)))}</span>
       `;
     }
     const rail = document.getElementById('case-stage-rail');
@@ -1151,7 +1155,7 @@ function renderActiveCase() {
     renderErrorEvents([]);
     renderReconcile([]);
     renderTimeline({ steps: [] });
-    renderRunPnlSummary({ net_pnl: meta.net_pnl });
+    renderRunPnlSummary({ net_pnl: meta.net_pnl }, currencyForMarket(meta?.market));
     return;
   }
   if (!selectedCaseSnapshot) {
@@ -1172,7 +1176,7 @@ function renderActiveCase() {
     renderErrorEvents([]);
     renderReconcile([]);
     renderTimeline({ steps: [] });
-    renderRunPnlSummary({ net_pnl: meta.net_pnl });
+    renderRunPnlSummary({ net_pnl: meta.net_pnl }, currencyForMarket(meta?.market));
     return;
   }
   renderCaseSnapshot(selectedHistoryRunMeta, selectedCaseSnapshot);
@@ -1255,7 +1259,7 @@ function stageLabel(stage) {
   return tag;
 }
 
-function renderRunPnlSummary(summary) {
+function renderRunPnlSummary(summary, currency = 'CNY') {
   const pnl = summary || {};
   const net = pnl.net_pnl === null || pnl.net_pnl === undefined || pnl.net_pnl === '' ? null : Number(pnl.net_pnl);
   const fee = pnl.execution_fee_total === null || pnl.execution_fee_total === undefined || pnl.execution_fee_total === '' ? null : Number(pnl.execution_fee_total);
@@ -1266,15 +1270,15 @@ function renderRunPnlSummary(summary) {
   const unrealizedEl = document.getElementById('run-pnl-unrealized');
 
   if (netEl) {
-    netEl.textContent = net === null || Number.isNaN(net) ? '--' : formatSignedCurrency(net);
+    netEl.textContent = net === null || Number.isNaN(net) ? '--' : formatSignedCurrency(net, currency);
     netEl.className = `run-pnl-value ${net > 0 ? 'green' : net < 0 ? 'red' : ''}`;
   }
   if (feeEl) {
-    feeEl.textContent = fee === null || Number.isNaN(fee) ? '--' : formatSignedCurrency(fee);
+    feeEl.textContent = fee === null || Number.isNaN(fee) ? '--' : formatSignedCurrency(fee, currency);
     feeEl.className = fee && fee > 0 ? 'run-pnl-value red' : 'run-pnl-value';
   }
   if (unrealizedEl) {
-    unrealizedEl.textContent = unrealized === null || Number.isNaN(unrealized) ? '--' : formatSignedCurrency(unrealized);
+    unrealizedEl.textContent = unrealized === null || Number.isNaN(unrealized) ? '--' : formatSignedCurrency(unrealized, currency);
     unrealizedEl.className = `run-pnl-value ${unrealized > 0 ? 'green' : unrealized < 0 ? 'red' : ''}`;
   }
 }
@@ -1627,7 +1631,7 @@ function renderRunFilterButton(source, label, count) {
 function renderRunCard(run) {
   const active = selectedHistoryRunMeta && normalizeText(selectedHistoryRunMeta.id, '') === normalizeText(run.id, '');
   const statusClass = runStatusClass(run.status);
-  const netPnl = formatSignedCurrency(run.net_pnl);
+  const netPnl = formatSignedCurrency(run.net_pnl, currencyForMarket(run.market));
   const pnlClass = run.net_pnl > 0 ? 'green' : (run.net_pnl < 0 ? 'red' : '');
   const details = [
     run.trade_date || '--',
