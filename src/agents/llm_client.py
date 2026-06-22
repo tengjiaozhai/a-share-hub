@@ -9,6 +9,10 @@ from src.core.config import Settings
 logger = logging.getLogger(__name__)
 
 
+class LLMGenerationError(RuntimeError):
+    pass
+
+
 def _normalize_model_name(model_name: str) -> str:
     return model_name.strip().lower()
 
@@ -71,3 +75,46 @@ class LLMClient:
                 "target_position_ratio": 0.0,
                 "reason": f"LLM call failed: {e}",
             }, ensure_ascii=False)
+
+    def _post_chat(self, payload: dict) -> str:
+        with httpx.Client(timeout=30.0) as client:
+            response = client.post(
+                f"{self.base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+        response.raise_for_status()
+        return str(response.json()["choices"][0]["message"]["content"])
+
+    def generate_json(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.2,
+        max_tokens: int = 1200,
+    ) -> dict:
+        if self.provider == "mock" or not self.api_key:
+            raise LLMGenerationError("DeepSeek analysis requires LLM_API_KEY")
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "response_format": {"type": "json_object"},
+        }
+        try:
+            parsed = json.loads(self._post_chat(payload))
+        except json.JSONDecodeError as exc:
+            raise LLMGenerationError("DeepSeek returned invalid JSON") from exc
+        except (httpx.HTTPError, KeyError, TypeError) as exc:
+            raise LLMGenerationError(f"DeepSeek request failed: {exc}") from exc
+        if not isinstance(parsed, dict):
+            raise LLMGenerationError("DeepSeek JSON response must be an object")
+        return parsed

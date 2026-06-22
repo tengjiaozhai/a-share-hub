@@ -304,6 +304,22 @@ class AlphaApiOrderAttemptRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class AlphaAnalysisRunRow(Base):
+    __tablename__ = "alpha_analysis_runs"
+
+    run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    symbol: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    snapshot_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    research_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    trader_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    risk_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    model_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class DashboardRunSummaryRow(Base):
     __tablename__ = "dashboard_run_summaries"
 

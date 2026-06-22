@@ -1,28 +1,28 @@
-from src.alpha.portfolio_service import AlphaPortfolioService
 from src.api import routes_alpha
 
 
-def test_generate_portfolio_report_endpoint(authenticated_client, test_app, pg_store):
-    ticket_id = pg_store.insert_alpha_ticket(
-        asset_symbol="AAPLx",
-        underlying_symbol="AAPL",
-        action="BUY",
-        thesis="open position",
-        suggested_quantity=2.0,
-        suggested_limit_price=200.0,
-        expires_at="2026-06-01T16:00:00+08:00",
-    )
-    pg_store.insert_alpha_manual_fill(
-        ticket_id=ticket_id,
-        operator_id="trader-01",
-        executed_quantity=2.0,
-        executed_price=200.0,
-        notes="buy fill",
-    )
-    AlphaPortfolioService(pg_store, user_id="test-user").rebuild_from_manual_fills(
-        opening_cash=10_000.0,
-        price_map={"AAPLx": 210.0},
-    )
+def test_generate_portfolio_report_endpoint(authenticated_client, test_app, monkeypatch):
+    class FakeReportService:
+        def generate_report(self, payload):
+            return {
+                "generated_at": "2026-06-22T15:10:00+08:00",
+                "backtest_window": payload["backtest_window"],
+                "analysis_input": {"symbols": payload["symbols"], "positions": payload["positions"]},
+                "items": [
+                    {
+                        "run_id": "alpha-analysis-test",
+                        "status": "completed",
+                        "snapshot": {"symbol": "AAPLx", "close": 210.0},
+                        "research": {"rating": "OVERWEIGHT"},
+                        "trader": {"action": "BUY"},
+                        "risk": {"action": "ADD"},
+                        "model_name": "deepseek-v4-pro",
+                        "error": None,
+                    }
+                ],
+            }
+
+    monkeypatch.setattr(routes_alpha, "_build_report_service", lambda store: FakeReportService())
     client = authenticated_client
 
     response = client.post(
@@ -48,35 +48,11 @@ def test_generate_portfolio_report_endpoint(authenticated_client, test_app, pg_s
     assert response.status_code == 200
     body = response.json()
     assert "generated_at" in body
-    assert "portfolio_snapshot" in body
-    assert body["analysis_input"] == {
-        "symbols": ["AAPLx"],
-        "positions": [
-            {
-                "symbol": "AAPLx",
-                "lots": [
-                    {
-                        "buy_date": "2026-06-01T09:30:00+08:00",
-                        "buy_price": 200.0,
-                        "quantity": 2.0,
-                    }
-                ],
-            }
-        ],
-    }
     assert len(body["items"]) == 1
     item = body["items"][0]
-    assert item["symbol"] == "AAPLx"
-    assert item["unrealized_pnl"] == 20.0
-    assert item["analysis_context"] == {
-        "lot_count": 1,
-        "total_quantity": 2.0,
-        "total_cost": 400.0,
-        "weighted_avg_cost": 200.0,
-        "first_buy_date": "2026-06-01T09:30:00+08:00",
-        "last_buy_date": "2026-06-01T09:30:00+08:00",
-    }
-    assert item["recommendation"]["action"] in {"HOLD", "ADD", "REDUCE", "EXIT", "WATCH"}
+    assert "shadow" not in item
+    assert "recommendation" not in item
+    assert item["risk"]["action"] in {"ADD", "HOLD", "REDUCE", "EXIT"}
 
 
 def test_generate_portfolio_report_endpoint_normalizes_symbols_before_service(
@@ -87,15 +63,10 @@ def test_generate_portfolio_report_endpoint_normalizes_symbols_before_service(
     captured_payload = {}
 
     class FakeReportService:
-        def __init__(self, store, user_id=None):
-            self.store = store
-            self.user_id = user_id
-
         def generate_report(self, payload):
             captured_payload.update(payload)
             return {
                 "generated_at": "2026-06-20T12:00:00+08:00",
-                "portfolio_snapshot": {},
                 "backtest_window": payload["backtest_window"],
                 "analysis_input": {
                     "symbols": payload["symbols"],
@@ -104,7 +75,7 @@ def test_generate_portfolio_report_endpoint_normalizes_symbols_before_service(
                 "items": [],
             }
 
-    monkeypatch.setattr(routes_alpha, "AlphaPortfolioReportService", FakeReportService)
+    monkeypatch.setattr(routes_alpha, "_build_report_service", lambda store: FakeReportService())
     client = authenticated_client
 
     response = client.post(
@@ -126,7 +97,6 @@ def test_generate_portfolio_report_endpoint_normalizes_symbols_before_service(
                     ],
                 },
             ],
-            "include_shadow": True,
             "include_backtest": True,
             "backtest_window": "60d",
             "opening_cash": 10_000.0,
@@ -158,14 +128,9 @@ def test_generate_portfolio_report_endpoint_returns_analysis_context_for_request
     monkeypatch,
 ):
     class FakeReportService:
-        def __init__(self, store, user_id=None):
-            self.store = store
-            self.user_id = user_id
-
         def generate_report(self, payload):
             return {
                 "generated_at": "2026-06-20T12:00:00+08:00",
-                "portfolio_snapshot": {},
                 "backtest_window": payload["backtest_window"],
                 "analysis_input": {
                     "symbols": payload["symbols"],
@@ -173,35 +138,19 @@ def test_generate_portfolio_report_endpoint_returns_analysis_context_for_request
                 },
                 "items": [
                     {
-                        "symbol": "MSFT.US",
-                        "quantity": 0.0,
-                        "avg_cost": 0.0,
-                        "mark_price": 0.0,
-                        "unrealized_pnl": 0.0,
-                        "unrealized_pnl_pct": 0.0,
-                        "fill_summary": {"count": 0, "buy_quantity": 0.0, "sell_quantity": 0.0},
-                        "shadow": {"action": "UNKNOWN", "confidence": 0, "reason": "未启用影子意见"},
-                        "backtest": {
-                            "status": "no_data",
-                            "total_return": 0.0,
-                            "max_drawdown": 0.0,
-                            "trade_count": 0,
-                            "score": "N/A",
-                        },
-                        "recommendation": {"action": "WATCH", "confidence": 0.4, "reason": "test"},
-                        "analysis_context": {
-                            "lot_count": 2,
-                            "total_quantity": 3.0,
-                            "total_cost": 1266.0,
-                            "weighted_avg_cost": 422.0,
-                            "first_buy_date": "2026-06-01T09:30:00+08:00",
-                            "last_buy_date": "2026-06-03T09:30:00+08:00",
-                        },
+                        "run_id": "alpha-analysis-test",
+                        "status": "completed",
+                        "snapshot": {"symbol": "MSFT.US", "close": 420.0},
+                        "research": {"rating": "OVERWEIGHT"},
+                        "trader": {"action": "BUY"},
+                        "risk": {"action": "ADD"},
+                        "model_name": "deepseek-v4-pro",
+                        "error": None,
                     }
                 ],
             }
 
-    monkeypatch.setattr(routes_alpha, "AlphaPortfolioReportService", FakeReportService)
+    monkeypatch.setattr(routes_alpha, "_build_report_service", lambda store: FakeReportService())
     client = authenticated_client
 
     response = client.post(
@@ -225,7 +174,6 @@ def test_generate_portfolio_report_endpoint_returns_analysis_context_for_request
                     ],
                 }
             ],
-            "include_shadow": False,
             "include_backtest": False,
             "backtest_window": "30d",
             "opening_cash": 10_000.0,
@@ -254,15 +202,52 @@ def test_generate_portfolio_report_endpoint_returns_analysis_context_for_request
             }
         ],
     }
-    assert body["items"][0]["symbol"] == "MSFT.US"
-    assert body["items"][0]["analysis_context"] == {
-        "lot_count": 2,
-        "total_quantity": 3.0,
-        "total_cost": 1266.0,
-        "weighted_avg_cost": 422.0,
-        "first_buy_date": "2026-06-01T09:30:00+08:00",
-        "last_buy_date": "2026-06-03T09:30:00+08:00",
-    }
+    item = body["items"][0]
+    assert "shadow" not in item
+    assert "recommendation" not in item
+    assert item["risk"]["action"] in {"ADD", "HOLD", "REDUCE", "EXIT"}
+
+
+def test_report_endpoint_removes_shadow_and_returns_final_risk(authenticated_client, monkeypatch):
+    class FakeReportService:
+        def generate_report(self, payload):
+            return {
+                "generated_at": "2026-06-22T15:10:00+08:00",
+                "backtest_window": payload["backtest_window"],
+                "analysis_input": {"symbols": payload["symbols"], "positions": payload["positions"]},
+                "items": [
+                    {
+                        "run_id": "alpha-analysis-test",
+                        "status": "completed",
+                        "snapshot": {"symbol": "600703.SH", "close": 16.0},
+                        "research": {"rating": "OVERWEIGHT"},
+                        "trader": {"action": "BUY"},
+                        "risk": {"action": "ADD"},
+                        "model_name": "deepseek-v4-pro",
+                        "error": None,
+                    }
+                ],
+            }
+
+    monkeypatch.setattr(routes_alpha, "_build_report_service", lambda store: FakeReportService())
+    response = authenticated_client.post(
+        "/api/v1/alpha/portfolio/report",
+        json={"symbols": ["600703"], "backtest_window": "60d"},
+    )
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert "shadow" not in item
+    assert "recommendation" not in item
+    assert item["risk"]["action"] in {"ADD", "HOLD", "REDUCE", "EXIT"}
+
+
+def test_analysis_history_is_user_scoped(authenticated_client, pg_store):
+    response = authenticated_client.get(
+        "/api/v1/alpha/analysis-runs",
+        params={"symbol": "600703.SH", "limit": 10},
+    )
+    assert response.status_code == 200
+    assert "items" in response.json()
 
 
 def test_alpha_holdings_crud_endpoints(authenticated_client, test_app, pg_store):

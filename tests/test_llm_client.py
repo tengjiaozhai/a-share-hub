@@ -1,6 +1,8 @@
 import json
 
-from src.agents.llm_client import LLMClient
+import pytest
+
+from src.agents.llm_client import LLMClient, LLMGenerationError
 from src.core.config import Settings
 
 
@@ -68,3 +70,19 @@ def test_llm_client_normalizes_deepseek_model_name_and_uses_json_output(monkeypa
     assert payload["messages"][0]["role"] == "system"
     assert "json" in payload["messages"][0]["content"].lower()
     assert payload["messages"][1]["role"] == "user"
+
+
+def test_generate_json_requires_api_key():
+    client = LLMClient(Settings(llm_provider="deepseek", llm_api_key=""))
+    with pytest.raises(LLMGenerationError, match="LLM_API_KEY"):
+        client.generate_json(system_prompt="system", user_prompt="user")
+
+
+def test_generate_json_rejects_non_json(monkeypatch):
+    monkeypatch.setattr(
+        "src.agents.llm_client.LLMClient._post_chat",
+        lambda self, payload: "not-json",
+    )
+    client = LLMClient(Settings(llm_provider="deepseek", llm_api_key="test-key"))
+    with pytest.raises(LLMGenerationError, match="invalid JSON"):
+        client.generate_json(system_prompt="system", user_prompt="user")

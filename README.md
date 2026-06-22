@@ -328,6 +328,19 @@ Phase 4 引入了安全门控机制，控制 API 下单能力的启用：
 - 启用 API 模式前必须通过 preview 验证
 - 详细操作流程见 `docs/runbooks/alpha-execution-capability-gate.md`
 
+## Holdings Analysis 持仓分析
+
+持仓分析流水线：事实与 P&L → Research Manager (DeepSeek) → Trader (DeepSeek) → 确定性风控检查
+
+- 页面仅为决策支持，**不会提交任何订单**
+- 新闻数据当前不可用，以 `news.status="unavailable"` 记录
+- DeepSeek 失败时显示为失败分析，**不会**替换为模拟建议
+- 最终动作由确定性风控规则产出：`ADD / HOLD / REDUCE / EXIT`
+- 止损线优先级最高，不可被 LLM 覆盖
+- 每次分析完整持久化（snapshot + research + trader + risk），支持审计历史
+- 必需环境变量：`LLM_PROVIDER=deepseek`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`
+- 分析历史通过 `GET /api/v1/alpha/analysis-runs` 查询
+
 ## 新手指南
 
 详细的新手 SOP 请查看 [docs/sop.md](docs/sop.md)

@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from src.core.tenant import TenantContext
 from src.storage.models import (
     AccountSnapshotRow,
+    AlphaAnalysisRunRow,
     AlphaApiOrderAttemptRow,
     AlphaHoldingsEntryRow,
     AlphaManualFillRow,
@@ -1489,6 +1490,85 @@ class RuntimeStore:
                 "stage": row.stage,
                 "status": row.status,
                 "payload": json.loads(row.payload_json or "{}"),
+                "created_at": _cst_iso(row.created_at),
+            }
+            for row in rows
+        ]
+
+    def insert_alpha_analysis_run(
+        self,
+        symbol: str,
+        status: str,
+        snapshot: dict | None,
+        research: dict | None,
+        trader: dict | None,
+        risk: dict | None,
+        model_name: str,
+        error: str | None,
+    ) -> str:
+        run_id = f"alpha-ar-{uuid.uuid4().hex[:12]}"
+        with self.engine.begin() as conn:
+            conn.execute(
+                AlphaAnalysisRunRow.__table__.insert().values(
+                    run_id=run_id,
+                    user_id=self.user_id,
+                    symbol=symbol,
+                    status=status,
+                    snapshot_json=json.dumps(snapshot, ensure_ascii=False, sort_keys=True) if snapshot is not None else None,
+                    research_json=json.dumps(research, ensure_ascii=False, sort_keys=True) if research is not None else None,
+                    trader_json=json.dumps(trader, ensure_ascii=False, sort_keys=True) if trader is not None else None,
+                    risk_json=json.dumps(risk, ensure_ascii=False, sort_keys=True) if risk is not None else None,
+                    model_name=model_name,
+                    error=error,
+                )
+            )
+        return run_id
+
+    def get_alpha_analysis_run(self, run_id: str) -> dict | None:
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                select(AlphaAnalysisRunRow)
+                .where(AlphaAnalysisRunRow.run_id == run_id)
+                .where(AlphaAnalysisRunRow.user_id == self.user_id)
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "run_id": row.run_id,
+            "symbol": row.symbol,
+            "status": row.status,
+            "snapshot": json.loads(row.snapshot_json) if row.snapshot_json is not None else None,
+            "research": json.loads(row.research_json) if row.research_json is not None else None,
+            "trader": json.loads(row.trader_json) if row.trader_json is not None else None,
+            "risk": json.loads(row.risk_json) if row.risk_json is not None else None,
+            "model_name": row.model_name,
+            "error": row.error,
+            "created_at": _cst_iso(row.created_at),
+        }
+
+    def list_alpha_analysis_runs(self, symbol: str | None = None, limit: int = 20) -> list[dict]:
+        effective_limit = min(limit, 100)
+        with self.engine.begin() as conn:
+            stmt = (
+                select(AlphaAnalysisRunRow)
+                .where(AlphaAnalysisRunRow.user_id == self.user_id)
+                .order_by(AlphaAnalysisRunRow.created_at.desc())
+            )
+            if symbol is not None:
+                stmt = stmt.where(AlphaAnalysisRunRow.symbol == symbol)
+            stmt = stmt.limit(effective_limit)
+            rows = conn.execute(stmt).fetchall()
+        return [
+            {
+                "run_id": row.run_id,
+                "symbol": row.symbol,
+                "status": row.status,
+                "snapshot": json.loads(row.snapshot_json) if row.snapshot_json is not None else None,
+                "research": json.loads(row.research_json) if row.research_json is not None else None,
+                "trader": json.loads(row.trader_json) if row.trader_json is not None else None,
+                "risk": json.loads(row.risk_json) if row.risk_json is not None else None,
+                "model_name": row.model_name,
+                "error": row.error,
                 "created_at": _cst_iso(row.created_at),
             }
             for row in rows

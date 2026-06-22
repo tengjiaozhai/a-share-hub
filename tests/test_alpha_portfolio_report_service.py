@@ -1,420 +1,218 @@
 import pytest
 from sqlalchemy import create_engine
 
+from src.alpha.analysis_agents import AnalysisAgentError
+from src.alpha.analysis_models import AnalysisSnapshot, ResearchPlan, TraderProposal
 from src.alpha.portfolio_service import AlphaPortfolioService
-from src.alpha.report_service import AlphaPortfolioReportService
+from src.alpha.report_service import (
+    AlphaPortfolioReportService,
+    _build_backtest_section,
+    _build_fill_summary,
+    _build_positions_from_holdings_entries,
+    normalize_report_positions,
+    normalize_report_symbol,
+)
 from src.core.tenant import TenantContext
 from src.storage.models import Base
 from src.storage.runtime_store import RuntimeStore
 
 TEST_USER_ID = "test-user"
 
+
 def _bootstrap_store(tmp_path) -> RuntimeStore:
     engine = create_engine(f"sqlite:///{tmp_path}/runtime.db", future=True)
     Base.metadata.create_all(engine)
     return RuntimeStore(engine, TenantContext("test-user"))
 
-def _seed_holdings(store: RuntimeStore, price_map: dict[str, float] | None = None) -> None:
-    ticket_id = store.insert_alpha_ticket(
-        asset_symbol="AAPLx",
-        underlying_symbol="AAPL",
-        action="BUY",
-        thesis="phase2 seed",
-        suggested_quantity=2.0,
-        suggested_limit_price=200.0,
-        expires_at="2026-06-01T16:00:00+08:00",
-    )
-    store.insert_alpha_manual_fill(
-        ticket_id=ticket_id,
-        operator_id="trader-01",
-        executed_quantity=2.0,
-        executed_price=200.0,
-        notes="buy fill",
-    )
-    AlphaPortfolioService(store).rebuild_from_manual_fills(
-        opening_cash=10_000.0,
-        price_map=price_map or {"AAPLx": 210.0},
-    )
 
-def _patched_shadow_provider(_store):
-    def _provider(latest_workbench: dict | None, symbol: str) -> dict:
-        return {"action": "HOLD", "confidence": 0.6, "reason": "shadow says hold"}
-
-    return _provider
-
-def _no_data_backtest_provider(_store):
-    def _provider(symbol: str, window: str, opening_cash: float) -> dict:
-        return {
-            "status": "no_data",
-            "total_return": 0.0,
-            "max_drawdown": 0.0,
-            "trade_count": 0,
-            "score": "N/A",
-        }
-
-    return _provider
-
-def test_generate_report_with_held_positions(tmp_path):
-    store = _bootstrap_store(tmp_path)
-    _seed_holdings(store)
-
-    service = AlphaPortfolioReportService(
-        store=store,
-        shadow_opinion_provider=_patched_shadow_provider(store),
-        backtest_provider=_no_data_backtest_provider(store),
-    )
-
-    report = service.generate_report(
-        {
-            "symbols": [],
-            "include_shadow": True,
-            "include_backtest": True,
-            "backtest_window": "60d",
-            "opening_cash": 10_000.0,
-        }
-    )
-
-    assert "generated_at" in report
-    assert "portfolio_snapshot" in report
-    assert len(report["items"]) == 1
-
-    item = report["items"][0]
-    assert item["symbol"] == "AAPLx"
-    assert item["quantity"] == 2.0
-    assert item["avg_cost"] == 200.0
-    assert item["mark_price"] == 210.0
-    assert item["unrealized_pnl"] == 20.0
-    assert item["unrealized_pnl_pct"] == pytest.approx(0.05)
-
-    assert item["fill_summary"]["count"] == 1
-    assert item["fill_summary"]["buy_quantity"] == 2.0
-    assert item["fill_summary"]["sell_quantity"] == 0.0
-
-def test_generate_report_empty_symbols_uses_all_holdings(tmp_path):
-    store = _bootstrap_store(tmp_path)
-
-    buy_id = store.insert_alpha_ticket(
-        asset_symbol="AAPLx",
-        underlying_symbol="AAPL",
-        action="BUY",
-        thesis="open",
-        suggested_quantity=2.0,
-        suggested_limit_price=200.0,
-        expires_at="2026-06-01T16:00:00+08:00",
-    )
-    other_id = store.insert_alpha_ticket(
-        asset_symbol="TSLAx",
-        underlying_symbol="TSLA",
-        action="BUY",
-        thesis="open",
-        suggested_quantity=1.0,
-        suggested_limit_price=100.0,
-        expires_at="2026-06-01T16:00:00+08:00",
-    )
-    store.insert_alpha_manual_fill(
-        ticket_id=buy_id, operator_id="trader-01",
-        executed_quantity=2.0, executed_price=200.0, notes="buy AAPLx",
-    )
-    store.insert_alpha_manual_fill(
-        ticket_id=other_id, operator_id="trader-01",
-        executed_quantity=1.0, executed_price=100.0, notes="buy TSLAx",
-    )
-    AlphaPortfolioService(store).rebuild_from_manual_fills(
-        opening_cash=10_000.0,
-        price_map={"AAPLx": 210.0, "TSLAx": 105.0},
-    )
-
-    service = AlphaPortfolioReportService(
-        store=store,
-        shadow_opinion_provider=_patched_shadow_provider(store),
-        backtest_provider=_no_data_backtest_provider(store),
-    )
-    report = service.generate_report(
-        {"symbols": [], "opening_cash": 10_000.0}
-    )
-
-    symbols = {item["symbol"] for item in report["items"]}
-    assert symbols == {"AAPLx", "TSLAx"}
-
-def test_generate_report_uses_positions_input_for_analysis_context(tmp_path):
-    store = _bootstrap_store(tmp_path)
-    _seed_holdings(store)
-
-    service = AlphaPortfolioReportService(
-        store=store,
-        shadow_opinion_provider=_patched_shadow_provider(store),
-        backtest_provider=_no_data_backtest_provider(store),
-    )
-
-    report = service.generate_report(
-        {
-            "symbols": ["AAPLx"],
-            "positions": [
-                {
-                    "symbol": "AAPLx",
-                    "lots": [
-                        {"buy_date": "2026-06-01", "buy_price": 200.0, "quantity": 2.0},
-                        {"buy_date": "2026-06-05", "buy_price": 220.0, "quantity": 1.0},
-                    ],
-                }
-            ],
-            "opening_cash": 10_000.0,
-        }
-    )
-
-    assert report["analysis_input"] == {
-        "symbols": ["AAPLx"],
-        "positions": [
-            {
-                "symbol": "AAPLx",
-                "lots": [
-                    {"buy_date": "2026-06-01", "buy_price": 200.0, "quantity": 2.0},
-                    {"buy_date": "2026-06-05", "buy_price": 220.0, "quantity": 1.0},
-                ],
-            }
-        ],
-    }
-    assert report["items"][0]["analysis_context"] == {
-        "lot_count": 2,
-        "total_quantity": 3.0,
-        "total_cost": 620.0,
-        "weighted_avg_cost": pytest.approx(206.666667),
-        "first_buy_date": "2026-06-01",
-        "last_buy_date": "2026-06-05",
+def _no_data_backtest_provider(symbol: str, window: str, opening_cash: float) -> dict:
+    return {
+        "status": "no_data",
+        "total_return": 0.0,
+        "max_drawdown": 0.0,
+        "trade_count": 0,
+        "score": "N/A",
     }
 
-def test_generate_report_empty_positions_falls_back_to_stored_holdings(tmp_path):
-    store = _bootstrap_store(tmp_path)
-    _seed_holdings(store)
 
-    service = AlphaPortfolioReportService(
-        store=store,
-        shadow_opinion_provider=_patched_shadow_provider(store),
-        backtest_provider=_no_data_backtest_provider(store),
-    )
-
-    report = service.generate_report(
-        {
-            "symbols": [],
-            "positions": [],
-            "opening_cash": 10_000.0,
-        }
-    )
-
-    assert [item["symbol"] for item in report["items"]] == ["AAPLx"]
-    assert report["analysis_input"] == {"symbols": [], "positions": []}
-    assert report["items"][0]["analysis_context"] == {}
-
-def test_generate_report_filters_to_requested_symbols(tmp_path):
-    store = _bootstrap_store(tmp_path)
-
-    buy_id = store.insert_alpha_ticket(
-        asset_symbol="AAPLx", underlying_symbol="AAPL",
-        action="BUY", thesis="open", suggested_quantity=2.0,
-        suggested_limit_price=200.0, expires_at="2026-06-01T16:00:00+08:00",
-    )
-    other_id = store.insert_alpha_ticket(
-        asset_symbol="TSLAx", underlying_symbol="TSLA",
-        action="BUY", thesis="open", suggested_quantity=1.0,
-        suggested_limit_price=100.0, expires_at="2026-06-01T16:00:00+08:00",
-    )
-    store.insert_alpha_manual_fill(
-        ticket_id=buy_id, operator_id="trader-01",
-        executed_quantity=2.0, executed_price=200.0, notes="buy",
-    )
-    store.insert_alpha_manual_fill(
-        ticket_id=other_id, operator_id="trader-01",
-        executed_quantity=1.0, executed_price=100.0, notes="buy",
-    )
-    AlphaPortfolioService(store).rebuild_from_manual_fills(
-        opening_cash=10_000.0,
-        price_map={"AAPLx": 210.0, "TSLAx": 105.0},
-    )
-
-    service = AlphaPortfolioReportService(
-        store=store,
-        shadow_opinion_provider=_patched_shadow_provider(store),
-        backtest_provider=_no_data_backtest_provider(store),
-    )
-    report = service.generate_report(
-        {"symbols": ["AAPLx"], "opening_cash": 10_000.0}
-    )
-
-    assert len(report["items"]) == 1
-    assert report["items"][0]["symbol"] == "AAPLx"
-
-def test_generate_report_builds_zero_quantity_items_for_requested_non_held_symbols(tmp_path):
-    store = _bootstrap_store(tmp_path)
-
-    service = AlphaPortfolioReportService(
-        store=store,
-        shadow_opinion_provider=_patched_shadow_provider(store),
-        backtest_provider=_no_data_backtest_provider(store),
-    )
-    report = service.generate_report(
-        {"symbols": ["600519", "msft", "AAPL.US"], "opening_cash": 10_000.0}
-    )
-
-    assert [item["symbol"] for item in report["items"]] == ["600519.SH", "MSFT.US", "AAPL.US"]
-    for item in report["items"]:
-        assert item["quantity"] == 0.0
-        assert item["avg_cost"] == 0.0
-        assert item["mark_price"] == 0.0
-        assert item["fill_summary"]["count"] == 0
-        assert item["recommendation"]["action"] in {"ADD", "WATCH"}
-        assert item["recommendation"]["reason"]
-
-def test_generate_report_recommendation_action_enum(tmp_path):
-    store = _bootstrap_store(tmp_path)
-    _seed_holdings(store)
-
-    service = AlphaPortfolioReportService(
-        store=store,
-        shadow_opinion_provider=_patched_shadow_provider(store),
-        backtest_provider=_no_data_backtest_provider(store),
-    )
-    report = service.generate_report(
-        {"symbols": [], "opening_cash": 10_000.0}
-    )
-
-    valid_actions = {"HOLD", "ADD", "REDUCE", "EXIT", "WATCH"}
-    for item in report["items"]:
-        assert item["recommendation"]["action"] in valid_actions
-        assert 0.0 <= item["recommendation"]["confidence"] <= 1.0
-
-def test_generate_report_handles_no_backtest_data(tmp_path):
-    store = _bootstrap_store(tmp_path)
-    _seed_holdings(store)
-
-    service = AlphaPortfolioReportService(
-        store=store,
-        shadow_opinion_provider=_patched_shadow_provider(store),
-        backtest_provider=_no_data_backtest_provider(store),
-    )
-    report = service.generate_report(
-        {"symbols": [], "opening_cash": 10_000.0}
-    )
-
-    backtest = report["items"][0]["backtest"]
-    assert backtest["status"] == "no_data"
-    assert len(report["items"]) == 1
-
-def test_generate_report_pnl_calculation(tmp_path):
-    store = _bootstrap_store(tmp_path)
-
-    ticket_id = store.insert_alpha_ticket(
-        asset_symbol="AAPLx", underlying_symbol="AAPL",
-        action="BUY", thesis="open", suggested_quantity=4.0,
-        suggested_limit_price=100.0, expires_at="2026-06-01T16:00:00+08:00",
-    )
-    store.insert_alpha_manual_fill(
-        ticket_id=ticket_id, operator_id="trader-01",
-        executed_quantity=4.0, executed_price=100.0, notes="buy",
-    )
-    AlphaPortfolioService(store).rebuild_from_manual_fills(
-        opening_cash=10_000.0,
-        price_map={"AAPLx": 120.0},
-    )
-
-    service = AlphaPortfolioReportService(
-        store=store,
-        shadow_opinion_provider=_patched_shadow_provider(store),
-        backtest_provider=_no_data_backtest_provider(store),
-    )
-    report = service.generate_report(
-        {"symbols": [], "opening_cash": 10_000.0}
-    )
-
-    item = report["items"][0]
-    assert item["quantity"] == 4.0
-    assert item["avg_cost"] == 100.0
-    assert item["mark_price"] == 120.0
-    assert item["unrealized_pnl"] == 80.0
-    assert item["unrealized_pnl_pct"] == pytest.approx(0.20)
-
-def test_generate_report_floating_loss_triggers_exit_or_reduce(tmp_path):
-    store = _bootstrap_store(tmp_path)
-
-    ticket_id = store.insert_alpha_ticket(
-        asset_symbol="AAPLx", underlying_symbol="AAPL",
-        action="BUY", thesis="open", suggested_quantity=2.0,
-        suggested_limit_price=200.0, expires_at="2026-06-01T16:00:00+08:00",
-    )
-    store.insert_alpha_manual_fill(
-        ticket_id=ticket_id, operator_id="trader-01",
-        executed_quantity=2.0, executed_price=200.0, notes="buy",
-    )
-    AlphaPortfolioService(store).rebuild_from_manual_fills(
-        opening_cash=10_000.0,
-        price_map={"AAPLx": 180.0},
-    )
-
-    service = AlphaPortfolioReportService(
-        store=store,
-        shadow_opinion_provider=_patched_shadow_provider(store),
-        backtest_provider=_no_data_backtest_provider(store),
-    )
-    report = service.generate_report(
-        {"symbols": [], "opening_cash": 10_000.0}
-    )
-
-    item = report["items"][0]
-    assert item["unrealized_pnl_pct"] <= -0.08
-    assert item["recommendation"]["action"] in {"EXIT", "REDUCE"}
-
-def test_build_recommendation_is_pure_and_picks_exit_for_severe_loss():
-    from src.alpha.report_service import _build_recommendation
-
-    position = {"quantity": 2.0, "unrealized_pnl_pct": -0.10}
-    shadow: dict = {}
-    backtest = {"status": "no_data", "score": "N/A", "max_drawdown": 0.0}
-
-    rec = _build_recommendation(position, shadow, backtest)
-    assert rec["action"] in {"EXIT", "REDUCE"}
-    assert 0.0 <= rec["confidence"] <= 1.0
-    assert isinstance(rec["reason"], str)
-
-def test_build_shadow_section_returns_empty_when_no_workbench():
-    from src.alpha.report_service import _build_shadow_section
-
-    result = _build_shadow_section(None, "AAPLx")
-    assert result == {"action": "UNKNOWN", "confidence": 0, "reason": "无最近模拟交易"}
+SNAPSHOT = AnalysisSnapshot(
+    symbol="600703.SH",
+    market="a",
+    currency="CNY",
+    as_of="2026-06-22",
+    quantity=300,
+    weighted_avg_cost=13.333333,
+    close=16.0,
+    market_value=4800.0,
+    unrealized_pnl=800.0,
+    unrealized_pnl_ratio=0.06,
+    position_ratio=0.08,
+    stop_loss_ratio=-0.08,
+    take_profit_ratio=0.20,
+    technical={
+        "ma20": 15.7,
+        "ma60": 14.8,
+        "ma20_gap": 0.02,
+        "volume_ratio_20": 1.2,
+        "bar_count": 61,
+        "reclaimed_ma20": True,
+    },
+    fundamentals={"status": "ok", "pe_ratio": 18.2},
+    news={"status": "unavailable", "items": []},
+    data_quality={"status": "partial", "missing": ["news"]},
+)
+BULLISH_RESEARCH = ResearchPlan(
+    rating="OVERWEIGHT",
+    thesis="上涨趋势保持",
+    technical_view="回踩 MA20 后重新站稳",
+    fundamental_view="估值数据有限",
+    sentiment_view="新闻不可用",
+    catalysts=["成交量确认"],
+    risks=["新闻缺失"],
+    confidence=0.66,
+    data_gaps=["news"],
+)
+BUY_PROPOSAL = TraderProposal(
+    action="BUY",
+    reasoning="研究方向偏多且位置未追高",
+    entry_low=15.8,
+    entry_high=16.2,
+    stop_loss=15.0,
+    take_profit=19.0,
+    position_ratio=0.1,
+)
 
 
-def test_generate_report_uses_saved_holdings_entries_when_no_input_positions(tmp_path):
-    store = _bootstrap_store(tmp_path)
+class FakeSnapshotBuilder:
+    def __init__(self, snapshot):
+        self.snapshot = snapshot
+
+    def build(self, **kwargs):
+        return self.snapshot
+
+
+class FakeResearchManager:
+    def __init__(self, research):
+        self.research = research
+
+    def analyze(self, snapshot):
+        return self.research
+
+
+class FailingResearchManager:
+    def __init__(self, message):
+        self.message = message
+
+    def analyze(self, snapshot):
+        raise AnalysisAgentError(self.message)
+
+
+class FakeTrader:
+    def __init__(self, proposal):
+        self.proposal = proposal
+
+    def propose(self, snapshot, research):
+        return self.proposal
+
+
+def _seed_analysis_holding(store):
     store.insert_alpha_holdings_entry(
-        symbol="MSFT.US",
-        buy_date="2026-06-18",
-        buy_price=420.0,
-        quantity=2.0,
+        symbol="600703.SH",
+        buy_date="2026-06-01",
+        buy_price=13.333333,
+        quantity=300,
     )
-    store.insert_alpha_holdings_entry(
-        symbol="MSFT.US",
-        buy_date="2026-06-19",
-        buy_price=426.0,
-        quantity=1.0,
-    )
-    AlphaPortfolioService(store).rebuild_from_holdings_entries(price_map={"MSFT.US": 430.0})
 
+
+def test_report_runs_snapshot_research_trader_risk_and_persists(tmp_path):
+    store = _bootstrap_store(tmp_path)
+    _seed_analysis_holding(store)
     service = AlphaPortfolioReportService(
         store=store,
-        shadow_opinion_provider=_patched_shadow_provider(store),
-        backtest_provider=_no_data_backtest_provider(store),
+        snapshot_builder=FakeSnapshotBuilder(SNAPSHOT),
+        research_manager=FakeResearchManager(BULLISH_RESEARCH),
+        trader=FakeTrader(BUY_PROPOSAL),
+        model_name="deepseek-v4-pro",
+        max_position_ratio=0.2,
     )
+    report = service.generate_report({"symbols": ["600703.SH"], "backtest_window": "60d"})
 
-    report = service.generate_report({"symbols": [], "positions": [], "opening_cash": 10_000.0})
-
-    assert [item["symbol"] for item in report["items"]] == ["MSFT.US"]
     item = report["items"][0]
-    assert item["quantity"] == 3.0
-    assert round(item["avg_cost"], 6) == round((420.0 * 2.0 + 426.0 * 1.0) / 3.0, 6)
-    assert item["mark_price"] == 430.0
-    assert item["analysis_context"] == {
-        "lot_count": 2,
-        "total_quantity": 3.0,
-        "total_cost": 1266.0,
-        "weighted_avg_cost": 422.0,
-        "first_buy_date": "2026-06-18",
-        "last_buy_date": "2026-06-19",
-    }
+    assert item["status"] == "completed"
+    assert item["research"]["rating"] == "OVERWEIGHT"
+    assert item["trader"]["action"] == "BUY"
+    assert item["risk"]["action"] == "ADD"
+    assert store.get_alpha_analysis_run(item["run_id"])["symbol"] == "600703.SH"
+
+
+def test_report_persists_visible_failure_without_mock_decision(tmp_path):
+    store = _bootstrap_store(tmp_path)
+    _seed_analysis_holding(store)
+    service = AlphaPortfolioReportService(
+        store=store,
+        snapshot_builder=FakeSnapshotBuilder(SNAPSHOT),
+        research_manager=FailingResearchManager("DeepSeek timeout"),
+        trader=FakeTrader(BUY_PROPOSAL),
+        model_name="deepseek-v4-pro",
+        max_position_ratio=0.2,
+    )
+    item = service.generate_report({"symbols": ["600703.SH"]})["items"][0]
+
+    assert item["status"] == "failed"
+    assert item["research"] is None
+    assert item["trader"] is None
+    assert item["risk"] is None
+    assert "DeepSeek timeout" in item["error"]
+
+
+def test_normalize_report_symbol_a_share():
+    assert normalize_report_symbol("600519") == "600519.SH"
+
+
+def test_normalize_report_symbol_us():
+    assert normalize_report_symbol("AAPL") == "AAPL.US"
+
+
+def test_normalize_report_symbol_already_suffixed():
+    assert normalize_report_symbol("AAPL.US") == "AAPL.US"
+
+
+def test_normalize_report_positions_drops_invalid():
+    result = normalize_report_positions([
+        {"symbol": "AAPL", "lots": [{"buy_date": "", "buy_price": 100, "quantity": 1}]},
+        {"symbol": "MSFT", "lots": [{"buy_date": "2026-01-01", "buy_price": 200, "quantity": 2}]},
+    ])
+    assert len(result) == 2
+    assert result[0]["symbol"] == "AAPL.US"
+    assert result[0]["lots"] == []
+    assert result[1]["symbol"] == "MSFT.US"
+    assert len(result[1]["lots"]) == 1
+
+
+def test_build_positions_from_holdings_entries_groups():
+    entries = [
+        {"symbol": "600519", "buy_date": "2026-01-01", "buy_price": 100, "quantity": 100},
+        {"symbol": "600519", "buy_date": "2026-01-02", "buy_price": 110, "quantity": 200},
+    ]
+    result = _build_positions_from_holdings_entries(entries)
+    assert len(result) == 1
+    assert result[0]["symbol"] == "600519.SH"
+    assert len(result[0]["lots"]) == 2
+
+
+def test_build_fill_summary_counts():
+    fills = [
+        {"executed_quantity": 10, "action": "BUY"},
+        {"executed_quantity": 3, "action": "SELL"},
+        {"executed_quantity": 5, "action": "BUY"},
+    ]
+    result = _build_fill_summary(fills)
+    assert result["count"] == 3
+    assert result["buy_quantity"] == 15
+    assert result["sell_quantity"] == 3
+
+
+def test_build_backtest_section_no_data():
+    result = _build_backtest_section("600519.SH", "60d", 10000.0, _no_data_backtest_provider)
+    assert result["status"] == "no_data"
+    assert result["trade_count"] == 0

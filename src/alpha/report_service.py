@@ -1,11 +1,11 @@
-"""Alpha 组合报告服务（V1：基于规则的报告聚合）。
+"""Alpha 组合报告服务（DeepSeek pipeline）。
 
 报告组成：
 - 持仓快照（来自 AlphaPortfolioService）
-- 每个持仓的 fill 汇总、浮盈浮亏、影子意见、回测指标、规则化建议
+- 每个持仓的 snapshot → research → trader → risk → persist
 
 设计原则：
-- 纯函数（_build_recommendation / _build_shadow_section / _build_position_section / _build_fill_summary）
+- 纯函数（_build_position_section / _build_fill_summary / _build_backtest_section）
   便于单元测试，不依赖 store / IO。
 - 默认 provider 是私有方法，可通过构造函数注入以便测试时替换。
 - 不引用 FastAPI / HTTPException（Clean Architecture：service 层不感知 HTTP）。
@@ -16,14 +16,14 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import UTC, datetime
 
+from src.alpha.analysis_agents import AnalysisAgentError
+from src.alpha.analysis_risk import evaluate_risk
 from src.data.providers.akshare_catalog import normalize_symbol as normalize_a_share_symbol
 
 PositionDict = dict
 FillDict = dict
-ShadowDict = dict
 BacktestDict = dict
 
-ShadowOpinionProvider = Callable[[dict | None, str], ShadowDict]
 BacktestProvider = Callable[[str, str, float], BacktestDict]
 
 _VALID_WINDOWS = {"30d", "60d", "120d"}
@@ -175,34 +175,6 @@ def _build_position_section(position: PositionDict) -> dict:
     }
 
 
-def _build_shadow_section(latest_workbench: dict | None, symbol: str) -> dict:
-    """从 latest_workbench 中提取标的的影子意见；无数据时返回 UNKNOWN。"""
-    if not latest_workbench:
-        return {"action": "UNKNOWN", "confidence": 0, "reason": "无最近模拟交易"}
-
-    history = latest_workbench.get("history") or {}
-    latest_run = latest_workbench.get("latest_run") or {}
-    candidates: list[dict] = []
-    for source in (history.get("decisions"), latest_run.get("decision_items"), latest_run.get("target_items")):
-        if isinstance(source, list):
-            candidates.extend(row for row in source if isinstance(row, dict))
-
-    for row in candidates:
-        row_symbol = str(row.get("symbol") or row.get("asset_symbol") or "").upper()
-        if row_symbol and row_symbol == symbol.upper():
-            action = str(row.get("action") or row.get("parsed_action") or row.get("signal") or "HOLD").upper()
-            confidence = row.get("confidence")
-            try:
-                confidence_value = float(confidence) if confidence is not None else 0.5
-            except (TypeError, ValueError):
-                confidence_value = 0.5
-            confidence_value = max(0.0, min(1.0, confidence_value))
-            reason = str(row.get("reason") or row.get("thesis") or "来自最近模拟交易")
-            return {"action": action, "confidence": confidence_value, "reason": reason}
-
-    return {"action": "UNKNOWN", "confidence": 0, "reason": "无最近模拟交易"}
-
-
 def _build_backtest_section(
     symbol: str,
     window: str,
@@ -238,98 +210,27 @@ def _build_backtest_section(
     }
 
 
-def _build_recommendation(position: PositionDict, shadow: dict, backtest: dict) -> dict:
-    """7 条规则的报告建议（V1 规则化）。
-
-    规则：
-    1. 无持仓 -> WATCH
-    2. 浮亏 <= -8% -> EXIT 或 REDUCE
-    3. 浮亏 <= -3% 且 shadow=SELL -> REDUCE
-    4. 浮盈 >= 10% 且回测最大回撤偏大 -> REDUCE
-    5. 浮盈 > 0 且 shadow=HOLD/BUY 且回测为正 -> HOLD
-    6. shadow=BUY 且回测为正且当前浮盈不高 -> ADD
-    7. 其他 -> WATCH
-    """
-    shadow_action = str(shadow.get("action", "UNKNOWN")).upper() if shadow else "UNKNOWN"
-    backtest_status = str(backtest.get("status", "no_data"))
-    backtest_total_return = float(backtest.get("total_return", 0.0) or 0.0)
-    backtest_max_dd = float(backtest.get("max_drawdown", 0.0) or 0.0)
-    backtest_positive = backtest_status == "ok" and backtest_total_return > 0
-    quantity = float(position.get("quantity", 0.0) or 0.0)
-    if quantity <= 0:
-        if shadow_action == "BUY" and backtest_positive:
-            return {
-                "action": "ADD",
-                "confidence": 0.55,
-                "reason": "当前无持仓，影子建议买入且回测为正，可作为建仓候选",
-            }
-        if shadow_action == "SELL":
-            return {
-                "action": "WATCH",
-                "confidence": 0.5,
-                "reason": "当前无持仓，影子侧偏空，暂列观察",
-            }
-        return {
-            "action": "WATCH",
-            "confidence": 0.4,
-            "reason": "当前无持仓，可先结合影子与回测继续观察",
-        }
-
-    pnl_pct = float(position.get("unrealized_pnl_pct", 0.0) or 0.0)
-
-    if pnl_pct <= -0.08:
-        return {
-            "action": "EXIT" if pnl_pct <= -0.15 else "REDUCE",
-            "confidence": min(0.95, 0.7 + abs(pnl_pct)),
-            "reason": f"浮亏 {pnl_pct:.2%} 触发止损阈值 -8%",
-        }
-
-    if pnl_pct <= -0.03 and shadow_action == "SELL":
-        return {
-            "action": "REDUCE",
-            "confidence": 0.7,
-            "reason": "浮亏且影子建议卖出，建议减仓",
-        }
-
-    if pnl_pct >= 0.10 and backtest_max_dd >= 0.20:
-        return {
-            "action": "REDUCE",
-            "confidence": 0.65,
-            "reason": "浮盈较大且回测最大回撤偏高，锁定部分收益",
-        }
-
-    if pnl_pct > 0 and shadow_action in {"HOLD", "BUY"} and backtest_positive:
-        return {
-            "action": "HOLD",
-            "confidence": 0.7,
-            "reason": "浮盈、影子正向、回测为正，继续持有",
-        }
-
-    if shadow_action == "BUY" and backtest_positive and pnl_pct < 0.05:
-        return {
-            "action": "ADD",
-            "confidence": 0.6,
-            "reason": "影子买入且回测为正，浮盈不偏高，可考虑加仓",
-        }
-
-    return {"action": "WATCH", "confidence": 0.5, "reason": "无明确触发条件，观望"}
-
-
 class AlphaPortfolioReportService:
     def __init__(
         self,
         store,
-        user_id: str | None = None,
-        shadow_opinion_provider: ShadowOpinionProvider | None = None,
+        *,
+        snapshot_builder,
+        research_manager,
+        trader,
+        model_name: str,
+        max_position_ratio: float = 0.2,
         backtest_provider: BacktestProvider | None = None,
     ) -> None:
         self._store = store
-        self._user_id = user_id
-        self._shadow = shadow_opinion_provider or self._default_shadow_provider
+        self._snapshot_builder = snapshot_builder
+        self._research_manager = research_manager
+        self._trader = trader
+        self._model_name = model_name
+        self._max_position_ratio = max_position_ratio
         self._backtest = backtest_provider or self._default_backtest_provider
 
     def generate_report(self, payload: dict) -> dict:
-        """主入口：拼装 {generated_at, portfolio_snapshot, items[]}。"""
         normalized_positions = normalize_report_positions(payload.get("positions"))
         if not normalized_positions:
             normalized_positions = _build_positions_from_holdings_entries(self._store.list_alpha_holdings_entries())
@@ -338,17 +239,13 @@ class AlphaPortfolioReportService:
             symbols = [position["symbol"] for position in normalized_positions]
         analysis_input = _normalize_analysis_input(symbols, normalized_positions)
         requested_positions = {position["symbol"]: position for position in analysis_input["positions"]}
-        include_shadow = bool(payload.get("include_shadow", True))
-        include_backtest = bool(payload.get("include_backtest", True))
         backtest_window = _normalize_window(payload.get("backtest_window"))
         opening_cash = float(payload.get("opening_cash", 10_000.0) or 0.0)
 
         positions = self._store.list_alpha_positions()
         fills = self._store.list_all_alpha_manual_fills()
-        snapshot = self._store.get_latest_alpha_portfolio_snapshot()
         ticket_lookup = self._build_ticket_lookup()
 
-        latest_workbench = self._latest_workbench()
         if symbols:
             positions_by_symbol = {row["symbol"]: row for row in positions}
             positions = [
@@ -364,50 +261,87 @@ class AlphaPortfolioReportService:
                 for symbol in symbols
             ]
 
+        holdings_by_symbol: dict[str, list[dict]] = {}
+        for position in normalized_positions:
+            holdings_by_symbol[position["symbol"]] = position.get("lots", [])
+
+        market_totals: dict[str, float] = {}
+        for position in positions:
+            symbol = position["symbol"]
+            market = "us" if symbol.upper().endswith(".US") else "a"
+            mv = float(position.get("quantity", 0.0) or 0.0) * float(position.get("mark_price", 0.0) or 0.0)
+            market_totals[market] = market_totals.get(market, 0.0) + mv
+
         items: list[dict] = []
         for position in positions:
             position_section = _build_position_section(position)
             symbol = position_section["symbol"]
+            market = "us" if symbol.upper().endswith(".US") else "a"
+            lots = holdings_by_symbol.get(symbol, [])
             fills_for_symbol = self._enrich_fills_for_symbol(fills, ticket_lookup, symbol)
             fill_summary = _build_fill_summary(fills_for_symbol)
 
-            if include_shadow:
-                shadow = self._shadow(latest_workbench, symbol)
-            else:
-                shadow = {"action": "UNKNOWN", "confidence": 0, "reason": "未启用影子意见"}
+            backtest = _build_backtest_section(
+                symbol=symbol,
+                window=backtest_window,
+                opening_cash=opening_cash,
+                backtest_provider=self._backtest,
+            )
 
-            if include_backtest:
-                backtest = _build_backtest_section(
+            snapshot = None
+            research = None
+            trader_result = None
+            risk = None
+            status = "completed"
+            error = None
+            try:
+                snapshot = self._snapshot_builder.build(
                     symbol=symbol,
-                    window=backtest_window,
-                    opening_cash=opening_cash,
-                    backtest_provider=self._backtest,
+                    lots=lots,
+                    portfolio_market_value=market_totals.get(market, 0.0),
                 )
-            else:
-                backtest = {
-                    "status": "no_data",
-                    "total_return": 0.0,
-                    "max_drawdown": 0.0,
-                    "trade_count": 0,
-                    "score": "N/A",
-                }
+                research = self._research_manager.analyze(snapshot)
+                trader_result = self._trader.propose(snapshot, research)
+                risk = evaluate_risk(
+                    snapshot,
+                    research,
+                    trader_result,
+                    max_position_ratio=self._max_position_ratio,
+                )
+            except (ValueError, AnalysisAgentError) as exc:
+                status = "failed"
+                error = str(exc)
 
-            recommendation = _build_recommendation(position_section, shadow, backtest)
+            run_id = self._store.insert_alpha_analysis_run(
+                symbol=symbol,
+                status=status,
+                snapshot=snapshot.model_dump() if snapshot else None,
+                research=research.model_dump() if research else None,
+                trader=trader_result.model_dump() if trader_result else None,
+                risk=risk.model_dump() if risk else None,
+                model_name=self._model_name,
+                error=error,
+            )
 
             items.append(
                 {
-                    **position_section,
+                    "run_id": run_id,
+                    "status": status,
+                    "symbol": symbol,
+                    "snapshot": snapshot.model_dump() if snapshot else None,
+                    "research": research.model_dump() if research else None,
+                    "trader": trader_result.model_dump() if trader_result else None,
+                    "risk": risk.model_dump() if risk else None,
+                    "model_name": self._model_name,
+                    "error": error,
                     "analysis_context": _build_analysis_context(requested_positions.get(symbol)),
                     "fill_summary": fill_summary,
-                    "shadow": shadow,
                     "backtest": backtest,
-                    "recommendation": recommendation,
                 }
             )
 
         return {
             "generated_at": datetime.now(UTC).astimezone().isoformat(),
-            "portfolio_snapshot": snapshot or {},
             "analysis_input": analysis_input,
             "backtest_window": backtest_window,
             "items": items,
@@ -439,18 +373,7 @@ class AlphaPortfolioReportService:
             )
         return enriched
 
-    def _latest_workbench(self) -> dict | None:
-        """从最近一次 dashboard run summary 取出 latest_workbench，缺失返回 None。"""
-        summaries = self._store.list_dashboard_run_summaries(limit=1)
-        if not summaries:
-            return None
-        return summaries[0].get("latest_workbench") or None
-
-    def _default_shadow_provider(self, latest_workbench: dict | None, symbol: str) -> dict:
-        return _build_shadow_section(latest_workbench, symbol)
-
     def _default_backtest_provider(self, symbol: str, window: str, opening_cash: float) -> dict:
-        """V1 默认 provider：尽量复用真实回测引擎，失败/无数据时返回 no_data。"""
         try:
             from datetime import datetime as _dt
             from datetime import timedelta as _td

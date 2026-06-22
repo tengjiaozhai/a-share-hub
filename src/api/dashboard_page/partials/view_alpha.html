@@ -27,10 +27,6 @@
             <option value="120d">120日</option>
           </select>
           <label class="alpha-report-toggle">
-            <input type="checkbox" id="alpha-report-include-shadow" checked>
-            <span>包含影子持仓</span>
-          </label>
-          <label class="alpha-report-toggle">
             <input type="checkbox" id="alpha-report-include-backtest" checked>
             <span>包含回测对比</span>
           </label>
@@ -67,6 +63,12 @@
         <div class="alpha-report-empty" id="alpha-report-body">
           先在上方录入股票和买入批次，再生成逐标的分析报告。
         </div>
+        <div id="alpha-analysis-status" class="alpha-analysis-status"></div>
+        <div id="alpha-research-section" class="alpha-analysis-section"></div>
+        <div id="alpha-trader-section" class="alpha-analysis-section"></div>
+        <div id="alpha-risk-section" class="alpha-analysis-section"></div>
+        <div id="alpha-data-quality" class="alpha-data-quality"></div>
+        <div id="alpha-analysis-history" class="alpha-analysis-history"></div>
       </div>
     </div>
 
