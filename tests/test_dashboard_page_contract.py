@@ -49,9 +49,9 @@ def test_render_dashboard_html_contains_alpha_builder_javascript_contract():
         "data-alpha-remove-stock",
         "data-alpha-remove-lot",
         "positions: positions",
-        "analysisContext.lot_count",
-        "analysisContext.total_cost",
-        "analysisContext.weighted_avg_cost",
+        "snapshot.close_date",
+        "snapshot.weighted_cost",
+        "risk.action",
     ]
     for marker in required_markers:
         assert marker in html
@@ -396,12 +396,35 @@ def test_render_dashboard_html_alpha_window_select_has_label():
 
 def test_render_dashboard_html_alpha_toggles_have_chinese_labels():
     html = render_dashboard_html()
-    assert "包含影子持仓" in html
     assert "包含回测对比" in html
-    assert 'id="alpha-report-include-shadow"' in html
     assert 'id="alpha-report-include-backtest"' in html
     assert "包含模拟交易" not in html
     assert "包含历史回测" not in html
+
+
+def test_render_dashboard_html_contains_structured_decision_sections():
+    html = render_dashboard_html()
+    for marker in [
+        "alpha-analysis-status",
+        "alpha-research-section",
+        "alpha-trader-section",
+        "alpha-risk-section",
+        "alpha-data-quality",
+        "alpha-analysis-history",
+    ]:
+        assert marker in html
+
+
+def test_render_dashboard_html_removes_shadow_decision_path():
+    html = render_dashboard_html()
+    for marker in [
+        "alpha-report-include-shadow",
+        "包含影子持仓",
+        "模拟建议",
+        "item.shadow",
+        "item.recommendation",
+    ]:
+        assert marker not in html
 
 
 def test_render_dashboard_html_alpha_builder_button_order_code_first():

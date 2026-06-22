@@ -129,6 +129,31 @@ def test_dashboard_removes_legacy_alpha_ops_sections(_patch_auth):
     assert "观察列表与持仓候选" not in html
 
 
+def test_dashboard_contains_structured_decision_sections(_patch_auth):
+    html = _dashboard_html()
+    for marker in [
+        "alpha-analysis-status",
+        "alpha-research-section",
+        "alpha-trader-section",
+        "alpha-risk-section",
+        "alpha-data-quality",
+        "alpha-analysis-history",
+    ]:
+        assert marker in html
+
+
+def test_dashboard_removes_shadow_decision_path(_patch_auth):
+    html = _dashboard_html()
+    for marker in [
+        "alpha-report-include-shadow",
+        "包含影子持仓",
+        "模拟建议",
+        "item.shadow",
+        "item.recommendation",
+    ]:
+        assert marker not in html
+
+
 def test_dashboard_removes_alpha_manual_fill_entry_ui(_patch_auth):
     html = _dashboard_html()
     assert 'id="alpha-fill-form"' not in html
