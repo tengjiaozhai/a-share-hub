@@ -10,7 +10,7 @@ def _read(relative: str) -> str:
 def render_dashboard_html(theme_id: str = "trading-terminal") -> str:
     html = _read("shell.html")
     replacements = {
-        "{{INLINE_STYLES}}": _read("styles/dashboard.css"),
+        "{{INLINE_STYLES}}": _read("styles/dashboard.css") + "\n" + _read("styles/alpha.css"),
         "{{STATUS_BAR}}": _read("partials/status_bar.html"),
         "{{VIEW_DASHBOARD}}": _read("partials/view_dashboard.html"),
         "{{VIEW_MARKET}}": _read("partials/view_market.html"),

@@ -1,10 +1,24 @@
 // Alpha 持仓助手
 const ALPHA_REPORT_API = '/api/v1/alpha/portfolio/report';
 const ALPHA_HOLDINGS_API = '/api/v1/alpha/holdings';
+const ALPHA_HOLDINGS_SUMMARY_API = '/api/v1/alpha/holdings/summary';
 const VALID_REPORT_ACTIONS = ['HOLD', 'ADD', 'REDUCE', 'EXIT', 'WATCH'];
 
 let alphaPortfolioSymbols = [];
 let alphaEditingHoldingId = null;
+let currentMarket = 'a';
+let alphaHoldingsEntriesCache = [];
+let alphaPositionsBySymbol = {};
+let alphaHoldingsSummaryCache = { summary: [] };
+
+const MARKET_LABEL = { a: 'A 股', us: '美股' };
+const MARKET_CURRENCY = { a: 'CNY', us: 'USD' };
+const DEFAULT_STOP_LOSS_RATIO = -0.08;
+const DEFAULT_TAKE_PROFIT_RATIO = 0.20;
+
+function classifyAlphaMarket(symbol) {
+  return String(symbol || '').trim().toUpperCase().endsWith('.US') ? 'us' : 'a';
+}
 
 function alphaActionClass(action) {
   const normalized = String(action || 'HOLD').toLowerCase();
@@ -160,58 +174,199 @@ function groupAlphaFillsBySymbol(fills) {
   }, {});
 }
 
-function renderAlphaHoldingsSummary(snapshot, positions, fills) {
+function aggregateAlphaHoldingsBySymbol(entries) {
+  const groups = {};
+  entries.forEach((entry) => {
+    const symbol = String(entry.symbol || '').trim().toUpperCase();
+    if (!symbol) return;
+    const market = classifyAlphaMarket(symbol);
+    const bucket = groups[symbol] || (groups[symbol] = {
+      symbol,
+      market,
+      currency: MARKET_CURRENCY[market],
+      entries: [],
+      total_quantity: 0,
+      total_cost: 0,
+      weighted_avg_cost: 0,
+      lot_count: 0,
+      first_buy_date: null,
+      last_buy_date: null,
+      stop_loss_ratio: DEFAULT_STOP_LOSS_RATIO,
+      take_profit_ratio: DEFAULT_TAKE_PROFIT_RATIO,
+    });
+    bucket.entries.push(entry);
+    const quantity = Number(entry.quantity || 0);
+    const buyPrice = Number(entry.buy_price || 0);
+    bucket.total_quantity += quantity;
+    bucket.total_cost += quantity * buyPrice;
+    bucket.lot_count += 1;
+    if (!bucket.first_buy_date || entry.buy_date < bucket.first_buy_date) {
+      bucket.first_buy_date = entry.buy_date;
+    }
+    if (!bucket.last_buy_date || entry.buy_date > bucket.last_buy_date) {
+      bucket.last_buy_date = entry.buy_date;
+    }
+    if (entry.stop_loss_ratio !== null && entry.stop_loss_ratio !== undefined) {
+      bucket.stop_loss_ratio = Number(entry.stop_loss_ratio);
+    }
+    if (entry.take_profit_ratio !== null && entry.take_profit_ratio !== undefined) {
+      bucket.take_profit_ratio = Number(entry.take_profit_ratio);
+    }
+  });
+  Object.values(groups).forEach((bucket) => {
+    bucket.weighted_avg_cost = bucket.total_quantity > 0
+      ? bucket.total_cost / bucket.total_quantity
+      : 0;
+  });
+  return groups;
+}
+
+function buildAlphaPositionCard(symbol, aggregate, position) {
+  const latestPrice = Number(position?.mark_price ?? position?.latest_price ?? aggregate.weighted_avg_cost);
+  const totalQuantity = aggregate.total_quantity;
+  const avgCost = aggregate.weighted_avg_cost;
+  const marketValue = Number.isFinite(latestPrice) ? latestPrice * totalQuantity : 0;
+  const unrealizedPnl = Number.isFinite(latestPrice) ? (latestPrice - avgCost) * totalQuantity : 0;
+  const unrealizedPnlRatio = avgCost > 0 && Number.isFinite(latestPrice)
+    ? (latestPrice - avgCost) / avgCost
+    : 0;
+  const stopLossRatio = Number(aggregate.stop_loss_ratio ?? DEFAULT_STOP_LOSS_RATIO);
+  const takeProfitRatio = Number(aggregate.take_profit_ratio ?? DEFAULT_TAKE_PROFIT_RATIO);
+
+  let alertLevel = 'ok';
+  if (unrealizedPnlRatio <= stopLossRatio) alertLevel = 'stop_loss';
+  else if (unrealizedPnlRatio >= takeProfitRatio) alertLevel = 'take_profit';
+
+  const distanceStopLoss = unrealizedPnlRatio - stopLossRatio;
+  const distanceTakeProfit = takeProfitRatio - unrealizedPnlRatio;
+  const pnlTone = unrealizedPnl >= 0 ? 'positive' : 'negative';
+
+  return `
+    <article class="alpha-position-card alert-${escapeHtml(alertLevel)}" data-alpha-symbol="${escapeHtml(symbol)}">
+      <div class="alpha-position-card-head">
+        <span class="alpha-position-card-symbol">${escapeHtml(symbol)} · ${escapeHtml(aggregate.currency)}</span>
+        <div class="alpha-position-card-actions">
+          <button type="button" class="alpha-builder-add-lot" data-alpha-history-edit data-alpha-edit-entry-symbol="${escapeHtml(symbol)}">编辑</button>
+          <button type="button" class="alpha-builder-remove" data-alpha-history-delete data-alpha-delete-entry-symbol="${escapeHtml(symbol)}">删除</button>
+        </div>
+      </div>
+      <div class="alpha-position-card-grid">
+        <div>
+          <div class="alpha-position-card-label">现价</div>
+          <div class="alpha-position-card-value">${escapeHtml(formatNumber(latestPrice, 4))} ${escapeHtml(aggregate.currency)}</div>
+        </div>
+        <div>
+          <div class="alpha-position-card-label">持仓成本</div>
+          <div class="alpha-position-card-value">${escapeHtml(formatNumber(avgCost, 4))} ${escapeHtml(aggregate.currency)}（均价）</div>
+        </div>
+        <div>
+          <div class="alpha-position-card-label">持仓数量</div>
+          <div class="alpha-position-card-value">${escapeHtml(formatNumber(totalQuantity, 4))} 股</div>
+        </div>
+        <div>
+          <div class="alpha-position-card-label">市值</div>
+          <div class="alpha-position-card-value">${escapeHtml(formatNumber(marketValue, 2))} ${escapeHtml(aggregate.currency)}</div>
+        </div>
+        <div>
+          <div class="alpha-position-card-label">首次买入</div>
+          <div class="alpha-position-card-value">${escapeHtml(aggregate.first_buy_date || '--')}</div>
+        </div>
+        <div>
+          <div class="alpha-position-card-label">最近买入</div>
+          <div class="alpha-position-card-value">${escapeHtml(aggregate.last_buy_date || '--')}</div>
+        </div>
+      </div>
+      <div class="alpha-position-card-pnl">
+        <span class="alpha-position-card-label">浮盈金额</span>
+        <span class="alpha-position-card-pnl-amount ${pnlTone}">${escapeHtml(formatSignedCurrency(unrealizedPnl, aggregate.currency))}</span>
+        <span class="alpha-position-card-label">浮盈比例</span>
+        <span class="alpha-position-card-pnl-ratio ${pnlTone}">${escapeHtml(formatSignedPercent(unrealizedPnlRatio * 100))}</span>
+      </div>
+      <div class="alpha-position-card-thresholds">
+        <span class="alpha-position-card-label">距止损 ${escapeHtml(formatSignedPercent(distanceStopLoss * 100))}</span>
+        <span class="alpha-position-card-label">距止盈 ${escapeHtml(formatSignedPercent(distanceTakeProfit * 100))}</span>
+        <span class="alpha-position-card-threshold-tag ${alertLevel === 'stop_loss' ? 'current-stop-loss' : 'stop-loss'}">止损 ${escapeHtml(formatPercent(stopLossRatio))}</span>
+        <span class="alpha-position-card-threshold-tag ${alertLevel === 'take_profit' ? 'current-take-profit' : 'take-profit'}">止盈 +${escapeHtml(formatPercent(takeProfitRatio).replace('-', ''))}</span>
+        <span class="alpha-position-card-threshold-tag">批次 ${escapeHtml(String(aggregate.lot_count))}</span>
+      </div>
+    </article>
+  `;
+}
+
+function formatSignedCurrency(raw, currency) {
+  if (raw === null || raw === undefined || raw === '') return '--';
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return normalizeText(raw);
+  const sign = n > 0 ? '+' : '';
+  return `${sign}${currency} ${n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function renderAlphaHoldingsSummary(summaryList) {
   const root = document.getElementById('alpha-holdings-summary');
   if (!root) return;
+  const bucket = summaryList.find((item) => item.market === currentMarket) || {
+    market: currentMarket,
+    currency: MARKET_CURRENCY[currentMarket],
+    holdings_count: 0,
+    lots_count: 0,
+    total_cost: 0,
+    market_value: 0,
+    unrealized_pnl: 0,
+    unrealized_pnl_ratio: 0,
+  };
   const cards = [
     {
-      label: '净值',
-      value: snapshot ? formatCurrency(snapshot.nav) : '--',
+      label: '持仓成本',
+      value: formatCurrencyRaw(Number(bucket.total_cost || 0), bucket.currency),
       tone: 'neutral',
     },
     {
-      label: '已实现盈亏',
-      value: snapshot ? formatCurrency(snapshot.realized_pnl) : '--',
-      tone: Number(snapshot?.realized_pnl || 0) >= 0 ? 'positive' : 'negative',
+      label: '当前市值',
+      value: formatCurrencyRaw(Number(bucket.market_value || 0), bucket.currency),
+      tone: 'neutral',
     },
     {
       label: '未实现盈亏',
-      value: snapshot ? formatCurrency(snapshot.unrealized_pnl) : '--',
-      tone: Number(snapshot?.unrealized_pnl || 0) >= 0 ? 'positive' : 'negative',
+      value: formatSignedCurrency(Number(bucket.unrealized_pnl || 0), bucket.currency),
+      tone: Number(bucket.unrealized_pnl || 0) >= 0 ? 'positive' : 'negative',
     },
     {
-      label: '持仓 / 成交',
-      value: `${positions.length} / ${fills.length}`,
+      label: '持仓 / 批次',
+      value: `${bucket.holdings_count || 0} / ${bucket.lots_count || 0}`,
       tone: 'neutral',
     },
   ];
   root.innerHTML = cards.map((card) => `
     <div class="alpha-summary-card">
-      <div class="alpha-summary-label">${escapeHtml(card.label)}</div>
+      <div class="alpha-summary-label">${escapeHtml(card.label)} <span class="alpha-summary-currency">${escapeHtml(bucket.currency)}</span></div>
       <div class="alpha-summary-value ${card.tone}">${escapeHtml(card.value)}</div>
     </div>
   `).join('');
 }
 
+function formatCurrencyRaw(raw, currency) {
+  if (raw === null || raw === undefined || raw === '') return '--';
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return normalizeText(raw);
+  return `${currency} ${n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 function renderAlphaPositions(positions) {
   const root = document.getElementById('alpha-positions');
   if (!root) return;
-  if (!positions.length) {
-    root.innerHTML = '<div class="alpha-empty-state">暂无持仓，先回填一次真实成交。</div>';
+  const aggregates = aggregateAlphaHoldingsBySymbol(alphaHoldingsEntriesCache);
+  const filtered = Object.values(aggregates).filter((agg) => agg.market === currentMarket);
+  if (!filtered.length) {
+    root.innerHTML = `<div class="alpha-empty-state">暂无 ${escapeHtml(MARKET_LABEL[currentMarket])} 持仓，先在下方录入买入批次。</div>`;
     return;
   }
-  root.innerHTML = positions.map((item) => `
-    <div class="alpha-position-item" data-symbol="${escapeHtml(item.symbol)}">
-      <div>
-        <div class="alpha-position-symbol">${escapeHtml(item.symbol)}</div>
-        <div class="alpha-position-sub">${escapeHtml(String(item.quantity))} 股 / 均价 ${escapeHtml(formatNumber(item.avg_cost, 2))}</div>
-      </div>
-      <div class="alpha-position-metrics">
-        <span>${escapeHtml(formatNumber(item.mark_price, 2))}</span>
-        <span>${escapeHtml(formatCurrency((Number(item.mark_price) - Number(item.avg_cost)) * Number(item.quantity || 0)))}</span>
-      </div>
-    </div>
-  `).join('');
+  root.innerHTML = filtered
+    .sort((a, b) => a.symbol.localeCompare(b.symbol))
+    .map((agg) => {
+      const position = positions.find((p) => String(p.symbol || '').toUpperCase() === agg.symbol) || agg;
+      return buildAlphaPositionCard(agg.symbol, agg, position);
+    })
+    .join('');
 }
 
 function renderAlphaFillHistory(fills) {
@@ -265,23 +420,49 @@ function renderAlphaPortfolio(portfolio) {
   const snapshot = portfolio?.snapshot || null;
   const positions = toList(portfolio?.positions);
   const fills = toList(portfolio?.fills);
+  alphaPositionsBySymbol = positions.reduce((acc, pos) => {
+    acc[String(pos.symbol || '').toUpperCase()] = pos;
+    return acc;
+  }, {});
   alphaPortfolioSymbols = positions
     .map((item) => String(item?.symbol || '').trim().toUpperCase())
     .filter(Boolean);
-  renderAlphaHoldingsSummary(snapshot, positions, fills);
+  renderAlphaFillHistory(fills.filter((fill) => {
+    const symbol = String(fill.asset_symbol || fill.symbol || '').toUpperCase();
+    return symbol && (classifyAlphaMarket(symbol) === currentMarket);
+  }));
+  renderAlphaMultiLegHistory(fills.filter((fill) => {
+    const symbol = String(fill.asset_symbol || fill.symbol || '').toUpperCase();
+    return symbol && (classifyAlphaMarket(symbol) === currentMarket);
+  }));
   renderAlphaPositions(positions);
-  renderAlphaFillHistory(fills);
-  renderAlphaMultiLegHistory(fills);
+  if (snapshot && !alphaHoldingsSummaryCache.summary?.length) {
+    renderAlphaHoldingsSummary([
+      {
+        market: currentMarket,
+        currency: MARKET_CURRENCY[currentMarket],
+        holdings_count: positions.length,
+        lots_count: fills.length,
+        total_cost: snapshot.cash_balance || 0,
+        market_value: snapshot.nav || 0,
+        unrealized_pnl: snapshot.unrealized_pnl || 0,
+        unrealized_pnl_ratio: 0,
+      },
+    ]);
+  } else {
+    renderAlphaHoldingsSummary(alphaHoldingsSummaryCache.summary || []);
+  }
 }
 
 function renderAlphaSavedHoldings(items) {
   const root = document.getElementById('alpha-holdings-records');
   if (!root) return;
-  if (!items.length) {
+  const filtered = items.filter((item) => classifyAlphaMarket(item.symbol) === currentMarket);
+  if (!filtered.length) {
     root.innerHTML = '<div class="alpha-empty-state">暂无已保存买入记录</div>';
     return;
   }
-  root.innerHTML = items.map((item) => `
+  root.innerHTML = filtered.map((item) => `
     <div class="alpha-fill-row" data-alpha-saved-holding-id="${escapeHtml(item.entry_id)}">
       <div>
         <div class="alpha-fill-symbol">${escapeHtml(item.symbol)}</div>
@@ -295,6 +476,22 @@ function renderAlphaSavedHoldings(items) {
   `).join('');
 }
 
+function updateAlphaMarketHeader() {
+  const label = document.getElementById('alpha-current-market-label');
+  const currency = document.getElementById('alpha-current-currency-label');
+  if (label) label.textContent = MARKET_LABEL[currentMarket] || currentMarket;
+  if (currency) currency.textContent = MARKET_CURRENCY[currentMarket] || '--';
+}
+
+function setAlphaActiveMarketTab() {
+  document.querySelectorAll('[data-alpha-market]').forEach((tab) => {
+    const isActive = tab.dataset.alphaMarket === currentMarket;
+    tab.classList.toggle('active', isActive);
+    tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+  updateAlphaMarketHeader();
+}
+
 async function loadAlphaWorkbench() {
   const res = await fetch(WORKBENCH_API);
   if (!res.ok) {
@@ -304,14 +501,39 @@ async function loadAlphaWorkbench() {
   renderAlphaPortfolio(data.alpha?.portfolio || {});
 }
 
-async function loadAlphaSavedHoldings() {
+async function loadAlphaSavedHoldings(market = currentMarket) {
   const res = await fetch(ALPHA_HOLDINGS_API);
   if (!res.ok) {
     throw new Error('alpha holdings load failed');
   }
   const data = await res.json();
-  renderAlphaSavedHoldings(toList(data.items));
-  return toList(data.items);
+  const allItems = toList(data.items);
+  alphaHoldingsEntriesCache = allItems;
+  renderAlphaSavedHoldings(allItems);
+  return allItems.filter((item) => classifyAlphaMarket(item.symbol) === market);
+}
+
+async function loadAlphaSummary(market = currentMarket) {
+  try {
+    const res = await fetch(ALPHA_HOLDINGS_SUMMARY_API);
+    if (!res.ok) {
+      throw new Error(`summary failed (${res.status})`);
+    }
+    const data = await res.json();
+    alphaHoldingsSummaryCache = data || { summary: [] };
+  } catch (error) {
+    console.warn('alpha summary load failed, falling back to snapshot', error);
+    alphaHoldingsSummaryCache = { summary: [] };
+  }
+  renderAlphaHoldingsSummary(alphaHoldingsSummaryCache.summary || []);
+}
+
+async function loadAlphaHoldings(market = currentMarket) {
+  await Promise.all([
+    loadAlphaSavedHoldings(market),
+    loadAlphaSummary(market),
+    loadAlphaWorkbench(),
+  ]);
 }
 
 function renderAlphaReport(report, requestedSymbols = []) {
@@ -486,6 +708,21 @@ document.getElementById('alpha-analysis-builder')?.addEventListener('click', (ev
   }
 });
 
+document.getElementById('alpha-market-tabs')?.addEventListener('click', async (event) => {
+  const tab = event.target.closest('[data-alpha-market]');
+  if (!tab) return;
+  const nextMarket = tab.dataset.alphaMarket;
+  if (!nextMarket || nextMarket === currentMarket) return;
+  currentMarket = nextMarket;
+  setAlphaActiveMarketTab();
+  try {
+    await loadAlphaHoldings(currentMarket);
+  } catch (error) {
+    console.error('切换市场失败:', error);
+    showToast(`切换到 ${MARKET_LABEL[currentMarket]} 失败: ${error.message}`, 'error', { position: 'bottom-right', duration: 3000 });
+  }
+});
+
 async function updateAlphaHolding(entryId, payload) {
   const res = await fetch(`${ALPHA_HOLDINGS_API}/${encodeURIComponent(entryId)}`, {
     method: 'PUT',
@@ -509,16 +746,16 @@ async function deleteAlphaHolding(entryId) {
   }
   alphaEditingHoldingId = null;
   resetAlphaBuilder();
-  await loadAlphaSavedHoldings();
-  await loadAlphaWorkbench();
+  await loadAlphaHoldings(currentMarket);
   await loadAlphaReport();
   return data;
 }
 
-async function saveAlphaHoldings() {
+async function saveAlphaHoldings(options = {}) {
+  const { silent = false } = options;
   const btn = document.getElementById('alpha-analysis-save');
   const editingEntryId = btn?.dataset?.alphaEditEntryId || alphaEditingHoldingId;
-  if (btn) {
+  if (btn && !silent) {
     btn.disabled = true;
     btn.textContent = '保存中...';
   }
@@ -549,23 +786,39 @@ async function saveAlphaHoldings() {
     }
     alphaEditingHoldingId = null;
     resetAlphaBuilder();
-    await loadAlphaSavedHoldings();
-    await loadAlphaWorkbench();
+    await loadAlphaHoldings(currentMarket);
     await loadAlphaReport();
-    if (btn) {
+    if (btn && !silent) {
       btn.textContent = '已保存';
       setTimeout(() => { btn.textContent = '保存'; btn.disabled = false; }, 2000);
     }
-    showToast('持仓分析已保存', 'success');
+
+    const symbolsAdded = Array.from(new Set(entries.map((entry) => entry.symbol)));
+    const totalHoldings = alphaHoldingsEntriesCache.length;
+    const symbolSummary = symbolsAdded.length === 1
+      ? `${symbolsAdded[0]} ${entries.length} 笔`
+      : `${symbolsAdded.join('/')} 共 ${entries.length} 笔`;
+    showToast(`已添加 ${symbolSummary}，当前持仓 ${totalHoldings} 股`, 'success', { position: 'bottom-right', duration: 3000 });
+    return { entries, totalHoldings };
   } catch (error) {
-    if (btn) {
+    if (btn && !silent) {
       btn.textContent = '保存失败';
       btn.disabled = false;
       setTimeout(() => { btn.textContent = '保存'; }, 2000);
     }
-    showToast('保存失败: ' + error.message, 'error');
+    showToast('保存失败: ' + error.message, 'error', { position: 'bottom-right', duration: 3000 });
+    throw error;
   }
 }
+
+document.getElementById('alpha-analysis-save-and-report')?.addEventListener('click', async () => {
+  try {
+    await saveAlphaHoldings();
+    await loadAlphaReport();
+  } catch (_) {
+    // toast already shown
+  }
+});
 
 document.getElementById('alpha-saved-holdings')?.addEventListener('click', async (event) => {
   const trigger = event.target.closest('button');
@@ -579,10 +832,40 @@ document.getElementById('alpha-saved-holdings')?.addEventListener('click', async
     return;
   }
   if (trigger.matches('[data-alpha-history-delete]')) {
+    const confirmed = window.confirm(`删除 ${entry?.buy_date || ''} 这笔？会重新计算均价`);
+    if (!confirmed) return;
     await deleteAlphaHolding(entryId);
   }
 });
 
-document.getElementById('alpha-analysis-save')?.addEventListener('click', saveAlphaHoldings);
+document.getElementById('alpha-positions')?.addEventListener('click', async (event) => {
+  const trigger = event.target.closest('button');
+  if (!trigger) return;
+  const symbol = trigger.getAttribute('data-alpha-edit-entry-symbol') || trigger.getAttribute('data-alpha-delete-entry-symbol');
+  if (!symbol) return;
+  const entries = alphaHoldingsEntriesCache.filter((item) => String(item.symbol || '').toUpperCase() === symbol);
+  if (!entries.length) return;
+  if (trigger.matches('[data-alpha-history-edit]')) {
+    beginAlphaHoldingEdit(entries[0]);
+    return;
+  }
+  if (trigger.matches('[data-alpha-history-delete]')) {
+    const confirmed = window.confirm(`删除 ${symbol} 所有 ${entries.length} 笔？会重新计算均价`);
+    if (!confirmed) return;
+    try {
+      for (const entry of entries) {
+        await deleteAlphaHolding(entry.entry_id);
+      }
+      showToast(`已删除 ${symbol} ${entries.length} 笔`, 'success', { position: 'bottom-right', duration: 3000 });
+    } catch (error) {
+      showToast('删除失败: ' + error.message, 'error', { position: 'bottom-right', duration: 3000 });
+    }
+  }
+});
+
+document.getElementById('alpha-analysis-save')?.addEventListener('click', () => {
+  saveAlphaHoldings().catch(() => {});
+});
+setAlphaActiveMarketTab();
 ensureAlphaAnalysisBuilder();
-loadAlphaSavedHoldings().catch((error) => console.error('加载已保存持仓失败:', error));
+loadAlphaHoldings(currentMarket).catch((error) => console.error('加载持仓失败:', error));

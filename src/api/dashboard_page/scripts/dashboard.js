@@ -207,15 +207,19 @@ function renderStatus(workbench, killStatus) {
   setKillSwitchButton(active);
 }
 
-function showToast(message, type = 'info') {
+function showToast(message, type = 'info', options = {}) {
   const existing = document.querySelector('.toast-notification');
   if (existing) existing.remove();
 
+  const position = options.position || 'top-right';
+  const duration = Number(options.duration || 2000);
+
   const toast = document.createElement('div');
-  toast.className = 'toast-notification';
+  toast.className = position === 'bottom-right' ? 'toast-notification toast-bottom-right' : 'toast-notification';
   toast.style.cssText = `
     position: fixed;
-    top: 60px;
+    top: ${position === 'bottom-right' ? 'auto' : '60px'};
+    bottom: ${position === 'bottom-right' ? '20px' : 'auto'};
     right: 20px;
     padding: 12px 20px;
     border-radius: 8px;
@@ -243,7 +247,7 @@ function showToast(message, type = 'info') {
   setTimeout(() => {
     toast.style.animation = 'slideOut 0.3s ease';
     setTimeout(() => toast.remove(), 300);
-  }, 2000);
+  }, duration);
 }
 
 function savePreferences() {

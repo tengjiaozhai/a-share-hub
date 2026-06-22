@@ -372,3 +372,118 @@ def test_render_dashboard_html_contains_skeleton_function():
     assert 'showCaseDrawerSkeleton' in html
     assert 'case-skeleton' in html
     assert 'skeleton-shimmer' in html
+
+
+# ── 2026-06-22 Alpha Holdings UX Overhaul ──
+
+
+def test_render_dashboard_html_contains_alpha_market_tabs():
+    html = render_dashboard_html()
+    assert 'id="alpha-market-tabs"' in html
+    assert 'data-alpha-market="a"' in html
+    assert 'data-alpha-market="us"' in html
+    assert ">A 股<" in html
+    assert ">美股<" in html
+    assert "alpha-market-tab active" in html
+
+
+def test_render_dashboard_html_alpha_window_select_has_label():
+    html = render_dashboard_html()
+    assert "回看窗口" in html
+    assert 'for="alpha-report-window"' in html
+    assert 'id="alpha-report-window"' in html
+
+
+def test_render_dashboard_html_alpha_toggles_have_chinese_labels():
+    html = render_dashboard_html()
+    assert "包含影子持仓" in html
+    assert "包含回测对比" in html
+    assert 'id="alpha-report-include-shadow"' in html
+    assert 'id="alpha-report-include-backtest"' in html
+    assert "包含模拟交易" not in html
+    assert "包含历史回测" not in html
+
+
+def test_render_dashboard_html_alpha_builder_button_order_code_first():
+    """输入区按钮顺序：[代码]→[+新增股票]→[日期/价格/数量]→[+新增批次/删除批次]→[保存/保存并生成分析]
+
+    HTML 段（按钮容器）：[+新增股票] < 保存 < 保存并生成分析
+    JS 段（卡片/批次模板）：[代码] < [+新增批次] / [删除批次] 必须共存
+    """
+    html = render_dashboard_html()
+    add_stock_idx = html.find('id="alpha-add-stock-card"')
+    save_idx = html.find('id="alpha-analysis-save"')
+    save_and_report_idx = html.find('id="alpha-analysis-save-and-report"')
+    assert add_stock_idx > 0
+    assert save_idx > add_stock_idx
+    assert save_and_report_idx > save_idx
+
+    js_symbol_idx = html.find('data-alpha-symbol')
+    js_lot_idx = html.find('data-alpha-lot-buy-date')
+    js_add_lot_idx = html.find('data-alpha-add-lot')
+    js_remove_lot_idx = html.find('data-alpha-remove-lot')
+    assert js_symbol_idx > 0
+    assert js_lot_idx > 0
+    assert js_add_lot_idx > 0
+    assert js_remove_lot_idx > 0
+    assert js_symbol_idx > js_lot_idx
+
+
+def test_render_dashboard_html_alpha_save_and_generate_button_present():
+    html = render_dashboard_html()
+    assert 'id="alpha-analysis-save"' in html
+    assert 'id="alpha-analysis-save-and-report"' in html
+    assert "保存并生成分析" in html
+    assert 'id="alpha-report-generate"' in html
+
+
+def test_render_dashboard_html_alpha_market_header_present():
+    html = render_dashboard_html()
+    assert 'id="alpha-current-market-label"' in html
+    assert 'id="alpha-current-currency-label"' in html
+    assert "当前持仓（" in html
+
+
+def test_render_dashboard_html_alpha_js_market_state_contract():
+    html = render_dashboard_html()
+    assert "let currentMarket = 'a';" in html
+    assert "function loadAlphaHoldings(market = currentMarket)" in html
+    assert "function loadAlphaSummary(market = currentMarket)" in html
+    assert "/api/v1/alpha/holdings/summary" in html
+    assert "currentMarket = nextMarket;" in html
+
+
+def test_render_dashboard_html_alpha_js_position_card_fields():
+    """单股卡片需包含浮盈比例 + 距离止损/止盈字段"""
+    html = render_dashboard_html()
+    assert "距止损" in html
+    assert "距止盈" in html
+    assert "浮盈比例" in html
+    assert "浮盈金额" in html
+    assert "alert-stop-loss" in html
+    assert "alert-take-profit" in html
+    assert "alertLevel = 'stop_loss'" in html or 'alertLevel = "stop_loss"' in html
+
+
+def test_render_dashboard_html_alpha_js_delete_confirm_contract():
+    html = render_dashboard_html()
+    assert "window.confirm" in html
+    assert "删除" in html
+    assert "会重新计算均价" in html
+
+
+def test_render_dashboard_html_alpha_js_save_toast_contract():
+    """保存成功 Toast 需包含 '已添加' 与 '当前持仓'"""
+    html = render_dashboard_html()
+    assert "已添加" in html
+    assert "当前持仓" in html
+    assert "bottom-right" in html
+
+
+def test_render_dashboard_html_alpha_css_injected():
+    html = render_dashboard_html()
+    assert "alpha-market-tabs" in html
+    assert "alpha-position-card" in html
+    assert "alert-stop-loss" in html
+    assert "alert-take-profit" in html
+    assert "toast-bottom-right" in html

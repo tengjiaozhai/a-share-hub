@@ -6,6 +6,10 @@
       <h2>多标的、多批次的持仓分析台</h2>
       <p class="alpha-summary">按股票卡片录入买入批次，再对照当前持仓、最近成交与 multi-leg 历史统一复盘。输入区、持仓区和历史区共享同一套卡片化视图。</p>
     </div>
+    <div class="alpha-market-tabs" role="tablist" id="alpha-market-tabs">
+      <button type="button" class="alpha-market-tab active" data-alpha-market="a" role="tab" aria-selected="true">A 股</button>
+      <button type="button" class="alpha-market-tab" data-alpha-market="us" role="tab" aria-selected="false">美股</button>
+    </div>
   </section>
 
   <section class="alpha-analysis-grid">
@@ -16,6 +20,7 @@
           <div class="alpha-report-caption">主入口先看股票代码分析；留空时回落到当前持仓视角。</div>
         </div>
         <div class="alpha-report-controls">
+          <label class="alpha-window-label" for="alpha-report-window">回看窗口：</label>
           <select id="alpha-report-window" class="alpha-report-select">
             <option value="30d">30日</option>
             <option value="60d" selected>60日</option>
@@ -23,11 +28,11 @@
           </select>
           <label class="alpha-report-toggle">
             <input type="checkbox" id="alpha-report-include-shadow" checked>
-            <span>包含模拟交易</span>
+            <span>包含影子持仓</span>
           </label>
           <label class="alpha-report-toggle">
             <input type="checkbox" id="alpha-report-include-backtest" checked>
-            <span>包含历史回测</span>
+            <span>包含回测对比</span>
           </label>
         </div>
       </div>
@@ -52,6 +57,9 @@
           <button type="button" id="alpha-analysis-save" class="alpha-report-trigger" style="background: var(--green);">
             保存
           </button>
+          <button type="button" id="alpha-analysis-save-and-report" class="alpha-report-trigger" style="background: var(--accent); color: var(--bg);">
+            保存并生成分析
+          </button>
           <button type="button" id="alpha-report-generate" class="run-btn accent alpha-report-trigger">
             生成分析
           </button>
@@ -63,7 +71,7 @@
     </div>
 
     <article class="alpha-panel alpha-panel-holdings">
-      <div class="alpha-panel-head">当前持仓</div>
+      <div class="alpha-panel-head">当前持仓（<span id="alpha-current-market-label">A 股</span> · <span id="alpha-current-currency-label">CNY</span>）</div>
       <div class="alpha-panel-body alpha-panel-body-tight">
         <div id="alpha-holdings-summary" class="alpha-holdings-summary"></div>
         <div class="alpha-section-label">持仓列表</div>
