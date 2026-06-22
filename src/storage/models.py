@@ -223,21 +223,6 @@ class AlphaManualFillRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
-class AlphaHoldingsEntryRow(Base):
-    __tablename__ = "alpha_holdings_entries"
-
-    entry_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    symbol: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
-    buy_date: Mapped[str] = mapped_column(String(32), nullable=False)
-    buy_price: Mapped[float] = mapped_column(Float, nullable=False)
-    quantity: Mapped[float] = mapped_column(Float, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
-    )
-
-
 class AlphaPositionRow(Base):
     __tablename__ = "alpha_positions"
     __table_args__ = (

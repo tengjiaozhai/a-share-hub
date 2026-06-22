@@ -8,7 +8,6 @@ from src.core.tenant import TenantContext
 from src.storage.models import (
     AccountSnapshotRow,
     AlphaApiOrderAttemptRow,
-    AlphaHoldingsEntryRow,
     AlphaManualFillRow,
     AlphaPortfolioSnapshotRow,
     AlphaPositionRow,
@@ -976,77 +975,6 @@ class RuntimeStore:
                 }
                 for row in rows
             ]
-
-    def insert_alpha_holdings_entry(
-        self,
-        symbol: str,
-        buy_date: str,
-        buy_price: float,
-        quantity: float,
-    ) -> str:
-        entry_id = f"alpha-hold-{uuid.uuid4().hex[:12]}"
-        with self.engine.begin() as conn:
-            conn.execute(
-                AlphaHoldingsEntryRow.__table__.insert().values(
-                    entry_id=entry_id,
-                    user_id=self.user_id,
-                    symbol=symbol,
-                    buy_date=buy_date,
-                    buy_price=buy_price,
-                    quantity=quantity,
-                )
-            )
-        return entry_id
-
-    def list_alpha_holdings_entries(self) -> list[dict]:
-        with self.engine.begin() as conn:
-            rows = conn.execute(
-                select(AlphaHoldingsEntryRow)
-                .where(AlphaHoldingsEntryRow.user_id == self.user_id)
-                .order_by(AlphaHoldingsEntryRow.buy_date, AlphaHoldingsEntryRow.created_at, AlphaHoldingsEntryRow.entry_id)
-            ).fetchall()
-            return [
-                {
-                    "entry_id": row.entry_id,
-                    "symbol": row.symbol,
-                    "buy_date": row.buy_date,
-                    "buy_price": row.buy_price,
-                    "quantity": row.quantity,
-                    "created_at": _cst_iso(row.created_at),
-                    "updated_at": _cst_iso(row.updated_at),
-                }
-                for row in rows
-            ]
-
-    def update_alpha_holdings_entry(
-        self,
-        entry_id: str,
-        symbol: str,
-        buy_date: str,
-        buy_price: float,
-        quantity: float,
-    ) -> None:
-        with self.engine.begin() as conn:
-            conn.execute(
-                AlphaHoldingsEntryRow.__table__.update()
-                .where(AlphaHoldingsEntryRow.entry_id == entry_id)
-                .where(AlphaHoldingsEntryRow.user_id == self.user_id)
-                .values(
-                    symbol=symbol,
-                    buy_date=buy_date,
-                    buy_price=buy_price,
-                    quantity=quantity,
-                    updated_at=datetime.utcnow(),
-                )
-            )
-
-    def delete_alpha_holdings_entry(self, entry_id: str) -> None:
-        with self.engine.begin() as conn:
-            conn.execute(
-                AlphaHoldingsEntryRow.__table__.delete()
-                .where(AlphaHoldingsEntryRow.entry_id == entry_id)
-                .where(AlphaHoldingsEntryRow.user_id == self.user_id)
-            )
 
     def replace_alpha_positions(self, positions: list[dict]) -> None:
         with self.engine.begin() as conn:

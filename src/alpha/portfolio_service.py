@@ -75,54 +75,6 @@ class AlphaPortfolioService:
         self.rebuild_from_manual_fills(opening_cash=opening_cash, price_map=price_map)
         return self.load_portfolio()
 
-    def rebuild_from_holdings_entries(self, price_map: dict[str, float]) -> dict:
-        entries = self._store.list_alpha_holdings_entries()
-        by_symbol: dict[str, dict] = {}
-        for entry in entries:
-            symbol = entry["symbol"]
-            summary = by_symbol.setdefault(symbol, {"quantity": 0.0, "cost": 0.0})
-            quantity = float(entry["quantity"] or 0.0)
-            buy_price = float(entry["buy_price"] or 0.0)
-            summary["quantity"] += quantity
-            summary["cost"] += quantity * buy_price
-
-        positions: list[dict] = []
-        unrealized_pnl = 0.0
-        market_value = 0.0
-        for symbol in sorted(by_symbol):
-            quantity = round(by_symbol[symbol]["quantity"], 6)
-            if quantity <= 0:
-                continue
-            avg_cost = round(by_symbol[symbol]["cost"] / quantity, 6)
-            mark_price = float(price_map.get(symbol, avg_cost) or avg_cost)
-            position_unrealized = round((mark_price - avg_cost) * quantity, 6)
-            unrealized_pnl += position_unrealized
-            market_value += mark_price * quantity
-            positions.append(
-                {
-                    "symbol": symbol,
-                    "quantity": quantity,
-                    "avg_cost": avg_cost,
-                    "mark_price": mark_price,
-                    "unrealized_pnl": position_unrealized,
-                }
-            )
-
-        self._store.replace_alpha_positions(positions)
-        self._store.insert_alpha_portfolio_snapshot(
-            cash_balance=0.0,
-            realized_pnl=0.0,
-            unrealized_pnl=round(unrealized_pnl, 6),
-            nav=round(market_value, 6),
-        )
-        return {
-            "cash_balance": 0.0,
-            "realized_pnl": 0.0,
-            "unrealized_pnl": round(unrealized_pnl, 6),
-            "nav": round(market_value, 6),
-            "positions": positions,
-        }
-
     def _build_ticket_lookup(self) -> dict[str, dict]:
         return {
             ticket["ticket_id"]: ticket
