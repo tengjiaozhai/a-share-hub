@@ -82,3 +82,36 @@ def test_portfolio_service_loads_enriched_fill_history(tmp_path):
     assert portfolio["fills"][0]["asset_symbol"] == "AAPLx"
     assert portfolio["fills"][0]["action"] == "BUY"
     assert portfolio["fills"][0]["executed_at"] == "2026-06-01T10:30:00+08:00"
+
+
+def test_portfolio_service_rebuilds_positions_from_holdings_entries(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path}/runtime.db", future=True)
+    Base.metadata.create_all(engine)
+    store = RuntimeStore(engine, TenantContext("test-user"))
+    store.insert_alpha_holdings_entry(
+        symbol="MSFT.US",
+        buy_date="2026-06-18",
+        buy_price=420.0,
+        quantity=2.0,
+    )
+    store.insert_alpha_holdings_entry(
+        symbol="MSFT.US",
+        buy_date="2026-06-19",
+        buy_price=426.0,
+        quantity=1.0,
+    )
+
+    service = AlphaPortfolioService(store)
+    summary = service.rebuild_from_holdings_entries(price_map={"MSFT.US": 430.0})
+
+    assert len(summary["positions"]) == 1
+    position = summary["positions"][0]
+    assert position["symbol"] == "MSFT.US"
+    assert position["quantity"] == 3.0
+    assert round(position["avg_cost"], 6) == round((420.0 * 2.0 + 426.0 * 1.0) / 3.0, 6)
+    assert position["mark_price"] == 430.0
+    assert round(position["unrealized_pnl"], 6) == round((430.0 - position["avg_cost"]) * 3.0, 6)
+
+    portfolio = service.load_portfolio()
+    assert portfolio["snapshot"]["unrealized_pnl"] == position["unrealized_pnl"]
+    assert portfolio["positions"][0]["avg_cost"] == position["avg_cost"]

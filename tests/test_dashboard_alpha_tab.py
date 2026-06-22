@@ -88,6 +88,29 @@ def test_dashboard_contains_positions_builder_controls(_patch_auth):
     assert "生成分析" in html
 
 
+def test_dashboard_contains_saved_holdings_history_ui(_patch_auth):
+    html = _dashboard_html()
+    assert 'id="alpha-saved-holdings"' in html
+    assert 'id="alpha-holdings-records"' in html
+    assert 'data-alpha-saved-holding-id' in html
+    assert 'data-alpha-history-edit' in html
+    assert 'data-alpha-history-delete' in html
+    assert "已保存买入记录 / 历史" in html
+    assert "const ALPHA_HOLDINGS_API = '/api/v1/alpha/holdings';" in html
+    assert "renderAlphaSavedHoldings" in html
+    assert "loadAlphaSavedHoldings" in html
+    assert "saveAlphaHoldings" in html
+    assert "updateAlphaHolding" in html
+    assert "deleteAlphaHolding" in html
+
+
+def test_dashboard_removes_analysis_positions_preferences_path(_patch_auth):
+    html = _dashboard_html()
+    assert "analysis_positions" not in html
+    assert "saveAlphaAnalysisPositions" not in html
+    assert "loadAlphaAnalysisPositions" not in html
+
+
 def test_dashboard_forbids_legacy_ratio_and_buy_time_controls(_patch_auth):
     html = _dashboard_html()
     assert 'id="alpha-report-position-ratio"' not in html

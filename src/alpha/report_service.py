@@ -61,6 +61,26 @@ def normalize_report_symbols(symbols: list[str] | None) -> list[str]:
     return normalized
 
 
+def _build_positions_from_holdings_entries(entries: list[dict]) -> list[dict]:
+    grouped: dict[str, list[dict]] = {}
+    for entry in entries:
+        symbol = normalize_report_symbol(entry.get("symbol"))
+        if not symbol:
+            continue
+        grouped.setdefault(symbol, []).append(
+            {
+                "buy_date": str(entry.get("buy_date") or "").strip(),
+                "buy_price": float(entry.get("buy_price", 0.0) or 0.0),
+                "quantity": float(entry.get("quantity", 0.0) or 0.0),
+            }
+        )
+    return [{"symbol": symbol, "lots": lots} for symbol, lots in grouped.items()]
+
+
+def _yahoo_symbol(symbol: str) -> str:
+    return symbol[:-3] if symbol.upper().endswith(".US") else symbol
+
+
 def normalize_report_positions(positions: list[dict] | None) -> list[dict]:
     normalized_positions: list[dict] = []
     for position in positions or []:
@@ -311,6 +331,8 @@ class AlphaPortfolioReportService:
     def generate_report(self, payload: dict) -> dict:
         """主入口：拼装 {generated_at, portfolio_snapshot, items[]}。"""
         normalized_positions = normalize_report_positions(payload.get("positions"))
+        if not normalized_positions:
+            normalized_positions = _build_positions_from_holdings_entries(self._store.list_alpha_holdings_entries())
         symbols = normalize_report_symbols(payload.get("symbols") or [])
         if normalized_positions and not symbols:
             symbols = [position["symbol"] for position in normalized_positions]
@@ -450,7 +472,7 @@ class AlphaPortfolioReportService:
                 from src.us_stock.yahoo_provider import YahooProvider
 
                 provider = YahooProvider()
-                klines = provider.get_kline(symbol, interval="1d", range_str=f"{max(window_days, 30)}d")
+                klines = provider.get_kline(_yahoo_symbol(symbol), interval="1d", range_str=f"{max(window_days, 30)}d")
                 bars = [
                     {
                         "date": k.timestamp.strftime("%Y-%m-%d")
