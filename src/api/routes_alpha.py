@@ -185,7 +185,7 @@ def _build_run_store(store: RuntimeStore, user_id: str) -> AnalysisRunStore:
 
 
 def _build_run_service(
-    store: RuntimeStore, user_id: str, holdings_store: RuntimeStore
+    store: RuntimeStore, user_id: str, holdings_store: RuntimeStore, tenant: TenantContext
 ) -> AlphaAnalysisRunService:
     from src.agents.llm_client import LLMClient
     from src.alpha.analysis_agents import ResearchManager, Trader
@@ -273,7 +273,7 @@ def start_analysis_run(
     tenant: TenantContext = Depends(get_tenant_context),
 ) -> dict:
     request = AnalysisRunCreateRequest(**payload)
-    service = _build_run_service(store, tenant.user_id, store)
+    service = _build_run_service(store, tenant.user_id, store, tenant)
     try:
         response = service.start(request)
     except AlphaAnalysisConflictError as exc:
