@@ -56,8 +56,8 @@ def test_dashboard_contains_holdings_analysis_tab(_patch_auth):
     html = _dashboard_html()
     assert "view-alpha" in html
     assert "持仓分析" in html
-    assert "const ALPHA_REPORT_API = '/api/v1/alpha/portfolio/report';" in html
-    assert "loadAlphaReport" in html
+    assert "const ALPHA_ANALYSIS_RUNS_API = '/api/v1/alpha/analysis-runs';" in html
+    assert "startAlphaAnalysis" in html
 
 
 def test_dashboard_contains_holdings_and_history_ui(_patch_auth):
@@ -78,14 +78,13 @@ def test_dashboard_contains_positions_builder_controls(_patch_auth):
     assert 'id="alpha-analysis-builder"' in html
     assert 'id="alpha-stock-cards"' in html
     assert 'id="alpha-add-stock-card"' in html
-    assert 'id="alpha-report-generate"' in html
+    assert 'id="alpha-holding-analyze"' in html
     assert "分析标的" in html
     assert "加仓批次" in html
     assert "买入日期" in html
     assert "买入价格" in html
     assert "数量" in html
     assert "新增股票" in html
-    assert "生成分析" in html
 
 
 def test_dashboard_contains_saved_holdings_history_ui(_patch_auth):
@@ -132,12 +131,9 @@ def test_dashboard_removes_legacy_alpha_ops_sections(_patch_auth):
 def test_dashboard_contains_structured_decision_sections(_patch_auth):
     html = _dashboard_html()
     for marker in [
-        "alpha-analysis-status",
-        "alpha-research-section",
-        "alpha-trader-section",
-        "alpha-risk-section",
-        "alpha-data-quality",
-        "alpha-analysis-history",
+        "alpha-analysis-center",
+        "alpha-analysis-drawer",
+        "alpha-holding-analyze",
     ]:
         assert marker in html
 

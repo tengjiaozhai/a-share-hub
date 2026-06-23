@@ -341,6 +341,18 @@ Phase 4 引入了安全门控机制，控制 API 下单能力的启用：
 - 必需环境变量：`LLM_PROVIDER=deepseek`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`
 - 分析历史通过 `GET /api/v1/alpha/analysis-runs` 查询
 
+## Holdings Analysis Streaming 持仓分析流式流水线
+
+单标的异步流式分析：
+- POST /api/v1/alpha/analysis-runs 返回 202 + run_id + stream_url
+- 阶段：accepted → snapshot → research → trader → risk → backtest → completed/failed
+- 事件通过 SSE 推送，前端 EventSource 订阅
+- 断线可通过 Last-Event-ID 续传
+- 同一用户同时只允许一个活跃分析
+- 数据源一次加载，5 阶段共用
+- 旧 POST /api/v1/alpha/portfolio/report 已删除
+- 列表接口只返回摘要，全量详情在抽屉内查看
+
 ## 新手指南
 
 详细的新手 SOP 请查看 [docs/sop.md](docs/sop.md)
