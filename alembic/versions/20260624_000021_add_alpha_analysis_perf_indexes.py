@@ -1,14 +1,14 @@
 """Add alpha analysis performance indexes.
 
 Revision ID: 20260624_000021
-Revises: 20260622_000020
+Revises: 20260622_000021
 Create Date: 2026-06-24
 """
 
 from alembic import op
 
 revision = "20260624_000021"
-down_revision = "20260622_000020"
+down_revision = "20260622_000021"
 branch_labels = None
 depends_on = None
 
