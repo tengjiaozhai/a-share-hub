@@ -599,7 +599,14 @@ function subscribeAlphaAnalysisEvents(runId, symbol) {
     upsertAnalysisRow({ ...payload, run_id: runId, symbol, stage: 'failed' });
     es.close();
   });
-  es.onerror = () => { /* let EventSource auto-reconnect */ };
+  es.onerror = () => {
+    // 如果 run 已处于终态，直接关闭，不重连
+    const row = document.querySelector(`[data-run-id="${runId}"]`);
+    const stage = row?.querySelector('.alpha-analysis-stage')?.textContent || '';
+    if (stage.includes('完成') || stage.includes('失败') || stage === 'completed' || stage === 'failed') {
+      es.close();
+    }
+  };
 }
 
 function upsertAnalysisRow(data) {
@@ -635,7 +642,8 @@ function upsertAnalysisRow(data) {
   row.classList.toggle('is-failed', data.stage === 'failed' || data.status === 'failed');
   row.classList.toggle('is-completed', data.stage === 'completed' || data.status === 'completed');
   sortAlphaAnalysisRows(list);
-  if (data.stage === 'failed') {
+  if (data.stage === 'failed' && row.dataset.alertedFailed !== '1') {
+    row.dataset.alertedFailed = '1';
     addAlert('err', `${data.symbol} 分析失败: ${data.error || '未知错误'}`);
   }
 }
