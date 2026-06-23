@@ -2,7 +2,6 @@
 const ALPHA_ANALYSIS_RUNS_API = '/api/v1/alpha/analysis-runs';
 const ALPHA_HOLDINGS_API = '/api/v1/alpha/holdings';
 const ALPHA_HOLDINGS_SUMMARY_API = '/api/v1/alpha/holdings/summary';
-const VALID_REPORT_ACTIONS = ['HOLD', 'ADD', 'REDUCE', 'EXIT', 'WATCH'];
 
 let alphaEditingHoldingId = null;
 let currentMarket = 'a';
@@ -28,31 +27,6 @@ function alphaActionClass(action) {
   if (normalized === 'buy') return 'buy';
   if (normalized === 'sell') return 'sell';
   return 'hold';
-}
-
-function alphaReportActionLabel(action) {
-  const normalized = String(action || '').toUpperCase();
-  switch (normalized) {
-    case 'HOLD':
-      return '继续持有';
-    case 'ADD':
-      return '加仓观察';
-    case 'REDUCE':
-      return '减仓';
-    case 'EXIT':
-      return '止损/退出';
-    case 'WATCH':
-      return '观察';
-    default:
-      return action || '--';
-  }
-}
-
-function parseAlphaReportSymbols(raw) {
-  return Array.from(new Set(String(raw || '')
-    .split(/[,\s]+/)
-    .map((value) => value.trim().toUpperCase())
-    .filter(Boolean)));
 }
 
 function createAlphaLotRow(lot = {}) {
@@ -567,149 +541,6 @@ async function loadAlphaHoldings(market = currentMarket) {
   await loadAlphaSavedHoldings(market);
   await loadAlphaSummary(market);
   await loadAlphaWorkbench();
-}
-
-function renderAlphaReport(report, requestedSymbols = []) {
-  const body = document.getElementById('alpha-report-body');
-  if (!body) return;
-  const items = toList(report?.items);
-  if (!items.length) {
-    const emptyNote = requestedSymbols.length
-      ? `未返回 ${requestedSymbols.join(', ')} 的分析结果。请检查输入股票代码，或留空走当前持仓分析。`
-      : '当前无持仓可分析';
-    body.innerHTML = `<div class="alpha-report-empty">${escapeHtml(emptyNote)}</div>`;
-    return;
-  }
-  const windowLabel = normalizeText(report?.backtest_window, '60d');
-  const list = items.map((item) => {
-    const symbol = normalizeText(item.symbol, '--');
-    const snapshot = item.snapshot || {};
-    const research = item.research || {};
-    const trader = item.trader || {};
-    const risk = item.risk || {};
-    const dataQuality = item.data_quality || {};
-    const action = String(risk.action || '').toUpperCase();
-    const actionClass = ['ADD', 'HOLD', 'REDUCE', 'EXIT'].includes(action)
-      ? action.toLowerCase()
-      : 'failed';
-    const actionLabel = alphaReportActionLabel(action);
-
-    const closeDate = normalizeText(snapshot.close_date, '--');
-    const close = formatNumber(snapshot.close, 4);
-    const weightedCost = formatNumber(snapshot.weighted_cost, 4);
-    const quantity = formatNumber(snapshot.quantity, 4);
-    const marketValue = formatNumber(snapshot.market_value, 2);
-    const unrealizedPnl = formatSignedCurrency(snapshot.unrealized_pnl, 'CNY');
-    const unrealizedPnlRatio = snapshot.unrealized_pnl_ratio != null
-      ? formatSignedPercent(Number(snapshot.unrealized_pnl_ratio) * 100)
-      : '--';
-    const riskReason = normalizeText(risk.reason, '--');
-    const approvedRatio = risk.approved_position_ratio != null
-      ? formatPercent(Number(risk.approved_position_ratio))
-      : '--';
-    const entryRange = normalizeText(trader.entry_range, '--');
-    const stopLoss = normalizeText(trader.stop_loss, '--');
-    const takeProfit = normalizeText(trader.take_profit, '--');
-    const researchRating = normalizeText(research.rating, '--');
-    const researchConfidence = formatConfidence(research.confidence);
-    const missingFields = toList(dataQuality.missing);
-    const modelName = normalizeText(item.model_name, '--');
-    const runId = normalizeText(item.run_id, '--');
-    const triggeredRules = toList(risk.triggered_rules);
-
-    const isFailed = !['ADD', 'HOLD', 'REDUCE', 'EXIT'].includes(action);
-
-    let missingHtml = '';
-    if (missingFields.length) {
-      missingHtml = `<span class="alpha-data-quality-missing">缺失: ${escapeHtml(missingFields.join(', '))}</span>`;
-    }
-
-    let riskRulesHtml = '';
-    if (triggeredRules.length) {
-      riskRulesHtml = `<details class="alpha-evidence-details"><summary>触发规则 (${triggeredRules.length})</summary><ul>${triggeredRules
-        .map((r) => `<li>${escapeHtml(String(r))}</li>`)
-        .join('')}</ul></details>`;
-    }
-
-    let errorHtml = '';
-    if (isFailed) {
-      errorHtml = `<div class="alpha-analysis-error">DeepSeek 分析失败：${escapeHtml(item.error || '未知错误')}</div>`;
-    }
-
-    return `<div class="alpha-report-item" data-symbol="${escapeHtml(symbol)}">
-      <div class="alpha-report-item-head">
-        <span class="alpha-report-symbol">${escapeHtml(symbol)}</span>
-        <span class="alpha-report-recommendation ${actionClass}">${escapeHtml(actionLabel)}</span>
-      </div>
-      <div class="alpha-report-grid">
-        <span class="alpha-report-grid-label">收盘日期</span><span class="alpha-report-grid-value">${escapeHtml(closeDate)}</span>
-        <span class="alpha-report-grid-label">收盘价</span><span class="alpha-report-grid-value">${escapeHtml(close)}</span>
-        <span class="alpha-report-grid-label">加权成本</span><span class="alpha-report-grid-value">${escapeHtml(weightedCost)}</span>
-        <span class="alpha-report-grid-label">数量</span><span class="alpha-report-grid-value">${escapeHtml(quantity)}</span>
-        <span class="alpha-report-grid-label">市值</span><span class="alpha-report-grid-value">${escapeHtml(marketValue)}</span>
-        <span class="alpha-report-grid-label">浮盈</span><span class="alpha-report-grid-value">${escapeHtml(unrealizedPnl)}</span>
-        <span class="alpha-report-grid-label">浮盈比例</span><span class="alpha-report-grid-value">${escapeHtml(unrealizedPnlRatio)}</span>
-      </div>
-      <div class="alpha-report-grid">
-        <span class="alpha-report-grid-label">最终操作</span><span class="alpha-report-grid-value ${actionClass}">${escapeHtml(actionLabel)}</span>
-        <span class="alpha-report-grid-label">风控原因</span><span class="alpha-report-grid-value">${escapeHtml(riskReason)}</span>
-        <span class="alpha-report-grid-label">批准仓位</span><span class="alpha-report-grid-value">${escapeHtml(approvedRatio)}</span>
-        <span class="alpha-report-grid-label">入场区间</span><span class="alpha-report-grid-value">${escapeHtml(entryRange)}</span>
-        <span class="alpha-report-grid-label">止损</span><span class="alpha-report-grid-value">${escapeHtml(stopLoss)}</span>
-        <span class="alpha-report-grid-label">止盈</span><span class="alpha-report-grid-value">${escapeHtml(takeProfit)}</span>
-      </div>
-      <div class="alpha-report-grid">
-        <span class="alpha-report-grid-label">研究评级</span><span class="alpha-report-grid-value">${escapeHtml(researchRating)}</span>
-        <span class="alpha-report-grid-label">研究置信</span><span class="alpha-report-grid-value">${escapeHtml(researchConfidence)}</span>
-        <span class="alpha-report-grid-label">模型</span><span class="alpha-report-grid-value">${escapeHtml(modelName)}</span>
-        <span class="alpha-report-grid-label">运行 ID</span><span class="alpha-report-grid-value">${escapeHtml(runId)}</span>
-      </div>
-      <div class="alpha-data-quality">${missingHtml}</div>
-      ${errorHtml}
-      <details class="alpha-evidence-details"><summary>Research</summary><pre>${escapeHtml(JSON.stringify(research, null, 2))}</pre></details>
-      <details class="alpha-evidence-details"><summary>Trader</summary><pre>${escapeHtml(JSON.stringify(trader, null, 2))}</pre></details>
-      ${riskRulesHtml}
-    </div>`;
-  }).join('');
-  body.innerHTML = `<div class="alpha-report-list">${list}</div>`;
-}
-
-function showAlphaReportLoading() {
-  const body = document.getElementById('alpha-report-body');
-  if (!body) return;
-  body.innerHTML = '<div class="alpha-report-loading">正在生成持仓分析报告…</div>';
-}
-
-const ALPHA_ANALYSIS_HISTORY_API = '/api/v1/alpha/analysis-runs';
-
-async function loadAlphaAnalysisHistory(symbol) {
-  const container = document.getElementById('alpha-analysis-history');
-  if (!container) return;
-  try {
-    const url = symbol
-      ? `${ALPHA_ANALYSIS_HISTORY_API}?symbol=${encodeURIComponent(symbol)}`
-      : ALPHA_ANALYSIS_HISTORY_API;
-    const res = await fetch(url);
-    if (!res.ok) return;
-    const data = await res.json();
-    const runs = toList(data.items || data.runs || data);
-    if (!runs.length) {
-      container.innerHTML = '<div class="alpha-empty-state">暂无分析历史</div>';
-      return;
-    }
-    container.innerHTML = `<div class="alpha-analysis-history-list">${runs.map((run) => {
-      const runSymbol = normalizeText(run.symbol, '--');
-      const status = normalizeText(run.status, '--');
-      const createdAt = normalizeText(run.created_at, '--');
-      return `<div class="alpha-analysis-history-item">
-        <span>${escapeHtml(runSymbol)}</span>
-        <span>${escapeHtml(status)}</span>
-        <span>${escapeHtml(createdAt)}</span>
-      </div>`;
-    }).join('')}</div>`;
-  } catch (_) {
-    // silent
-  }
 }
 
 async function startAlphaAnalysis(symbol) {

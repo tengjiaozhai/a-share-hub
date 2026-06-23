@@ -248,17 +248,6 @@
   }
 }
 
-.alpha-report-item .add { background: #22c55e; color: white; }
-.alpha-report-item .hold { background: #eab308; color: white; }
-.alpha-report-item .reduce { background: #f97316; color: white; }
-.alpha-report-item .exit { background: #ef4444; color: white; }
-.alpha-report-item .failed { background: #6b7280; color: white; }
-.alpha-analysis-error { color: #ef4444; font-weight: 600; }
-.alpha-data-quality { font-size: 0.85em; color: #6b7280; }
-.alpha-evidence-details { margin-top: 6px; }
-.alpha-evidence-details summary { cursor: pointer; font-size: 11px; color: var(--dim); }
-.alpha-evidence-details pre { font-size: 10px; overflow-x: auto; max-height: 200px; }
-
 /* Holdings analysis streaming pipeline (2026-06-23) */
 .alpha-analysis-center {
   height: clamp(420px, 58vh, 620px);
