@@ -46,6 +46,10 @@ def upgrade() -> None:
         "alpha_analysis_runs",
         sa.Column("backtest_json", sa.Text(), nullable=True),
     )
+    op.add_column(
+        "alpha_analysis_runs",
+        sa.Column("error_stage", sa.String(length=32), nullable=True),
+    )
     op.create_table(
         "alpha_analysis_run_events",
         sa.Column("event_id", sa.Integer(), primary_key=True, autoincrement=True),
