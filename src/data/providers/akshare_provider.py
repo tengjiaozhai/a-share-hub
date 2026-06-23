@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import datetime
 from typing import Optional
 
@@ -156,7 +157,6 @@ def _build_catalog_frame() -> pd.DataFrame:
 
     冷启动时偶发 Connection reset by peer（SOCKS 隧道慢），重试 2 次。
     """
-    import time
     last_err = None
     for attempt in range(3):
         try:
@@ -188,6 +188,8 @@ class AkshareProvider(DataProvider):
         # 每个 symbol 独立一个缓存实例，TTL 15 分钟
         self._snapshot_caches: dict[str, SpotSnapshotCache] = {}
         self._snapshot_ttl = 900
+        self._history_cache: dict[str, tuple[float, pd.DataFrame]] = {}
+        self._history_ttl = 900
 
     def _get_snapshot_cache(self, code: str) -> SpotSnapshotCache:
         if code not in self._snapshot_caches:
@@ -241,8 +243,15 @@ class AkshareProvider(DataProvider):
         tx_freq = _KLINE_FREQ_MAP.get(freq, "day")
         start_str = start_date.strftime("%Y-%m-%d")
         end_str = end_date.strftime("%Y-%m-%d")
+        cache_key = f"history:{normalized}:{start_str}:{end_str}:{tx_freq}"
+        cached = self._history_cache.get(cache_key)
+        now = time.time()
+        if cached and now - cached[0] < self._history_ttl:
+            return cached[1].copy()
 
-        return _fetch_tencent_kline(tx_code, start_str, end_str, tx_freq)
+        df = _fetch_tencent_kline(tx_code, start_str, end_str, tx_freq)
+        self._history_cache[cache_key] = (now, df.copy())
+        return df
 
     def get_stock_list(self) -> pd.DataFrame:
         return self._catalog.load(_build_catalog_frame)
@@ -253,6 +262,7 @@ class AkshareProvider(DataProvider):
             return True
         except ImportError:
             return False
+
 
 def _to_float(value, default: float | None) -> float | None:
     if value is None or (isinstance(value, str) and not value.strip()) or (hasattr(pd, 'isna') and pd.isna(value)):
@@ -271,3 +281,13 @@ def _to_int(value, default: int | None) -> int | None:
         return int(numeric)
     except (TypeError, ValueError):
         return default
+
+
+_shared_provider: AkshareProvider | None = None
+
+
+def get_akshare_provider() -> AkshareProvider:
+    global _shared_provider
+    if _shared_provider is None:
+        _shared_provider = AkshareProvider()
+    return _shared_provider
