@@ -46,7 +46,9 @@ def _build_backtest_runner(engine, tenant: TenantContext, user_id: str):
         if market == "us":
             from src.us_stock.yahoo_provider import YahooProvider
             provider = YahooProvider()
-            klines = provider.get_kline(symbol, interval="1d", range_str="6mo")
+            # 去掉 .US 后缀，Yahoo Finance 不支持
+            yahoo_symbol = symbol[:-3] if symbol.upper().endswith(".US") else symbol
+            klines = provider.get_kline(yahoo_symbol, interval="1d", range_str="6mo")
             if not klines:
                 return {"status": "error", "reason": "no historical data"}
             bars = [
