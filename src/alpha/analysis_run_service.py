@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime
 from typing import Any, Optional
@@ -104,6 +105,9 @@ class AlphaAnalysisRunService:
         }
 
     async def execute(self, run_id: str) -> None:
+        await asyncio.to_thread(self._execute_sync, run_id)
+
+    def _execute_sync(self, run_id: str) -> None:
         run = self._store.get_run(run_id)
         if not run:
             return
