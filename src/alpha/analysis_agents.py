@@ -76,6 +76,30 @@ def _normalize_trader_payload(payload: dict, snapshot: AnalysisSnapshot) -> dict
     }
 
 
+def _research_fallback(snapshot: AnalysisSnapshot, reason: str) -> ResearchPlan:
+    payload = _normalize_research_payload(
+        {
+            "rating": "HOLD",
+            "confidence": 0.2,
+            "data_gaps": [f"LLM 输出不可用: {reason}"],
+        },
+        snapshot,
+    )
+    return ResearchPlan.model_validate(payload)
+
+
+def _trader_fallback(snapshot: AnalysisSnapshot, reason: str) -> TraderProposal:
+    payload = _normalize_trader_payload(
+        {
+            "action": "HOLD",
+            "reasoning": f"LLM 交易计划输出不可用，采用保守 HOLD；先依据当前收盘价、持仓成本和止损止盈线观察。原因: {reason}",
+            "position_ratio": 0.0,
+        },
+        snapshot,
+    )
+    return TraderProposal.model_validate(payload)
+
+
 class ResearchManager:
     SYSTEM_PROMPT = (
         "你是持仓研究经理。只能使用输入 JSON 中的证据。"
@@ -97,7 +121,7 @@ class ResearchManager:
             )
             return ResearchPlan.model_validate(_normalize_research_payload(payload, snapshot))
         except (LLMGenerationError, ValidationError) as exc:
-            raise AnalysisAgentError(f"research manager failed: {exc}") from exc
+            return _research_fallback(snapshot, str(exc))
 
 
 class Trader:
@@ -121,4 +145,4 @@ class Trader:
             )
             return TraderProposal.model_validate(_normalize_trader_payload(payload, snapshot))
         except (LLMGenerationError, ValidationError) as exc:
-            raise AnalysisAgentError(f"trader failed: {exc}") from exc
+            return _trader_fallback(snapshot, str(exc))

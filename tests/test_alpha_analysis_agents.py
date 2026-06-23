@@ -1,5 +1,6 @@
 from src.alpha.analysis_agents import ResearchManager, Trader
 from src.alpha.analysis_models import AnalysisSnapshot
+from src.agents.llm_client import LLMGenerationError
 
 
 class FakeStructuredLLM:
@@ -120,4 +121,35 @@ def test_trader_normalizes_text_price_fields():
 
     assert proposal.entry_low == snapshot.close
     assert proposal.entry_high == snapshot.close
+    assert proposal.position_ratio == 0.0
+
+
+def test_research_manager_falls_back_when_llm_output_is_unusable():
+    snapshot = _snapshot()
+
+    class BrokenLLM:
+        def generate_json(self, **kwargs):
+            raise LLMGenerationError("DeepSeek returned invalid JSON")
+
+    research = ResearchManager(BrokenLLM()).analyze(snapshot)
+
+    assert research.rating == "HOLD"
+    assert research.confidence == 0.2
+    assert "LLM 输出不可用" in research.data_gaps[0]
+
+
+def test_trader_falls_back_when_llm_output_is_unusable():
+    snapshot = _snapshot()
+    research = ResearchManager(FakeStructuredLLM([{"rating": "HOLD"}])).analyze(snapshot)
+
+    class BrokenLLM:
+        def generate_json(self, **kwargs):
+            raise LLMGenerationError("DeepSeek returned invalid JSON")
+
+    proposal = Trader(BrokenLLM()).propose(snapshot, research)
+
+    assert proposal.action == "HOLD"
+    assert "LLM 交易计划输出不可用" in proposal.reasoning
+    assert proposal.stop_loss == 12.266666
+    assert proposal.take_profit == 16.0
     assert proposal.position_ratio == 0.0
