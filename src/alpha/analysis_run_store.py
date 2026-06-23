@@ -34,6 +34,16 @@ class AnalysisRunStore:
         return run_id
 
     def update_run(self, run_id: str, **fields: Any) -> None:
+        field_map = {
+            "snapshot": "snapshot_json",
+            "research": "research_json",
+            "trader": "trader_json",
+            "risk": "risk_json",
+            "backtest": "backtest_json",
+        }
+        for src, dst in field_map.items():
+            if src in fields:
+                fields[dst] = fields.pop(src)
         fields["updated_at"] = datetime.utcnow()
         with Session(self._engine) as session:
             session.execute(
