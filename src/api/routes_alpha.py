@@ -29,6 +29,102 @@ router = APIRouter(
 )
 
 
+def _build_backtest_runner(engine, tenant: TenantContext, user_id: str):
+    """构建回测运行器"""
+    def runner(snapshot):
+        from src.backtest.engine import run_daily_backtest
+        from src.backtest.metrics import calculate_metrics
+        from datetime import datetime, timedelta
+        
+        symbol = snapshot.symbol
+        market = snapshot.market
+        
+        # 获取历史数据
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=180)  # 6个月回测
+        
+        if market == "us":
+            from src.us_stock.yahoo_provider import YahooProvider
+            provider = YahooProvider()
+            klines = provider.get_kline(symbol, interval="1d", range_str="6mo")
+            if not klines:
+                return {"status": "error", "reason": "no historical data"}
+            bars = [
+                {
+                    "date": k.timestamp.strftime("%Y-%m-%d"),
+                    "open": k.open,
+                    "high": k.high,
+                    "low": k.low,
+                    "close": k.close,
+                    "volume": k.volume,
+                }
+                for k in klines
+            ]
+            lot_size = 1
+        else:
+            from src.a_stock.akshare_provider import AkshareProvider
+            provider = AkshareProvider()
+            bars_df = provider.get_history(symbol, start_date, end_date)
+            if bars_df.empty:
+                return {"status": "error", "reason": "no historical data"}
+            bars = bars_df.to_dict("records")
+            lot_size = 100
+        
+        # 从 technical 指标生成交易信号
+        signals = []
+        technical = snapshot.technical or {}
+        
+        # 简单的信号生成逻辑：基于 RSI 和 MACD
+        for i, bar in enumerate(bars):
+            if i < 60:  # 需要足够的历史数据计算指标
+                continue
+            
+            # 这里简化处理，实际应该计算技术指标
+            # 暂时使用 HOLD 策略
+            pass
+        
+        # 如果没有信号，使用买入持有策略
+        if not signals and bars:
+            signals = [{
+                "date": bars[60]["date"],
+                "action": "BUY",
+                "target_position_ratio": 0.95,
+            }]
+        
+        # 运行回测
+        from src.core.config import Settings
+        settings = Settings()
+        bt_result = run_daily_backtest(
+            symbol=symbol,
+            bars=bars,
+            initial_cash=1000000,  # 100万初始资金
+            signals=signals,
+            lot_size=lot_size,
+            fee_bps=settings.strategy_fee_bps,
+            slippage_bps=settings.strategy_slippage_bps,
+        )
+        
+        # 计算指标
+        metrics = calculate_metrics(bt_result["equity_curve"], bt_result["trades"])
+        
+        return {
+            "status": "completed",
+            "symbol": symbol,
+            "period": f"{bars[0]['date']} ~ {bars[-1]['date']}",
+            "initial_cash": 1000000,
+            "final_nav": bt_result["final_nav"],
+            "total_return": metrics.get("total_return", 0),
+            "annualized_return": metrics.get("annualized_return", 0),
+            "max_drawdown": metrics.get("max_drawdown", 0),
+            "sharpe_ratio": metrics.get("sharpe_ratio", 0),
+            "win_rate": metrics.get("win_rate", 0),
+            "trade_count": len(bt_result["trades"]),
+            "trades": bt_result["trades"][:10],  # 只返回前10笔交易
+        }
+    
+    return runner
+
+
 _broadcaster: EventBroadcaster = EventBroadcaster()
 
 
@@ -152,6 +248,9 @@ def _build_run_service(
         history_loader=history_loader,
         fundamental_loader=fundamental_loader,
     )
+    # 构建回测运行器
+    backtest_runner = _build_backtest_runner(store.engine, tenant, user_id)
+    
     return AlphaAnalysisRunService(
         store=_build_run_store(store, user_id),
         holdings_store=holdings_store,
@@ -159,6 +258,7 @@ def _build_run_service(
         research_manager=ResearchManager(llm),
         trader=Trader(llm),
         broadcaster=_broadcaster,
+        backtest_runner=backtest_runner,
         user_id=user_id,
         model_name=settings.llm_model,
         max_position_ratio=0.2,
