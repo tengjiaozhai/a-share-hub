@@ -132,7 +132,9 @@ class LLMClient:
             "response_format": {"type": "json_object"},
         }
         try:
-            parsed = _loads_json_object(self._post_chat(payload))
+            content = self._post_chat(payload)
+            logger.info("DeepSeek raw content: %r", content[:2000])
+            parsed = _loads_json_object(content)
         except json.JSONDecodeError as exc:
             raise LLMGenerationError("DeepSeek returned invalid JSON") from exc
         except (httpx.HTTPError, KeyError, TypeError) as exc:
