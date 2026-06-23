@@ -9,8 +9,8 @@ from sse_starlette.sse import EventSourceResponse
 from src.alpha.analysis_event_broadcaster import EventBroadcaster
 from src.alpha.analysis_run_models import AnalysisRunCreateRequest
 from src.alpha.analysis_run_service import (
-    AlphaAnalysisConflict,
-    AlphaAnalysisNotFound,
+    AlphaAnalysisConflictError,
+    AlphaAnalysisNotFoundError,
     AlphaAnalysisRunService,
 )
 from src.alpha.analysis_run_store import AnalysisRunStore

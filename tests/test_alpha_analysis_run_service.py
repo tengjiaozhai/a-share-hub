@@ -3,7 +3,7 @@ import pytest
 
 from src.alpha.analysis_event_broadcaster import EventBroadcaster
 from src.alpha.analysis_run_models import AnalysisRunCreateRequest
-from src.alpha.analysis_run_service import AlphaAnalysisConflict, AlphaAnalysisNotFound, AlphaAnalysisRunService
+from src.alpha.analysis_run_service import AlphaAnalysisConflictError, AlphaAnalysisNotFoundError, AlphaAnalysisRunService
 
 
 class FakeStore:
@@ -196,7 +196,7 @@ def test_other_symbol_while_active_returns_conflict():
         max_position_ratio=0.2,
     )
     first = service.start(AnalysisRunCreateRequest(symbol="MU.US", backtest_window="60d", include_backtest=True))
-    with pytest.raises(AlphaAnalysisConflict) as exc:
+    with pytest.raises(AlphaAnalysisConflictError) as exc:
         service.start(AnalysisRunCreateRequest(symbol="MSFT.US", backtest_window="60d", include_backtest=True))
     assert exc.value.active_run_id == first["run_id"]
 
@@ -213,7 +213,7 @@ def test_unknown_symbol_raises_not_found():
         model_name="deepseek-v4-pro",
         max_position_ratio=0.2,
     )
-    with pytest.raises(AlphaAnalysisNotFound):
+    with pytest.raises(AlphaAnalysisNotFoundError):
         service.start(AnalysisRunCreateRequest(symbol="MU.US", backtest_window="60d", include_backtest=True))
 
 

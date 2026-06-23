@@ -9,11 +9,11 @@ from src.alpha.analysis_models import AnalysisSnapshot
 from src.alpha.analysis_risk import evaluate_risk
 
 
-class AlphaAnalysisNotFound(Exception):
+class AlphaAnalysisNotFoundError(Exception):
     pass
 
 
-class AlphaAnalysisConflict(Exception):
+class AlphaAnalysisConflictError(Exception):
     def __init__(self, active_run_id: str, active_symbol: str) -> None:
         super().__init__(f"active run {active_run_id} for {active_symbol} in progress")
         self.active_run_id = active_run_id
@@ -75,7 +75,7 @@ class AlphaAnalysisRunService:
         symbol = request.symbol
         entries = [e for e in self._holdings_store.list_alpha_holdings_entries() if str(e.get("symbol", "")).upper() == symbol.upper()]
         if not entries:
-            raise AlphaAnalysisNotFound(f"no holding for {symbol}")
+            raise AlphaAnalysisNotFoundError(f"no holding for {symbol}")
 
         active_for_symbol = self._store.find_active_run(symbol=symbol)
         if active_for_symbol:
@@ -90,7 +90,7 @@ class AlphaAnalysisRunService:
 
         active_any = self._store.find_any_active_run()
         if active_any:
-            raise AlphaAnalysisConflict(active_any["run_id"], active_any["symbol"])
+            raise AlphaAnalysisConflictError(active_any["run_id"], active_any["symbol"])
 
         run_id = self._store.create_run(symbol=symbol, model_name=self._model_name)
         self._store.append_event(run_id=run_id, stage="accepted", status="done", payload={"symbol": symbol}, event_type="accepted")
