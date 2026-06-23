@@ -748,6 +748,12 @@ const ALPHA_FIELD_LABELS = {
   // risk
   triggered_rules: '触发规则', approved_position_ratio: '批准仓位比例',
   reason: '原因',
+  // backtest
+  status: '状态', period: '回测期间', initial_cash: '初始资金',
+  final_nav: '最终净值', total_return: '总收益率',
+  annualized_return: '年化收益率', max_drawdown: '最大回撤',
+  sharpe_ratio: '夏普比率', win_rate: '胜率',
+  trade_count: '交易次数', trades: '交易记录',
 };
 
 function alphaFieldLabel(key) {
