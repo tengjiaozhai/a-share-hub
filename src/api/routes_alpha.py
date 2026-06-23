@@ -33,7 +33,7 @@ _broadcaster: EventBroadcaster = EventBroadcaster()
 
 
 def _normalize_holdings_entry(payload: dict) -> dict:
-    from src.alpha.report_service import normalize_report_symbols
+    from src.alpha.symbols import normalize_report_symbols
 
     symbol = normalize_report_symbols([payload.get("symbol")])
     buy_date = str(payload.get("buy_date") or "").strip()
