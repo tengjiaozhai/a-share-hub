@@ -84,3 +84,40 @@ def test_research_manager_normalizes_partial_llm_payload():
     assert research.fundamental_view
     assert research.sentiment_view
     assert research.risks == ["news"]
+
+
+def test_research_manager_normalizes_text_confidence():
+    snapshot = _snapshot()
+    llm = FakeStructuredLLM([
+        {
+            "rating": "HOLD",
+            "confidence": "low",
+            "data_gaps": ["news"],
+        },
+    ])
+
+    research = ResearchManager(llm).analyze(snapshot)
+
+    assert research.confidence == 0.4
+
+
+def test_trader_normalizes_text_price_fields():
+    snapshot = _snapshot()
+    research = ResearchManager(FakeStructuredLLM([{"rating": "HOLD"}])).analyze(snapshot)
+    llm = FakeStructuredLLM([
+        {
+            "action": "HOLD",
+            "reasoning": "等待",
+            "entry_low": "low",
+            "entry_high": "high",
+            "stop_loss": "stop",
+            "take_profit": "take",
+            "position_ratio": "10%",
+        },
+    ])
+
+    proposal = Trader(llm).propose(snapshot, research)
+
+    assert proposal.entry_low == snapshot.close
+    assert proposal.entry_high == snapshot.close
+    assert proposal.position_ratio == 0.0

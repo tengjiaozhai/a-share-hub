@@ -20,6 +20,17 @@ def _as_list(value) -> list[str]:
     return [str(value)]
 
 
+def _as_float(value, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _clamp(value: float, lower: float, upper: float) -> float:
+    return max(lower, min(upper, value))
+
+
 def _normalize_research_payload(payload: dict, snapshot: AnalysisSnapshot) -> dict:
     allowed_ratings = {"BUY", "OVERWEIGHT", "HOLD", "UNDERWEIGHT", "SELL"}
     rating = str(payload.get("rating") or "HOLD").upper()
@@ -41,7 +52,7 @@ def _normalize_research_payload(payload: dict, snapshot: AnalysisSnapshot) -> di
         "sentiment_view": str(payload.get("sentiment_view") or "新闻/舆情数据不可用，已降低结论置信度。"),
         "catalysts": _as_list(payload.get("catalysts")),
         "risks": _as_list(payload.get("risks")) or data_gaps or ["数据覆盖不足"],
-        "confidence": float(payload.get("confidence", 0.4) or 0.4),
+        "confidence": _as_float(payload.get("confidence"), 0.4),
         "data_gaps": data_gaps,
     }
 
@@ -57,11 +68,11 @@ def _normalize_trader_payload(payload: dict, snapshot: AnalysisSnapshot) -> dict
         **payload,
         "action": action,
         "reasoning": str(payload.get("reasoning") or "根据研究结论和当前持仓，先给出保守持有建议。"),
-        "entry_low": payload.get("entry_low"),
-        "entry_high": payload.get("entry_high"),
-        "stop_loss": stop_loss if stop_loss is not None else round(snapshot.weighted_avg_cost * (1 + snapshot.stop_loss_ratio), 6),
-        "take_profit": take_profit if take_profit is not None else round(snapshot.weighted_avg_cost * (1 + snapshot.take_profit_ratio), 6),
-        "position_ratio": float(payload.get("position_ratio", 0.0) or 0.0),
+        "entry_low": _as_float(payload.get("entry_low"), snapshot.close),
+        "entry_high": _as_float(payload.get("entry_high"), snapshot.close),
+        "stop_loss": _as_float(stop_loss, round(snapshot.weighted_avg_cost * (1 + snapshot.stop_loss_ratio), 6)),
+        "take_profit": _as_float(take_profit, round(snapshot.weighted_avg_cost * (1 + snapshot.take_profit_ratio), 6)),
+        "position_ratio": _clamp(_as_float(payload.get("position_ratio"), 0.0), 0.0, 1.0),
     }
 
 
