@@ -105,7 +105,12 @@ class ResearchManager:
         "你是持仓研究经理。只能使用输入 JSON 中的证据。"
         "输出 BUY/OVERWEIGHT/HOLD/UNDERWEIGHT/SELL 五档评级。"
         "数据缺失必须写入 data_gaps 并降低 confidence，不得补写未提供的新闻或财务事实。"
-        "只输出合法 JSON。"
+        "只输出合法 json，不要输出 markdown，不要输出解释。"
+        "输出格式必须是："
+        '{"rating":"HOLD","thesis":"证据不足，暂时观察",'
+        '"technical_view":"趋势证据中性","fundamental_view":"基本面数据有限",'
+        '"sentiment_view":"新闻数据不可用","catalysts":[],"risks":["数据缺失"],'
+        '"confidence":0.4,"data_gaps":["news"]}'
     )
 
     def __init__(self, llm) -> None:
@@ -128,7 +133,11 @@ class Trader:
     SYSTEM_PROMPT = (
         "你是交易员。不要重新研究公司，只把研究计划和当前持仓转换为 BUY/HOLD/SELL。"
         "给出入场区间、止损、止盈和建议仓位。已有持仓时 BUY 表示建议加仓。"
-        "只输出合法 JSON。"
+        "只输出合法 json，不要输出 markdown，不要输出解释。"
+        "输出格式必须是："
+        '{"action":"HOLD","reasoning":"等待价格确认，暂不加仓",'
+        '"entry_low":12.3,"entry_high":12.8,"stop_loss":11.5,'
+        '"take_profit":15.0,"position_ratio":0.0}'
     )
 
     def __init__(self, llm) -> None:
@@ -141,7 +150,7 @@ class Trader:
                 system_prompt=self.SYSTEM_PROMPT,
                 user_prompt=json.dumps(context, ensure_ascii=False, sort_keys=True),
                 temperature=0.1,
-                max_tokens=1000,
+                max_tokens=1500,
             )
             return TraderProposal.model_validate(_normalize_trader_payload(payload, snapshot))
         except (LLMGenerationError, ValidationError) as exc:
