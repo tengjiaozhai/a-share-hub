@@ -8,6 +8,7 @@ from src.api.auth_security import create_auth_token, hash_password, verify_passw
 from src.core.config import Settings
 from src.storage.auth_store import AuthStore
 from src.storage.dependencies import get_runtime_engine
+from src.storage.watchlist_seed import DEFAULT_A_STOCK_WATCHLIST, DEFAULT_US_STOCK_WATCHLIST
 
 router = APIRouter()
 
@@ -53,6 +54,10 @@ async def register(request: Request):
         return _error("/register", "用户名或邮箱已存在", next_url, wants_json, status_code=409)
 
     user = store.create_user(username, email, hash_password(password), role="user")
+    
+    # Seed default watchlists for new user
+    _seed_default_watchlists(user["user_id"])
+    
     return _login_response(user, next_url, wants_json)
 
 
@@ -84,6 +89,38 @@ def me(request: Request):
     if not user:
         return JSONResponse({"detail": "Not authenticated"}, status_code=401)
     return user
+
+
+def _seed_default_watchlists(user_id: str) -> None:
+    """Seed default A-stock and US-stock watchlists for new user."""
+    from src.a_stock.watchlist import AShareWatchlistStore
+    from src.us_stock.watchlist import WatchlistStore
+    from src.core.tenant import TenantContext
+    
+    engine = get_runtime_engine()
+    tenant = TenantContext(user_id=user_id)
+    
+    # Seed A-stock watchlist
+    try:
+        a_store = AShareWatchlistStore(engine, tenant)
+        for idx, (symbol, name) in enumerate(DEFAULT_A_STOCK_WATCHLIST):
+            try:
+                a_store.add(symbol, name, sort_order=idx)
+            except ValueError:
+                pass  # Symbol already exists
+    except Exception:
+        pass  # Silently fail if table doesn't exist
+    
+    # Seed US-stock watchlist
+    try:
+        us_store = WatchlistStore(engine, tenant)
+        for idx, (symbol, name) in enumerate(DEFAULT_US_STOCK_WATCHLIST):
+            try:
+                us_store.add(symbol, name, sort_order=idx)
+            except ValueError:
+                pass  # Symbol already exists
+    except Exception:
+        pass  # Silently fail if table doesn't exist
 
 
 async def _read_payload(request: Request) -> tuple[dict, bool]:
