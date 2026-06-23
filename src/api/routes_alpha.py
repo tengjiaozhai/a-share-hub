@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta
 
@@ -22,6 +23,8 @@ from src.api.dependencies import (
 from src.core.tenant import TenantContext
 from src.storage.runtime_store import RuntimeStore
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(
     prefix="/api/v1/alpha",
     tags=["alpha"],
@@ -29,86 +32,65 @@ router = APIRouter(
 )
 
 
-def _build_backtest_runner(engine, tenant: TenantContext, user_id: str):
-    """构建回测运行器"""
+def _build_backtest_runner(engine, tenant: TenantContext, user_id: str, history_loader=None):
+    """构建回测运行器。"""
     def runner(snapshot):
         from src.backtest.engine import run_daily_backtest
         from src.backtest.metrics import calculate_metrics
-        from datetime import datetime, timedelta
-        
+        from src.core.config import Settings
+
         symbol = snapshot.symbol
         market = snapshot.market
-        
-        # 获取历史数据
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=180)  # 6个月回测
-        
-        if market == "us":
+        lot_size = 1 if market == "us" else 100
+
+        if history_loader is not None:
+            bars = history_loader(symbol)
+        elif market == "us":
             from src.us_stock.yahoo_provider import get_yahoo_provider
-            provider = get_yahoo_provider()
-            # 去掉 .US 后缀，Yahoo Finance 不支持
+
             yahoo_symbol = symbol[:-3] if symbol.upper().endswith(".US") else symbol
-            klines = provider.get_kline(yahoo_symbol, interval="1d", range_str="6mo")
-            if not klines:
-                return {"status": "error", "reason": "no historical data"}
+            klines = get_yahoo_provider().get_kline(yahoo_symbol, interval="1d", range_str="6mo")
             bars = [
                 {
-                    "date": k.timestamp.strftime("%Y-%m-%d"),
-                    "open": k.open,
-                    "high": k.high,
-                    "low": k.low,
+                    "date": k.timestamp.strftime("%Y-%m-%d") if hasattr(k.timestamp, "strftime") else str(k.timestamp)[:10],
                     "close": k.close,
                     "volume": k.volume,
                 }
                 for k in klines
             ]
-            lot_size = 1
         else:
-            from src.a_stock.akshare_provider import AkshareProvider
-            provider = AkshareProvider()
-            bars_df = provider.get_history(symbol, start_date, end_date)
-            if bars_df.empty:
-                return {"status": "error", "reason": "no historical data"}
-            bars = bars_df.to_dict("records")
-            lot_size = 100
-        
-        # 从 technical 指标生成交易信号
-        signals = []
-        technical = snapshot.technical or {}
-        
-        # 简单的信号生成逻辑：基于 RSI 和 MACD
-        for i, bar in enumerate(bars):
-            if i < 60:  # 需要足够的历史数据计算指标
-                continue
-            
-            # 这里简化处理，实际应该计算技术指标
-            # 暂时使用 HOLD 策略
-            pass
-        
-        # 如果没有信号，使用买入持有策略
-        if not signals and bars:
-            signals = [{
+            from src.data.providers.akshare_provider import get_akshare_provider
+
+            end_date = datetime.utcnow()
+            start_date = end_date - timedelta(days=180)
+            bars_df = get_akshare_provider().get_history(symbol, start_date, end_date)
+            bars = [] if bars_df is None or getattr(bars_df, "empty", True) else bars_df.to_dict("records")
+
+        if not bars:
+            return {"status": "error", "reason": "no historical data"}
+        if len(bars) <= 60:
+            return {"status": "skipped", "reason": "insufficient historical data", "bar_count": len(bars)}
+
+        signals = [
+            {
                 "date": bars[60]["date"],
                 "action": "BUY",
                 "target_position_ratio": 0.95,
-            }]
-        
-        # 运行回测
-        from src.core.config import Settings
+            }
+        ]
+
         settings = Settings()
         bt_result = run_daily_backtest(
             symbol=symbol,
             bars=bars,
-            initial_cash=1000000,  # 100万初始资金
+            initial_cash=1000000,
             signals=signals,
             lot_size=lot_size,
             fee_bps=settings.strategy_fee_bps,
             slippage_bps=settings.strategy_slippage_bps,
         )
-        
-        # 计算指标
         metrics = calculate_metrics(bt_result["equity_curve"], bt_result["trades"])
-        
+
         return {
             "status": "completed",
             "symbol": symbol,
@@ -121,9 +103,9 @@ def _build_backtest_runner(engine, tenant: TenantContext, user_id: str):
             "sharpe_ratio": metrics.get("sharpe_ratio", 0),
             "win_rate": metrics.get("win_rate", 0),
             "trade_count": len(bt_result["trades"]),
-            "trades": bt_result["trades"][:10],  # 只返回前10笔交易
+            "trades": bt_result["trades"][:10],
         }
-    
+
     return runner
 
 
@@ -165,21 +147,21 @@ def _load_latest_close(symbol: str) -> float | None:
         if symbol.upper().endswith(".US"):
             from src.us_stock.yahoo_provider import get_yahoo_provider
 
-            bars = get_yahoo_provider().get_kline(symbol[:-3], interval="1d", range_str="5d")
-            if not bars:
-                return None
-            return float(bars[-1].close)
+            yahoo_symbol = symbol[:-3]
+            quote = get_yahoo_provider().get_quote(yahoo_symbol)
+            if float(getattr(quote, "price", 0.0) or 0.0) > 0:
+                return float(quote.price)
+            bars = get_yahoo_provider().get_kline(yahoo_symbol, interval="1d", range_str="5d")
+            return float(bars[-1].close) if bars else None
 
-        from src.data.providers.akshare_provider import AkshareProvider
+        from src.data.providers.akshare_provider import get_akshare_provider
 
-        end_date = datetime.utcnow()
-        start_date = end_date - timedelta(days=10)
-        bars = AkshareProvider().get_history(symbol, start_date, end_date)
-        if bars is None or getattr(bars, "empty", True):
-            return None
-        return float(bars.iloc[-1]["close"])
-    except Exception:
-        return None
+        quote = get_akshare_provider().get_realtime_quote(symbol)
+        if quote and float(quote.close or 0.0) > 0:
+            return float(quote.close)
+    except Exception as exc:
+        logger.warning("load latest close failed for %s: %s", symbol, exc)
+    return None
 
 
 def _build_run_store(store: RuntimeStore, user_id: str) -> AnalysisRunStore:
@@ -196,16 +178,21 @@ def _build_run_service(
 
     settings = Settings()
     llm = LLMClient(settings)
+    history_cache: dict[str, list[dict]] = {}
 
     def history_loader(symbol: str) -> list[dict]:
+        cached = history_cache.get(symbol)
+        if cached is not None:
+            return [dict(row) for row in cached]
+
         end_date = datetime.utcnow()
-        start_date = end_date - timedelta(days=120)
+        start_date = end_date - timedelta(days=180)
         try:
             if symbol.upper().endswith(".US"):
                 from src.us_stock.yahoo_provider import get_yahoo_provider
 
                 klines = get_yahoo_provider().get_kline(symbol[:-3], interval="1d", range_str="6mo")
-                return [
+                bars = [
                     {
                         "date": (
                             k.timestamp.strftime("%Y-%m-%d")
@@ -217,14 +204,17 @@ def _build_run_service(
                     }
                     for k in klines
                 ]
-            from src.data.providers.akshare_provider import AkshareProvider
+            else:
+                from src.data.providers.akshare_provider import get_akshare_provider
 
-            bars = AkshareProvider().get_history(symbol, start_date, end_date)
-            if bars is None or getattr(bars, "empty", True):
-                return []
-            return bars.to_dict("records")
-        except Exception:
-            return []
+                bars_df = get_akshare_provider().get_history(symbol, start_date, end_date)
+                bars = [] if bars_df is None or getattr(bars_df, "empty", True) else bars_df.to_dict("records")
+        except Exception as exc:
+            logger.warning("history load failed for %s: %s", symbol, exc)
+            bars = []
+
+        history_cache[symbol] = [dict(row) for row in bars]
+        return bars
 
     def fundamental_loader(symbol: str) -> dict:
         if symbol.upper().endswith(".US"):
@@ -242,7 +232,8 @@ def _build_run_service(
                     "sector": fund.sector,
                     "industry": fund.industry,
                 }
-            except Exception:
+            except Exception as exc:
+                logger.warning("fundamental load failed for %s: %s", symbol, exc)
                 return {"status": "error"}
         return {"status": "ok"}
 
@@ -250,9 +241,8 @@ def _build_run_service(
         history_loader=history_loader,
         fundamental_loader=fundamental_loader,
     )
-    # 构建回测运行器
-    backtest_runner = _build_backtest_runner(store.engine, tenant, user_id)
-    
+    backtest_runner = _build_backtest_runner(store.engine, tenant, user_id, history_loader=history_loader)
+
     return AlphaAnalysisRunService(
         store=_build_run_store(store, user_id),
         holdings_store=holdings_store,
