@@ -401,6 +401,16 @@ def test_render_dashboard_html_contains_structured_decision_sections():
     for marker in [
         "alpha-analysis-center",
         "alpha-analysis-drawer",
+        "alpha-analysis-list",
+        "alpha-analysis-load-more",
+        "function loadAlphaAnalysisRuns",
+        "function openAlphaAnalysisDrawer",
+        "function beginAlphaSymbolEdit",
+        "function alphaStageLabel",
+        "weighted_avg_cost",
+        "Research",
+        "Trader",
+        "Backtest",
     ]:
         assert marker in html
 

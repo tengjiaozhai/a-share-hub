@@ -48,3 +48,28 @@ def test_snapshot_rejects_missing_close():
             lots=[{"buy_price": 420.0, "quantity": 2.0}],
             portfolio_market_value=840.0,
         )
+
+
+def test_snapshot_uses_usd_weighted_avg_cost_for_us_symbol():
+    bars = [
+        {"date": (date(2026, 4, 1) + timedelta(days=index)).isoformat(), "close": 430.0, "volume": 1000}
+        for index in range(61)
+    ]
+    builder = AnalysisSnapshotBuilder(
+        history_loader=lambda symbol: bars,
+        fundamental_loader=lambda symbol: {"status": "ok"},
+    )
+
+    snapshot = builder.build(
+        symbol="MSFT.US",
+        lots=[
+            {"buy_price": 420.0, "quantity": 2.0, "stop_loss_ratio": -0.08, "take_profit_ratio": 0.20},
+            {"buy_price": 430.0, "quantity": 1.0, "stop_loss_ratio": -0.08, "take_profit_ratio": 0.20},
+        ],
+        portfolio_market_value=10_000.0,
+    )
+
+    assert snapshot.market == "us"
+    assert snapshot.currency == "USD"
+    assert snapshot.weighted_avg_cost == pytest.approx(423.333333)
+    assert snapshot.unrealized_pnl == pytest.approx((430.0 - 423.3333333333333) * 3.0)

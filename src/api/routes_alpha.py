@@ -54,7 +54,34 @@ def _normalize_holdings_entry(payload: dict) -> dict:
 
 
 def _rebuild_holdings_portfolio(store: RuntimeStore) -> None:
-    return None
+    from src.alpha.portfolio_service import AlphaPortfolioService
+
+    entries = store.list_alpha_holdings_entries()
+    symbols = sorted({str(entry.get("symbol", "")).upper() for entry in entries if entry.get("symbol")})
+    price_map = {symbol: price for symbol in symbols if (price := _load_latest_close(symbol)) is not None}
+    AlphaPortfolioService(store).rebuild_from_holdings_entries(price_map=price_map)
+
+
+def _load_latest_close(symbol: str) -> float | None:
+    try:
+        if symbol.upper().endswith(".US"):
+            from src.us_stock.yahoo_provider import YahooProvider
+
+            bars = YahooProvider().get_kline(symbol[:-3], interval="1d", range_str="5d")
+            if not bars:
+                return None
+            return float(bars[-1].close)
+
+        from src.data.providers.akshare_provider import AkshareProvider
+
+        end_date = datetime.utcnow()
+        start_date = end_date - timedelta(days=10)
+        bars = AkshareProvider().get_history(symbol, start_date, end_date)
+        if bars is None or getattr(bars, "empty", True):
+            return None
+        return float(bars.iloc[-1]["close"])
+    except Exception:
+        return None
 
 
 def _build_run_store(store: RuntimeStore, user_id: str) -> AnalysisRunStore:
@@ -236,7 +263,7 @@ async def _event_iter(
             payload = event.get("payload") or {}
             yield {
                 "id": str(event["seq"]),
-                "event": event["event_type"],
+                "event": event["stage"],
                 "data": json.dumps(
                     {
                         "run_id": run_id,

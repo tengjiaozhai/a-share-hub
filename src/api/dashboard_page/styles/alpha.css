@@ -265,8 +265,8 @@
   margin: 16px 0;
   display: flex;
   flex-direction: column;
-  background: var(--bg-elevated, #0f172a);
-  border: 1px solid var(--border, #1e293b);
+  background: var(--panel);
+  border: 1px solid var(--stroke);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -275,44 +275,46 @@
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--border, #1e293b);
+  border-bottom: 1px solid var(--stroke);
 }
 .alpha-analysis-filters { display: flex; gap: 8px; }
 .alpha-status-filter {
   padding: 4px 10px;
-  background: transparent;
-  border: 1px solid var(--border, #334155);
-  color: var(--text-secondary, #94a3b8);
+  background: var(--panel-2);
+  border: 1px solid var(--stroke);
+  color: var(--muted);
   border-radius: 4px;
   cursor: pointer;
   font-size: 12px;
 }
-.alpha-status-filter.active { background: var(--accent, #38bdf8); color: var(--bg, #0f172a); border-color: var(--accent, #38bdf8); }
+.alpha-status-filter.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
 .alpha-analysis-list { flex: 1; overflow-y: auto; padding: 8px 16px; }
 .alpha-analysis-row {
   display: grid;
   grid-template-columns: 1.2fr 1fr 1fr 0.8fr 1fr;
   gap: 8px;
   padding: 8px 4px;
-  border-bottom: 1px solid var(--border, #1e293b);
+  border-bottom: 1px solid var(--stroke);
   font-size: 12px;
   align-items: center;
 }
 .alpha-analysis-row:hover { background: rgba(56, 189, 248, 0.05); cursor: pointer; }
-.alpha-analysis-symbol { font-weight: 600; color: var(--text-primary, #f1f5f9); }
+.alpha-analysis-row.is-failed { color: var(--danger); }
+.alpha-analysis-row.is-completed .alpha-analysis-action { color: var(--green); }
+.alpha-analysis-symbol { font-weight: 600; color: var(--fg); }
 .alpha-analysis-pagination {
   padding: 8px 16px;
-  border-top: 1px solid var(--border, #1e293b);
+  border-top: 1px solid var(--stroke);
   display: flex;
   justify-content: space-between;
   align-items: center;
   font-size: 12px;
-  color: var(--text-secondary, #94a3b8);
+  color: var(--muted);
 }
 .alpha-holding-analyze {
   padding: 4px 10px;
-  background: var(--accent, #38bdf8);
-  color: var(--bg, #0f172a);
+  background: var(--accent);
+  color: var(--bg);
   border: none;
   border-radius: 4px;
   cursor: pointer;
@@ -326,8 +328,8 @@
   top: 0;
   height: 100vh;
   width: min(720px, 92vw);
-  background: var(--bg-elevated, #0f172a);
-  border-left: 1px solid var(--border, #1e293b);
+  background: var(--panel);
+  border-left: 1px solid var(--stroke);
   z-index: 100;
   display: flex;
   flex-direction: column;
@@ -339,14 +341,14 @@
   justify-content: space-between;
   align-items: center;
   padding: 16px 20px;
-  border-bottom: 1px solid var(--border, #1e293b);
+  border-bottom: 1px solid var(--stroke);
 }
 .alpha-analysis-drawer-symbol { font-size: 18px; font-weight: 600; }
-.alpha-analysis-drawer-status { font-size: 12px; color: var(--text-secondary, #94a3b8); margin-top: 4px; }
+.alpha-analysis-drawer-status { font-size: 12px; color: var(--muted); margin-top: 4px; }
 .alpha-analysis-drawer-close {
   background: transparent;
   border: none;
-  color: var(--text-primary, #f1f5f9);
+  color: var(--fg);
   font-size: 24px;
   cursor: pointer;
   padding: 0 8px;
@@ -356,17 +358,48 @@
 .alpha-analysis-drawer-section h4 {
   font-size: 14px;
   font-weight: 600;
-  color: var(--accent, #38bdf8);
+  color: var(--accent);
   margin-bottom: 8px;
-  border-bottom: 1px solid var(--border, #1e293b);
+  border-bottom: 1px solid var(--stroke);
   padding-bottom: 4px;
 }
 .alpha-analysis-drawer-content pre {
-  background: var(--bg, #020617);
+  background: var(--bg);
   padding: 8px;
   border-radius: 4px;
   font-size: 11px;
   overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.alpha-detail-grid,
+.alpha-event-list {
+  display: grid;
+  gap: 8px;
+}
+
+.alpha-detail-row,
+.alpha-event-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.8fr) minmax(0, 1.6fr);
+  gap: 10px;
+  align-items: start;
+  padding: 8px 10px;
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.alpha-event-row {
+  grid-template-columns: 44px 1fr 1fr 1.6fr;
+}
+
+.alpha-detail-row strong,
+.alpha-event-row strong {
+  color: var(--fg);
   white-space: pre-wrap;
   word-break: break-word;
 }

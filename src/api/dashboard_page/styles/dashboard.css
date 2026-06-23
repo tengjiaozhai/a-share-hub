@@ -2133,9 +2133,9 @@ html[data-theme='coinbase-institutional'] {
   flex-direction: column;
   gap: 14px;
   padding: 14px;
-  border: 1px solid rgba(77,212,198,.16);
-  border-radius: 16px;
-  background: linear-gradient(180deg, rgba(77,212,198,.05), rgba(16,25,34,.88));
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: var(--panel-2);
 }
 .alpha-builder-head {
   display: flex;
@@ -2158,8 +2158,8 @@ html[data-theme='coinbase-institutional'] {
 .alpha-builder-add-lot,
 .alpha-builder-remove {
   border: 1px solid var(--stroke);
-  border-radius: 999px;
-  background: rgba(255,255,255,.04);
+  border-radius: 6px;
+  background: var(--panel);
   color: var(--fg);
   min-height: 34px;
   padding: 0 12px;
@@ -2184,9 +2184,9 @@ html[data-theme='coinbase-institutional'] {
   flex-direction: column;
   gap: 12px;
   padding: 14px;
-  border-radius: 16px;
-  border: 1px solid rgba(255,255,255,.08);
-  background: rgba(11,17,23,.72);
+  border-radius: 8px;
+  border: 1px solid var(--stroke);
+  background: var(--panel);
 }
 .alpha-stock-card-head {
   display: flex;
