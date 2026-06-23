@@ -1,6 +1,10 @@
 from src.alpha.analysis_models import AnalysisSnapshot, ResearchPlan, RiskDecision, TraderProposal
 
 
+def _ratio(value: float) -> float:
+    return max(0.0, min(1.0, value))
+
+
 def evaluate_risk(
     snapshot: AnalysisSnapshot,
     research: ResearchPlan,
@@ -28,14 +32,14 @@ def evaluate_risk(
             action="REDUCE",
             reason="收盘浮盈已达到持仓止盈线",
             triggered_rules=["take_profit_reached"],
-            approved_position_ratio=max(0, snapshot.position_ratio / 2),
+            approved_position_ratio=_ratio(snapshot.position_ratio / 2),
         )
     if trader.action == "SELL" or research.rating == "UNDERWEIGHT":
         return RiskDecision(
             action="REDUCE",
             reason="交易建议偏空或研究评级为 UNDERWEIGHT",
             triggered_rules=["directional_reduce"],
-            approved_position_ratio=max(0, snapshot.position_ratio / 2),
+            approved_position_ratio=_ratio(snapshot.position_ratio / 2),
         )
     missing = set(snapshot.data_quality.get("missing", []))
     if "technical_history" in missing:
@@ -43,14 +47,14 @@ def evaluate_risk(
             action="HOLD",
             reason="技术历史不足，禁止新增风险敞口",
             triggered_rules=["insufficient_technical_history"],
-            approved_position_ratio=snapshot.position_ratio,
+            approved_position_ratio=_ratio(snapshot.position_ratio),
         )
     if snapshot.position_ratio >= max_position_ratio:
         return RiskDecision(
             action="HOLD",
             reason="当前持仓比例已达到单票上限",
             triggered_rules=["position_limit_reached"],
-            approved_position_ratio=snapshot.position_ratio,
+            approved_position_ratio=_ratio(snapshot.position_ratio),
         )
     technical = snapshot.technical
     trend_ok = (
@@ -60,7 +64,7 @@ def evaluate_risk(
     not_extended = technical.get("ma20_gap", 0) <= 0.05
     volume_ok = technical.get("volume_ratio_20", 0) >= 1.0
     if research.rating in {"BUY", "OVERWEIGHT"} and trader.action == "BUY" and trend_ok and not_extended and volume_ok:
-        approved = min(max_position_ratio, max(snapshot.position_ratio, trader.position_ratio))
+        approved = _ratio(min(max_position_ratio, max(snapshot.position_ratio, trader.position_ratio)))
         return RiskDecision(
             action="ADD",
             reason="研究和交易方向一致，趋势回踩与成交量条件满足",
@@ -71,5 +75,5 @@ def evaluate_risk(
         action="HOLD",
         reason="未满足减仓或加仓的完整条件",
         triggered_rules=["no_action_trigger"],
-        approved_position_ratio=snapshot.position_ratio,
+        approved_position_ratio=_ratio(snapshot.position_ratio),
     )

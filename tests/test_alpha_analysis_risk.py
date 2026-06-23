@@ -98,3 +98,13 @@ def test_missing_technical_history_blocks_add():
     })
     decision = evaluate_risk(partial, bullish_research, buy_proposal, max_position_ratio=0.2)
     assert decision.action == "HOLD"
+
+
+def test_existing_position_ratio_is_clamped_to_contract():
+    snapshot, bullish_research, buy_proposal = _snapshot(), _research(), _proposal()
+    oversized = snapshot.model_copy(update={"position_ratio": 5.35})
+
+    decision = evaluate_risk(oversized, bullish_research, buy_proposal, max_position_ratio=0.2)
+
+    assert decision.action == "HOLD"
+    assert decision.approved_position_ratio == 1.0
