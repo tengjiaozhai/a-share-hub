@@ -17,10 +17,9 @@ def test_render_dashboard_html_contains_alpha_contract():
     assert 'id="alpha-analysis-builder"' in html
     assert 'id="alpha-stock-cards"' in html
     assert 'id="alpha-add-stock-card"' in html
-    assert "生成分析" in html
-    assert "const ALPHA_REPORT_API = '/api/v1/alpha/portfolio/report';" in html
+    assert "const ALPHA_ANALYSIS_RUNS_API = '/api/v1/alpha/analysis-runs';" in html
     assert "const ALPHA_HOLDINGS_API = '/api/v1/alpha/holdings';" in html
-    assert "loadAlphaReport" in html
+    assert "startAlphaAnalysis" in html
 
 
 def test_render_dashboard_html_removes_legacy_alpha_inputs():
@@ -36,7 +35,6 @@ def test_render_dashboard_html_contains_alpha_builder_javascript_contract():
     required_markers = [
         "createAlphaStockCard",
         "createAlphaLotRow",
-        "collectAlphaReportPositions",
         "renderAlphaSavedHoldings",
         "loadAlphaSavedHoldings",
         "saveAlphaHoldings",
@@ -48,10 +46,9 @@ def test_render_dashboard_html_contains_alpha_builder_javascript_contract():
         "data-alpha-add-lot",
         "data-alpha-remove-stock",
         "data-alpha-remove-lot",
-        "positions: positions",
-        "snapshot.close_date",
-        "snapshot.weighted_cost",
-        "risk.action",
+        "startAlphaAnalysis",
+        "subscribeAlphaAnalysisEvents",
+        "ALPHA_ANALYSIS_RUNS_API",
     ]
     for marker in required_markers:
         assert marker in html
@@ -213,8 +210,8 @@ def test_render_dashboard_html_contains_market_and_alpha_controls():
         'id="alpha-analysis-builder"',
         'id="alpha-stock-cards"',
         'id="alpha-add-stock-card"',
-        "const ALPHA_REPORT_API = '/api/v1/alpha/portfolio/report';",
-        'loadAlphaReport',
+        "const ALPHA_ANALYSIS_RUNS_API = '/api/v1/alpha/analysis-runs';",
+        'startAlphaAnalysis',
         'aLoadQuotes',
     ]
     for marker in required_markers:
@@ -388,16 +385,13 @@ def test_render_dashboard_html_contains_alpha_market_tabs():
 
 
 def test_render_dashboard_html_alpha_window_select_has_label():
-    html = render_dashboard_html()
-    assert "回看窗口" in html
-    assert 'for="alpha-report-window"' in html
-    assert 'id="alpha-report-window"' in html
+    # Window selector moved into per-run request payload; page-level selector removed.
+    pass
 
 
 def test_render_dashboard_html_alpha_toggles_have_chinese_labels():
     html = render_dashboard_html()
-    assert "包含回测对比" in html
-    assert 'id="alpha-report-include-backtest"' in html
+    # include_backtest toggle moved into per-run request payload; page-level removed.
     assert "包含模拟交易" not in html
     assert "包含历史回测" not in html
 
@@ -405,12 +399,8 @@ def test_render_dashboard_html_alpha_toggles_have_chinese_labels():
 def test_render_dashboard_html_contains_structured_decision_sections():
     html = render_dashboard_html()
     for marker in [
-        "alpha-analysis-status",
-        "alpha-research-section",
-        "alpha-trader-section",
-        "alpha-risk-section",
-        "alpha-data-quality",
-        "alpha-analysis-history",
+        "alpha-analysis-center",
+        "alpha-analysis-drawer",
     ]:
         assert marker in html
 
@@ -428,18 +418,15 @@ def test_render_dashboard_html_removes_shadow_decision_path():
 
 
 def test_render_dashboard_html_alpha_builder_button_order_code_first():
-    """输入区按钮顺序：[代码]→[+新增股票]→[日期/价格/数量]→[+新增批次/删除批次]→[保存/保存并生成分析]
+    """输入区按钮顺序：[代码]→[+新增股票]→[日期/价格/数量]→[+新增批次/删除批次]→[保存]
 
-    HTML 段（按钮容器）：[+新增股票] < 保存 < 保存并生成分析
-    JS 段（卡片/批次模板）：[代码] < [+新增批次] / [删除批次] 必须共存
+    HTML 段（按钮容器）：[+新增股票] < 保存
     """
     html = render_dashboard_html()
     add_stock_idx = html.find('id="alpha-add-stock-card"')
     save_idx = html.find('id="alpha-analysis-save"')
-    save_and_report_idx = html.find('id="alpha-analysis-save-and-report"')
     assert add_stock_idx > 0
     assert save_idx > add_stock_idx
-    assert save_and_report_idx > save_idx
 
     js_symbol_idx = html.find('data-alpha-symbol')
     js_lot_idx = html.find('data-alpha-lot-buy-date')
@@ -455,9 +442,7 @@ def test_render_dashboard_html_alpha_builder_button_order_code_first():
 def test_render_dashboard_html_alpha_save_and_generate_button_present():
     html = render_dashboard_html()
     assert 'id="alpha-analysis-save"' in html
-    assert 'id="alpha-analysis-save-and-report"' in html
-    assert "保存并生成分析" in html
-    assert 'id="alpha-report-generate"' in html
+    assert "保存" in html
 
 
 def test_render_dashboard_html_alpha_market_header_present():

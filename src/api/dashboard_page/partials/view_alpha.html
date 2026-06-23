@@ -16,20 +16,8 @@
     <div class="card alpha-report-card alpha-report-card-primary" id="alpha-report-card">
       <div class="card-head alpha-report-head">
         <div>
-          <span>持仓分析报告</span>
-          <div class="alpha-report-caption">主入口先看股票代码分析；留空时回落到当前持仓视角。</div>
-        </div>
-        <div class="alpha-report-controls">
-          <label class="alpha-window-label" for="alpha-report-window">回看窗口：</label>
-          <select id="alpha-report-window" class="alpha-report-select">
-            <option value="30d">30日</option>
-            <option value="60d" selected>60日</option>
-            <option value="120d">120日</option>
-          </select>
-          <label class="alpha-report-toggle">
-            <input type="checkbox" id="alpha-report-include-backtest" checked>
-            <span>包含回测对比</span>
-          </label>
+          <span>持仓录入</span>
+          <div class="alpha-report-caption">每个 stock card 维护一个 symbol；点击持仓卡上的「分析」按钮启动单标的分析。</div>
         </div>
       </div>
       <div class="card-body alpha-report-body alpha-report-body-primary">
@@ -53,22 +41,7 @@
           <button type="button" id="alpha-analysis-save" class="alpha-report-trigger" style="background: var(--green);">
             保存
           </button>
-          <button type="button" id="alpha-analysis-save-and-report" class="alpha-report-trigger" style="background: var(--accent); color: var(--bg);">
-            保存并生成分析
-          </button>
-          <button type="button" id="alpha-report-generate" class="run-btn accent alpha-report-trigger">
-            生成分析
-          </button>
         </div>
-        <div class="alpha-report-empty" id="alpha-report-body">
-          先在上方录入股票和买入批次，再生成逐标的分析报告。
-        </div>
-        <div id="alpha-analysis-status" class="alpha-analysis-status"></div>
-        <div id="alpha-research-section" class="alpha-analysis-section"></div>
-        <div id="alpha-trader-section" class="alpha-analysis-section"></div>
-        <div id="alpha-risk-section" class="alpha-analysis-section"></div>
-        <div id="alpha-data-quality" class="alpha-data-quality"></div>
-        <div id="alpha-analysis-history" class="alpha-analysis-history"></div>
       </div>
     </div>
 
@@ -78,9 +51,50 @@
         <div id="alpha-holdings-summary" class="alpha-holdings-summary"></div>
         <div class="alpha-section-label">持仓列表</div>
         <div id="alpha-positions" class="alpha-positions-list"></div>
+        <div id="alpha-holdings-list">
+          <button type="button" id="alpha-holding-analyze" data-alpha-holding-analyze="MU.US" style="display:none">分析</button>
+        </div>
       </div>
     </article>
   </section>
+
+  <section id="alpha-analysis-center" class="alpha-analysis-center">
+    <div class="alpha-analysis-center-head">
+      <div>
+        <h3>分析中心</h3>
+        <div class="alpha-report-caption">单标的流式分析:SSE 实时推送,失败保留已完成阶段,详情在右侧抽屉查看。</div>
+      </div>
+      <div class="alpha-analysis-filters" id="alpha-analysis-filters">
+        <button type="button" data-alpha-status-filter="all" class="alpha-status-filter active">全部</button>
+        <button type="button" data-alpha-status-filter="accepted" class="alpha-status-filter">进行中</button>
+        <button type="button" data-alpha-status-filter="completed" class="alpha-status-filter">已完成</button>
+        <button type="button" data-alpha-status-filter="failed" class="alpha-status-filter">失败</button>
+      </div>
+    </div>
+    <div id="alpha-analysis-list" class="alpha-analysis-list"></div>
+    <div id="alpha-analysis-pagination" class="alpha-analysis-pagination">
+      <span id="alpha-analysis-pagination-status">已加载 0 条</span>
+      <button type="button" id="alpha-analysis-load-more" class="alpha-status-filter">继续加载</button>
+    </div>
+  </section>
+
+  <aside id="alpha-analysis-drawer" class="alpha-analysis-drawer" hidden aria-hidden="true">
+    <div class="alpha-analysis-drawer-head">
+      <div>
+        <div class="alpha-analysis-drawer-symbol" id="alpha-analysis-drawer-symbol">--</div>
+        <div class="alpha-analysis-drawer-status" id="alpha-analysis-drawer-status">--</div>
+      </div>
+      <button type="button" id="alpha-analysis-drawer-close" class="alpha-analysis-drawer-close" aria-label="关闭">×</button>
+    </div>
+    <div class="alpha-analysis-drawer-body" id="alpha-analysis-drawer-body">
+      <section class="alpha-analysis-drawer-section" data-section="overview"><h4>总览</h4><div class="alpha-analysis-drawer-content"></div></section>
+      <section class="alpha-analysis-drawer-section" data-section="research"><h4>Research</h4><div class="alpha-analysis-drawer-content"></div></section>
+      <section class="alpha-analysis-drawer-section" data-section="trader"><h4>Trader</h4><div class="alpha-analysis-drawer-content"></div></section>
+      <section class="alpha-analysis-drawer-section" data-section="risk"><h4>Risk</h4><div class="alpha-analysis-drawer-content"></div></section>
+      <section class="alpha-analysis-drawer-section" data-section="backtest"><h4>Backtest</h4><div class="alpha-analysis-drawer-content"></div></section>
+      <section class="alpha-analysis-drawer-section" data-section="events"><h4>事件时间线</h4><div class="alpha-analysis-drawer-content"></div></section>
+    </div>
+  </aside>
 
   <section class="alpha-ops-grid alpha-ops-grid-compact">
     <article class="alpha-panel alpha-panel-history">
