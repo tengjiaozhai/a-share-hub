@@ -149,26 +149,37 @@ class YahooProvider:
         cache_key = f"kline:{symbol}:{interval}:{range_str}"
         cached = self._kline_cache.get(cache_key)
         if cached is not None:
+            logger.info(f"yfinance get_kline({symbol}) cache hit")
             return cached
 
-        # 重试逻辑，最多重试3次
+        # 增强重试逻辑：最多重试5次，指数退避
         df = None
-        for attempt in range(3):
+        max_retries = 5
+        for attempt in range(max_retries):
             try:
+                logger.info(f"yfinance get_kline({symbol}) attempt {attempt + 1}/{max_retries}")
                 ticker = yf.Ticker(symbol)
                 df = ticker.history(period=range_str, interval=interval)
                 if not df.empty:
+                    logger.info(f"yfinance get_kline({symbol}) success: {len(df)} records")
                     break
+                else:
+                    logger.warning(f"yfinance get_kline({symbol}) returned empty data")
             except Exception as e:
                 error_msg = str(e)
-                if ("Rate limited" in error_msg or "Too Many Requests" in error_msg) and attempt < 2:
-                    logger.info(f"yfinance rate limited, retrying in {(attempt + 1) * 2} seconds...")
-                    time.sleep((attempt + 1) * 2)
+                logger.warning(f"yfinance get_kline({symbol}) attempt {attempt + 1} failed: {error_msg}")
+                if attempt < max_retries - 1:
+                    # 指数退避：2s, 4s, 8s, 16s
+                    wait_time = (2 ** (attempt + 1))
+                    logger.info(f"Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
                     continue
-                logger.warning(f"yfinance get_kline({symbol}) failed: {e}")
-                return []
+                else:
+                    logger.error(f"yfinance get_kline({symbol}) all {max_retries} attempts failed")
+                    return []
 
         if df is None or df.empty:
+            logger.error(f"yfinance get_kline({symbol}) final result is empty")
             return []
 
         klines = []
