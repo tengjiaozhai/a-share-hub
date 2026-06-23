@@ -569,3 +569,55 @@
   color: var(--fg);
   font-weight: 600;
 }
+
+/* Trades display styles */
+.alpha-trade-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.alpha-trade-item {
+  display: grid;
+  grid-template-columns: 100px 80px 100px 80px;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  font-size: 13px;
+  align-items: center;
+}
+
+.alpha-trade-date {
+  color: var(--text-secondary);
+  font-family: 'SF Mono', Monaco, monospace;
+}
+
+.alpha-trade-side {
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.alpha-trade-side.buy {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.alpha-trade-side.sell {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.alpha-trade-price {
+  font-family: 'SF Mono', Monaco, monospace;
+  color: var(--text-primary);
+}
+
+.alpha-trade-qty {
+  font-family: 'SF Mono', Monaco, monospace;
+  color: var(--text-secondary);
+  text-align: right;
+}

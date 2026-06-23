@@ -779,6 +779,23 @@ function renderAnalysisObject(value, section) {
     const label = alphaFieldLabel(key);
     let rendered;
     if (Array.isArray(raw)) {
+      // 特殊处理 trades 字段
+      if (key === 'trades' && raw.length > 0 && typeof raw[0] === 'object') {
+        rendered = raw.map((trade) => {
+          const date = trade.date || '--';
+          const side = trade.side || '--';
+          const price = trade.price ? trade.price.toFixed(2) : '--';
+          const quantity = trade.quantity || '--';
+          return `<div class="alpha-trade-item">
+            <span class="alpha-trade-date">${escapeHtml(date)}</span>
+            <span class="alpha-trade-side ${side.toLowerCase()}">${escapeHtml(side)}</span>
+            <span class="alpha-trade-price">${escapeHtml(price)}</span>
+            <span class="alpha-trade-qty">${escapeHtml(String(quantity))}</span>
+          </div>`;
+        }).join('');
+        return `<div class="alpha-detail-row"><span class="alpha-detail-key">${escapeHtml(label)}</span><div class="alpha-detail-val alpha-trade-list">${rendered}</div></div>`;
+      }
+      // 默认处理简单数组
       rendered = raw.map((item) => `<span class="alpha-tag">${escapeHtml(String(item))}</span>`).join('');
       return `<div class="alpha-detail-row"><span class="alpha-detail-key">${escapeHtml(label)}</span><div class="alpha-detail-val alpha-tag-list">${rendered}</div></div>`;
     }
