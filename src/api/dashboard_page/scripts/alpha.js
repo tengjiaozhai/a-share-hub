@@ -547,6 +547,7 @@ async function startAlphaAnalysis(symbol) {
   const res = await fetch(ALPHA_ANALYSIS_RUNS_API, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify({ symbol, backtest_window: '60d', include_backtest: true }),
   });
   const data = await parseResponseBody(res);
@@ -708,7 +709,7 @@ async function loadAlphaAnalysisRuns({ append = false } = {}) {
   const params = new URLSearchParams({ market: currentMarket, limit: '20' });
   if (alphaAnalysisStatusFilter !== 'all') params.set('status', alphaAnalysisStatusFilter);
   if (append && alphaAnalysisRunsCursor) params.set('cursor', alphaAnalysisRunsCursor);
-  const res = await fetch(`${ALPHA_ANALYSIS_RUNS_API}?${params.toString()}`);
+  const res = await fetch(`${ALPHA_ANALYSIS_RUNS_API}?${params.toString()}`, { credentials: 'include' });
   if (!res.ok) throw new Error(`分析历史加载失败 (${res.status})`);
   const data = await res.json();
   const list = document.getElementById('alpha-analysis-list');
@@ -793,7 +794,7 @@ function setDrawerSection(section, html) {
 }
 
 async function openAlphaAnalysisDrawer(runId) {
-  const res = await fetch(`${ALPHA_ANALYSIS_RUNS_API}/${encodeURIComponent(runId)}`);
+  const res = await fetch(`${ALPHA_ANALYSIS_RUNS_API}/${encodeURIComponent(runId)}`, { credentials: 'include' });
   const detail = await parseResponseBody(res);
   if (!res.ok) {
     throw new Error(extractErrorMessage(detail, `分析详情加载失败 (${res.status})`));
