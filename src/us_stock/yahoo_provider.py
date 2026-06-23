@@ -198,6 +198,87 @@ class YahooProvider:
         self._kline_cache.set(cache_key, klines)
         return klines
 
+    def get_klines(self, symbols: list[str], interval: str = "1d", range_str: str = "3mo") -> dict[str, list[USKline]]:
+        """批量获取多个股票的 K 线数据，减少 API 调用次数"""
+        if interval not in _VALID_INTERVALS:
+            interval = "1d"
+        if range_str not in _VALID_RANGES:
+            range_str = "3mo"
+
+        results: dict[str, list[USKline]] = {}
+        uncached_symbols: list[str] = []
+
+        # 检查缓存
+        for symbol in symbols:
+            cache_key = f"kline:{symbol}:{interval}:{range_str}"
+            cached = self._kline_cache.get(cache_key)
+            if cached is not None:
+                logger.info(f"yfinance get_klines({symbol}) cache hit")
+                results[symbol] = cached
+            else:
+                uncached_symbols.append(symbol)
+
+        if not uncached_symbols:
+            return results
+
+        # 批量下载未缓存的数据
+        logger.info(f"yfinance get_klines batch download: {len(uncached_symbols)} symbols")
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                df = yf.download(uncached_symbols, period=range_str, interval=interval, group_by="ticker", progress=False)
+                
+                if df is not None and not df.empty:
+                    for symbol in uncached_symbols:
+                        try:
+                            if len(uncached_symbols) == 1:
+                                sym_df = df
+                            else:
+                                sym_df = df[symbol] if symbol in df.columns.get_level_values(0) else None
+                            
+                            if sym_df is not None and not sym_df.empty:
+                                klines = []
+                                for ts, row in sym_df.iterrows():
+                                    klines.append(USKline(
+                                        symbol=symbol,
+                                        interval=interval,
+                                        open=float(row.get("Open", 0)),
+                                        high=float(row.get("High", 0)),
+                                        low=float(row.get("Low", 0)),
+                                        close=float(row.get("Close", 0)),
+                                        volume=int(row.get("Volume", 0)),
+                                        timestamp=ts.to_pydatetime() if hasattr(ts, "to_pydatetime") else datetime.now(),
+                                    ))
+                                
+                                cache_key = f"kline:{symbol}:{interval}:{range_str}"
+                                self._kline_cache.set(cache_key, klines)
+                                results[symbol] = klines
+                                logger.info(f"yfinance get_klines({symbol}) success: {len(klines)} records")
+                            else:
+                                logger.warning(f"yfinance get_klines({symbol}) returned empty data")
+                                results[symbol] = []
+                        except Exception as e:
+                            logger.warning(f"get_klines({symbol}) parse failed: {e}")
+                            results[symbol] = []
+                    break
+                else:
+                    logger.warning(f"yf.download batch returned empty data")
+            except Exception as e:
+                logger.warning(f"yf.download batch failed (attempt {attempt + 1}): {e}")
+                if attempt < max_retries - 1:
+                    wait_time = (2 ** (attempt + 1))
+                    logger.info(f"Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    logger.error(f"yf.download batch all {max_retries} attempts failed, falling back to individual requests")
+                    # 降级到逐个请求
+                    for symbol in uncached_symbols:
+                        results[symbol] = self.get_kline(symbol, interval, range_str)
+                    break
+
+        return results
+
     def get_fundamental(self, symbol: str) -> USFundamental:
         cached = self._fundamental_cache.get(f"fund:{symbol}")
         if cached is not None:
