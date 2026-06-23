@@ -43,7 +43,7 @@ class AnalysisRunStore:
         }
         for src, dst in field_map.items():
             if src in fields:
-                fields[dst] = fields.pop(src)
+                fields[dst] = json.dumps(fields.pop(src), ensure_ascii=False, sort_keys=True)
         fields["updated_at"] = datetime.utcnow()
         with Session(self._engine) as session:
             session.execute(
