@@ -86,3 +86,27 @@ def test_generate_json_rejects_non_json(monkeypatch):
     client = LLMClient(Settings(llm_provider="deepseek", llm_api_key="test-key"))
     with pytest.raises(LLMGenerationError, match="invalid JSON"):
         client.generate_json(system_prompt="system", user_prompt="user")
+
+
+def test_generate_json_accepts_fenced_json(monkeypatch):
+    monkeypatch.setattr(
+        "src.agents.llm_client.LLMClient._post_chat",
+        lambda self, payload: '```json\n{"rating":"HOLD","confidence":0.4}\n```',
+    )
+    client = LLMClient(Settings(llm_provider="deepseek", llm_api_key="test-key"))
+
+    result = client.generate_json(system_prompt="system", user_prompt="user")
+
+    assert result == {"rating": "HOLD", "confidence": 0.4}
+
+
+def test_generate_json_accepts_json_after_text(monkeypatch):
+    monkeypatch.setattr(
+        "src.agents.llm_client.LLMClient._post_chat",
+        lambda self, payload: '结论如下：{"action":"HOLD","position_ratio":0}',
+    )
+    client = LLMClient(Settings(llm_provider="deepseek", llm_api_key="test-key"))
+
+    result = client.generate_json(system_prompt="system", user_prompt="user")
+
+    assert result == {"action": "HOLD", "position_ratio": 0}

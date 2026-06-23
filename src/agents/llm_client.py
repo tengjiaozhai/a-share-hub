@@ -17,6 +17,28 @@ def _normalize_model_name(model_name: str) -> str:
     return model_name.strip().lower()
 
 
+def _loads_json_object(content: str) -> dict:
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        decoder = json.JSONDecoder()
+        parsed = None
+        for idx, char in enumerate(content):
+            if char != "{":
+                continue
+            try:
+                candidate, _ = decoder.raw_decode(content[idx:])
+            except json.JSONDecodeError:
+                continue
+            parsed = candidate
+            break
+        if parsed is None:
+            raise
+    if not isinstance(parsed, dict):
+        raise LLMGenerationError("DeepSeek JSON response must be an object")
+    return parsed
+
+
 class LLMClient:
     def __init__(self, settings: Optional[Settings] = None) -> None:
         s = settings or Settings()
@@ -110,11 +132,9 @@ class LLMClient:
             "response_format": {"type": "json_object"},
         }
         try:
-            parsed = json.loads(self._post_chat(payload))
+            parsed = _loads_json_object(self._post_chat(payload))
         except json.JSONDecodeError as exc:
             raise LLMGenerationError("DeepSeek returned invalid JSON") from exc
         except (httpx.HTTPError, KeyError, TypeError) as exc:
             raise LLMGenerationError(f"DeepSeek request failed: {exc}") from exc
-        if not isinstance(parsed, dict):
-            raise LLMGenerationError("DeepSeek JSON response must be an object")
         return parsed
