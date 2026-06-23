@@ -245,6 +245,7 @@ function buildAlphaPositionCard(symbol, aggregate, position) {
       <div class="alpha-position-card-head">
         <span class="alpha-position-card-symbol">${escapeHtml(symbol)} · ${escapeHtml(aggregate.currency)}</span>
         <div class="alpha-position-card-actions">
+          <button type="button" class="alpha-holding-analyze" data-alpha-holding-analyze="${escapeHtml(symbol)}">分析</button>
           <button type="button" class="alpha-builder-add-lot" data-alpha-history-edit data-alpha-edit-entry-symbol="${escapeHtml(symbol)}">编辑</button>
           <button type="button" class="alpha-builder-remove" data-alpha-history-delete data-alpha-delete-entry-symbol="${escapeHtml(symbol)}">删除</button>
         </div>
@@ -763,16 +764,26 @@ function upsertAnalysisRow(data) {
   }
 }
 
-document.getElementById('alpha-holdings-list')?.addEventListener('click', (event) => {
+document.getElementById('alpha-positions')?.addEventListener('click', (event) => {
   const btn = event.target.closest('[data-alpha-holding-analyze]');
   if (!btn) return;
   event.preventDefault();
   const symbol = btn.getAttribute('data-alpha-holding-analyze');
   if (!symbol) return;
   btn.disabled = true;
-  startAlphaAnalysis(symbol).catch((error) => {
+  const originalText = btn.textContent;
+  btn.textContent = '分析中…';
+  startAlphaAnalysis(symbol).then((result) => {
+    if (result) {
+      btn.textContent = '已启动';
+      setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 3000);
+    } else {
+      btn.textContent = originalText;
+      btn.disabled = false;
+    }
+  }).catch((error) => {
     addAlert('err', `分析启动失败: ${error.message}`);
-  }).finally(() => {
+    btn.textContent = originalText;
     btn.disabled = false;
   });
 });

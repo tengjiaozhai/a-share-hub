@@ -78,7 +78,7 @@ def test_dashboard_contains_positions_builder_controls(_patch_auth):
     assert 'id="alpha-analysis-builder"' in html
     assert 'id="alpha-stock-cards"' in html
     assert 'id="alpha-add-stock-card"' in html
-    assert 'id="alpha-holding-analyze"' in html
+    assert "分析" in html  # Per-holding analysis button rendered by buildAlphaPositionCard
     assert "分析标的" in html
     assert "加仓批次" in html
     assert "买入日期" in html
