@@ -718,14 +718,63 @@ async function loadAlphaAnalysisRuns({ append = false } = {}) {
   if (loadMore) loadMore.hidden = !alphaAnalysisRunsCursor;
 }
 
-function renderAnalysisObject(value) {
+const ALPHA_FIELD_LABELS = {
+  // overview / snapshot
+  currency: '币种', as_of: '数据时间', close: '收盘价',
+  weighted_avg_cost: '持仓均价', quantity: '持仓数量',
+  unrealized_pnl: '浮动盈亏', unrealized_pnl_ratio: '浮动盈亏比例',
+  market_value: '市值', position_ratio: '仓位比例',
+  stop_loss_ratio: '止损比例', take_profit_ratio: '止盈比例',
+  error: '错误信息',
+  // research
+  rating: '评级', thesis: '核心论点',
+  technical_view: '技术面观点', fundamental_view: '基本面观点',
+  sentiment_view: '情绪面观点', catalysts: '催化剂',
+  risks: '风险因素', confidence: '置信度',
+  data_gaps: '数据缺口',
+  // trader
+  action: '操作建议', reasoning: '理由',
+  entry_low: '入场价下限', entry_high: '入场价上限',
+  stop_loss: '止损价', take_profit: '止盈价',
+  // risk
+  triggered_rules: '触发规则', approved_position_ratio: '批准仓位比例',
+  reason: '原因',
+};
+
+function alphaFieldLabel(key) {
+  return ALPHA_FIELD_LABELS[key] || key.replace(/_/g, ' ');
+}
+
+function alphaRatingBadge(rating) {
+  const map = {
+    BUY: ['买入', 'badge-buy'], OVERWEIGHT: ['超配', 'badge-overweight'],
+    HOLD: ['持有', 'badge-hold'], UNDERWEIGHT: ['低配', 'badge-underweight'],
+    SELL: ['卖出', 'badge-sell'],
+    ADD: ['加仓', 'badge-buy'], REDUCE: ['减仓', 'badge-sell'],
+    EXIT: ['清仓', 'badge-sell'],
+  };
+  const [label, cls] = map[rating] || [rating, 'badge-hold'];
+  return `<span class="alpha-badge ${cls}">${escapeHtml(label)}</span>`;
+}
+
+function renderAnalysisObject(value, section) {
   if (!value) return '<div class="alpha-empty-state">暂无数据</div>';
   if (typeof value !== 'object') return `<p>${escapeHtml(String(value))}</p>`;
   const rows = Object.entries(value).map(([key, raw]) => {
-    const rendered = Array.isArray(raw)
-      ? raw.join(' / ')
-      : (raw && typeof raw === 'object' ? JSON.stringify(raw, null, 2) : normalizeText(raw, '--'));
-    return `<div class="alpha-detail-row"><span>${escapeHtml(key)}</span><strong>${escapeHtml(rendered)}</strong></div>`;
+    const label = alphaFieldLabel(key);
+    let rendered;
+    if (Array.isArray(raw)) {
+      rendered = raw.map((item) => `<span class="alpha-tag">${escapeHtml(String(item))}</span>`).join('');
+      return `<div class="alpha-detail-row"><span class="alpha-detail-key">${escapeHtml(label)}</span><div class="alpha-detail-val alpha-tag-list">${rendered}</div></div>`;
+    }
+    if ((key === 'rating' || key === 'action') && typeof raw === 'string') {
+      rendered = alphaRatingBadge(raw);
+    } else if (key === 'confidence' || key === 'position_ratio' || key === 'approved_position_ratio' || key === 'unrealized_pnl_ratio' || key === 'stop_loss_ratio' || key === 'take_profit_ratio') {
+      rendered = `<span class="alpha-num">${escapeHtml((Number(raw) * 100).toFixed(1))}%</span>`;
+    } else {
+      rendered = escapeHtml(normalizeText(raw, '--'));
+    }
+    return `<div class="alpha-detail-row"><span class="alpha-detail-key">${escapeHtml(label)}</span><div class="alpha-detail-val">${rendered}</div></div>`;
   }).join('');
   return `<div class="alpha-detail-grid">${rows}</div>`;
 }
