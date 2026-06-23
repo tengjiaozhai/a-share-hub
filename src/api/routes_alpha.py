@@ -139,7 +139,7 @@ def start_analysis_run(
     service = _build_run_service(store, tenant.user_id, store)
     try:
         response = service.start(request)
-    except AlphaAnalysisConflict as exc:
+    except AlphaAnalysisConflictError as exc:
         raise HTTPException(
             status_code=409,
             detail={
@@ -148,7 +148,7 @@ def start_analysis_run(
                 "active_symbol": exc.active_symbol,
             },
         ) from exc
-    except AlphaAnalysisNotFound as exc:
+    except AlphaAnalysisNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     if response["status"] == "accepted":
