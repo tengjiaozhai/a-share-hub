@@ -1102,6 +1102,20 @@ def run_backtest(config: dict) -> dict:
         from src.us_stock.yahoo_provider import get_yahoo_provider
         yahoo_provider = get_yahoo_provider()
         use_yahoo = True
+        
+        # 批量获取所有股票的 K 线数据
+        period_days = (end_date - data_start).days
+        if period_days <= 30:
+            period = "1mo"
+        elif period_days <= 90:
+            period = "3mo"
+        elif period_days <= 180:
+            period = "6mo"
+        else:
+            period = "1y"
+        
+        # 使用批量请求获取所有股票的 K 线数据
+        all_klines = yahoo_provider.get_klines(watchlist, interval="1d", range_str=period)
     else:
         provider = AkshareProvider()
         use_yahoo = False
@@ -1110,17 +1124,8 @@ def run_backtest(config: dict) -> dict:
     for symbol in watchlist:
         try:
             if use_yahoo:
-                # 美股：使用 YahooProvider 获取 K 线
-                period_days = (end_date - data_start).days
-                if period_days <= 30:
-                    period = "1mo"
-                elif period_days <= 90:
-                    period = "3mo"
-                elif period_days <= 180:
-                    period = "6mo"
-                else:
-                    period = "1y"
-                klines = yahoo_provider.get_kline(symbol, interval="1d", range_str=period)
+                # 美股：使用批量获取的 K 线数据
+                klines = all_klines.get(symbol, [])
                 if not klines:
                     continue
                 # 转换为 backtest 格式
