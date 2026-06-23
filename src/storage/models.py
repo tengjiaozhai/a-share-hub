@@ -311,12 +311,33 @@ class AlphaAnalysisRunRow(Base):
     user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     symbol: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
+    current_stage: Mapped[str] = mapped_column(String(32), nullable=False, default="accepted")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     snapshot_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     research_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     trader_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     risk_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    backtest_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     model_name: Mapped[str] = mapped_column(String(64), nullable=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_stage: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AlphaAnalysisRunEventRow(Base):
+    __tablename__ = "alpha_analysis_run_events"
+    __table_args__ = (UniqueConstraint("run_id", "seq", name="uq_alpha_run_events_run_seq"),)
+
+    event_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    stage: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
