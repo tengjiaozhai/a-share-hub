@@ -64,3 +64,23 @@ def test_trader_receives_research_plan_and_snapshot():
     assert proposal.action == "BUY"
     assert '"rating": "OVERWEIGHT"' in llm.calls[1]["user_prompt"]
     assert '"weighted_avg_cost"' in llm.calls[1]["user_prompt"]
+
+
+def test_research_manager_normalizes_partial_llm_payload():
+    snapshot = _snapshot()
+    llm = FakeStructuredLLM([
+        {
+            "rating": "HOLD",
+            "confidence": 0.55,
+            "data_gaps": ["news"],
+        },
+    ])
+
+    research = ResearchManager(llm).analyze(snapshot)
+
+    assert research.rating == "HOLD"
+    assert research.thesis
+    assert research.technical_view
+    assert research.fundamental_view
+    assert research.sentiment_view
+    assert research.risks == ["news"]

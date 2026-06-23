@@ -10,6 +10,61 @@ class AnalysisAgentError(RuntimeError):
     pass
 
 
+def _as_list(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item).strip()]
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    return [str(value)]
+
+
+def _normalize_research_payload(payload: dict, snapshot: AnalysisSnapshot) -> dict:
+    allowed_ratings = {"BUY", "OVERWEIGHT", "HOLD", "UNDERWEIGHT", "SELL"}
+    rating = str(payload.get("rating") or "HOLD").upper()
+    if rating not in allowed_ratings:
+        rating = "HOLD"
+    data_gaps = _as_list(payload.get("data_gaps")) or _as_list(snapshot.data_quality.get("missing"))
+    return {
+        **payload,
+        "rating": rating,
+        "thesis": str(payload.get("thesis") or f"{snapshot.symbol} 持仓快照已生成，结论基于行情、技术指标和可用基本面数据。"),
+        "technical_view": str(
+            payload.get("technical_view")
+            or f"收盘价 {snapshot.close:.4f}，20日均线 {snapshot.technical.get('ma20', '--')}，60日均线 {snapshot.technical.get('ma60', '--')}。"
+        ),
+        "fundamental_view": str(
+            payload.get("fundamental_view")
+            or ("基本面数据可用。" if snapshot.fundamentals.get("status") == "ok" else "基本面数据缺失或不可用。")
+        ),
+        "sentiment_view": str(payload.get("sentiment_view") or "新闻/舆情数据不可用，已降低结论置信度。"),
+        "catalysts": _as_list(payload.get("catalysts")),
+        "risks": _as_list(payload.get("risks")) or data_gaps or ["数据覆盖不足"],
+        "confidence": float(payload.get("confidence", 0.4) or 0.4),
+        "data_gaps": data_gaps,
+    }
+
+
+def _normalize_trader_payload(payload: dict, snapshot: AnalysisSnapshot) -> dict:
+    allowed_actions = {"BUY", "HOLD", "SELL"}
+    action = str(payload.get("action") or "HOLD").upper()
+    if action not in allowed_actions:
+        action = "HOLD"
+    stop_loss = payload.get("stop_loss")
+    take_profit = payload.get("take_profit")
+    return {
+        **payload,
+        "action": action,
+        "reasoning": str(payload.get("reasoning") or "根据研究结论和当前持仓，先给出保守持有建议。"),
+        "entry_low": payload.get("entry_low"),
+        "entry_high": payload.get("entry_high"),
+        "stop_loss": stop_loss if stop_loss is not None else round(snapshot.weighted_avg_cost * (1 + snapshot.stop_loss_ratio), 6),
+        "take_profit": take_profit if take_profit is not None else round(snapshot.weighted_avg_cost * (1 + snapshot.take_profit_ratio), 6),
+        "position_ratio": float(payload.get("position_ratio", 0.0) or 0.0),
+    }
+
+
 class ResearchManager:
     SYSTEM_PROMPT = (
         "你是持仓研究经理。只能使用输入 JSON 中的证据。"
@@ -29,7 +84,7 @@ class ResearchManager:
                 temperature=0.2,
                 max_tokens=1400,
             )
-            return ResearchPlan.model_validate(payload)
+            return ResearchPlan.model_validate(_normalize_research_payload(payload, snapshot))
         except (LLMGenerationError, ValidationError) as exc:
             raise AnalysisAgentError(f"research manager failed: {exc}") from exc
 
@@ -53,6 +108,6 @@ class Trader:
                 temperature=0.1,
                 max_tokens=1000,
             )
-            return TraderProposal.model_validate(payload)
+            return TraderProposal.model_validate(_normalize_trader_payload(payload, snapshot))
         except (LLMGenerationError, ValidationError) as exc:
             raise AnalysisAgentError(f"trader failed: {exc}") from exc
