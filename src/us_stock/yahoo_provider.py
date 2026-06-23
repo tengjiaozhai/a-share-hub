@@ -254,3 +254,15 @@ class YahooProvider:
             return False
         hour = now.hour
         return 13 <= hour < 20
+
+
+# 模块级单例，避免重复创建实例导致缓存失效和 Yahoo API 限流
+_shared_provider: "YahooProvider | None" = None
+
+
+def get_yahoo_provider() -> YahooProvider:
+    """获取共享的 YahooProvider 单例实例。"""
+    global _shared_provider
+    if _shared_provider is None:
+        _shared_provider = YahooProvider()
+    return _shared_provider

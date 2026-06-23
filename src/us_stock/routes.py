@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from src.api.dependencies import get_current_user, get_tenant_context
 from src.core.tenant import TenantContext
 from src.storage.dependencies import get_runtime_engine
+from src.us_stock.yahoo_provider import get_yahoo_provider
 from src.us_stock.binance_asset import get_binance_us_assets
 from src.us_stock.watchlist import WatchlistStore
 from src.us_stock.yahoo_provider import YahooProvider
@@ -17,14 +18,7 @@ router = APIRouter(
     dependencies=[Depends(get_current_user)],
 )
 
-_yahoo_provider: YahooProvider | None = None
 
-
-def _get_yahoo_provider() -> YahooProvider:
-    global _yahoo_provider
-    if _yahoo_provider is None:
-        _yahoo_provider = YahooProvider()
-    return _yahoo_provider
 
 
 def _get_watchlist_store(tenant: TenantContext) -> WatchlistStore:
@@ -39,14 +33,14 @@ def get_quotes(tenant: TenantContext = Depends(get_tenant_context)) -> list[dict
     if not items:
         return []
     symbols = [item.symbol for item in items]
-    provider = _get_yahoo_provider()
+    provider = get_yahoo_provider()
     quotes = provider.get_quotes(symbols)
     return [q.model_dump() for q in quotes]
 
 
 @router.get("/quote/{symbol}")
 def get_quote(symbol: str) -> dict:
-    provider = _get_yahoo_provider()
+    provider = get_yahoo_provider()
     quote = provider.get_quote(symbol.upper())
     return quote.model_dump()
 
@@ -57,14 +51,14 @@ def get_kline(
     interval: str = Query("1d"),
     range: str = Query("3mo"),  # noqa: A002 - matches Yahoo Finance API param name
 ) -> list[dict]:
-    provider = _get_yahoo_provider()
+    provider = get_yahoo_provider()
     klines = provider.get_kline(symbol.upper(), interval=interval, range_str=range)
     return [k.model_dump() for k in klines]
 
 
 @router.get("/fundamental/{symbol}")
 def get_fundamental(symbol: str) -> dict:
-    provider = _get_yahoo_provider()
+    provider = get_yahoo_provider()
     fund = provider.get_fundamental(symbol.upper())
     return fund.model_dump()
 
@@ -73,7 +67,7 @@ def get_fundamental(symbol: str) -> dict:
 def search(q: str = Query("", max_length=50)) -> list[dict]:
     if not q.strip():
         return []
-    provider = _get_yahoo_provider()
+    provider = get_yahoo_provider()
     return provider.search(q)
 
 

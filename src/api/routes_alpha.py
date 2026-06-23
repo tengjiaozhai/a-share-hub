@@ -44,8 +44,8 @@ def _build_backtest_runner(engine, tenant: TenantContext, user_id: str):
         start_date = end_date - timedelta(days=180)  # 6个月回测
         
         if market == "us":
-            from src.us_stock.yahoo_provider import YahooProvider
-            provider = YahooProvider()
+            from src.us_stock.yahoo_provider import get_yahoo_provider
+            provider = get_yahoo_provider()
             # 去掉 .US 后缀，Yahoo Finance 不支持
             yahoo_symbol = symbol[:-3] if symbol.upper().endswith(".US") else symbol
             klines = provider.get_kline(yahoo_symbol, interval="1d", range_str="6mo")
@@ -163,9 +163,9 @@ def _rebuild_holdings_portfolio(store: RuntimeStore) -> None:
 def _load_latest_close(symbol: str) -> float | None:
     try:
         if symbol.upper().endswith(".US"):
-            from src.us_stock.yahoo_provider import YahooProvider
+            from src.us_stock.yahoo_provider import get_yahoo_provider
 
-            bars = YahooProvider().get_kline(symbol[:-3], interval="1d", range_str="5d")
+            bars = get_yahoo_provider().get_kline(symbol[:-3], interval="1d", range_str="5d")
             if not bars:
                 return None
             return float(bars[-1].close)
@@ -202,9 +202,9 @@ def _build_run_service(
         start_date = end_date - timedelta(days=120)
         try:
             if symbol.upper().endswith(".US"):
-                from src.us_stock.yahoo_provider import YahooProvider
+                from src.us_stock.yahoo_provider import get_yahoo_provider
 
-                klines = YahooProvider().get_kline(symbol[:-3], interval="1d", range_str="6mo")
+                klines = get_yahoo_provider().get_kline(symbol[:-3], interval="1d", range_str="6mo")
                 return [
                     {
                         "date": (
@@ -228,10 +228,10 @@ def _build_run_service(
 
     def fundamental_loader(symbol: str) -> dict:
         if symbol.upper().endswith(".US"):
-            from src.us_stock.yahoo_provider import YahooProvider
+            from src.us_stock.yahoo_provider import get_yahoo_provider
 
             try:
-                fund = YahooProvider().get_fundamental(symbol[:-3])
+                fund = get_yahoo_provider().get_fundamental(symbol[:-3])
                 return {
                     "status": "ok",
                     "pe_ratio": fund.pe_ratio,

@@ -1099,8 +1099,8 @@ def run_backtest(config: dict) -> dict:
 
     # 根据市场类型选择数据源
     if market == "us":
-        from src.us_stock.yahoo_provider import YahooProvider
-        yahoo_provider = YahooProvider()
+        from src.us_stock.yahoo_provider import get_yahoo_provider
+        yahoo_provider = get_yahoo_provider()
         use_yahoo = True
     else:
         provider = AkshareProvider()
@@ -1308,7 +1308,8 @@ def scan_us_stock_pool(
     stock_list = [{"symbol": item.symbol, "name": item.name} for item in stock_list_items]
 
     # 初始化Yahoo数据源
-    yahoo_provider = YahooProvider()
+    from src.us_stock.yahoo_provider import get_yahoo_provider
+    yahoo_provider = get_yahoo_provider()
 
     # 第一轮：扫描器筛选（取 3x 候选给确认层）
     result = scan_us_market(
