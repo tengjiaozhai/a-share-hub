@@ -623,6 +623,8 @@ function upsertAnalysisRow(data) {
     list.prepend(row);
   }
   row.dataset.analysisPayload = JSON.stringify(data);
+  row.dataset.createdAt = data.created_at || '';
+  row.dataset.runId = data.run_id || '';
   row.querySelector('.alpha-analysis-symbol').textContent = data.symbol || '';
   row.querySelector('.alpha-analysis-stage').textContent = alphaStageLabel(data.stage || data.current_stage || '');
   row.querySelector('.alpha-analysis-status').textContent = alphaStatusLabel(data.status || '');
@@ -632,9 +634,23 @@ function upsertAnalysisRow(data) {
   row.querySelector('.alpha-analysis-rating').textContent = research.rating || data.research_rating || '--';
   row.classList.toggle('is-failed', data.stage === 'failed' || data.status === 'failed');
   row.classList.toggle('is-completed', data.stage === 'completed' || data.status === 'completed');
+  sortAlphaAnalysisRows(list);
   if (data.stage === 'failed') {
     addAlert('err', `${data.symbol} 分析失败: ${data.error || '未知错误'}`);
   }
+}
+
+function sortAlphaAnalysisRows(list) {
+  const rows = Array.from(list.querySelectorAll('.alpha-analysis-row'));
+  rows.sort((left, right) => {
+    const leftCreated = left.dataset.createdAt || '';
+    const rightCreated = right.dataset.createdAt || '';
+    if (leftCreated !== rightCreated) {
+      return rightCreated.localeCompare(leftCreated);
+    }
+    return (right.dataset.runId || '').localeCompare(left.dataset.runId || '');
+  });
+  rows.forEach((row) => list.appendChild(row));
 }
 
 function alphaStageLabel(stage) {
