@@ -106,7 +106,17 @@ def _build_run_service(
             from src.us_stock.yahoo_provider import YahooProvider
 
             try:
-                return YahooProvider().get_fundamental(symbol[:-3])
+                fund = YahooProvider().get_fundamental(symbol[:-3])
+                return {
+                    "status": "ok",
+                    "pe_ratio": fund.pe_ratio,
+                    "pb_ratio": fund.pb_ratio,
+                    "eps": fund.eps,
+                    "beta": fund.beta,
+                    "market_cap": fund.market_cap,
+                    "sector": fund.sector,
+                    "industry": fund.industry,
+                }
             except Exception:
                 return {"status": "error"}
         return {"status": "ok"}
