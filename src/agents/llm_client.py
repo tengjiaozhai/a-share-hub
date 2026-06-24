@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from typing import Optional
 
 import httpx
@@ -44,10 +45,18 @@ class LLMClient:
         s = settings or Settings()
         self.provider = s.llm_provider
         self.model = _normalize_model_name(s.llm_model)
+        self.model_research = _normalize_model_name(s.llm_model_research)
+        self.model_trader = _normalize_model_name(s.llm_model_trader)
         self.api_key = s.llm_api_key
         self.base_url = s.llm_base_url.rstrip("/")
+        self.timeout = s.llm_timeout
 
-    def generate(self, prompt: str, temperature: float = 0.7) -> Optional[str]:
+    def _resolve_model(self, model: Optional[str] = None) -> str:
+        if model:
+            return _normalize_model_name(model)
+        return self.model
+
+    def generate(self, prompt: str, temperature: float = 0.7, model: Optional[str] = None) -> Optional[str]:
         """生成LLM响应，provider=mock 时返回固定响应，否则调用真实接口"""
         if self.provider == "mock" or not self.api_key:
             logger.debug("LLMClient: 使用 mock 模式")
@@ -66,7 +75,8 @@ class LLMClient:
                 "示例json: {\"symbol\":\"600519.SH\",\"action\":\"BUY\",\"confidence\":80,"
                 "\"target_position_ratio\":0.1,\"reason\":\"示例理由\"}"
             )
-            with httpx.Client(timeout=30.0) as client:
+            resolved_model = self._resolve_model(model)
+            with httpx.Client(timeout=self.timeout) as client:
                 resp = client.post(
                     f"{self.base_url}/chat/completions",
                     headers={
@@ -74,7 +84,7 @@ class LLMClient:
                         "Content-Type": "application/json",
                     },
                     json={
-                        "model": self.model,
+                        "model": resolved_model,
                         "messages": [
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": prompt},
@@ -86,7 +96,7 @@ class LLMClient:
                 )
             resp.raise_for_status()
             content = resp.json()["choices"][0]["message"]["content"]
-            logger.info(f"LLMClient: 调用成功 model={self.model}")
+            logger.info(f"LLMClient: 调用成功 model={resolved_model}")
             return content
         except Exception as e:
             logger.error(f"LLMClient: 调用失败 {e}，降级为 mock")
@@ -99,17 +109,26 @@ class LLMClient:
             }, ensure_ascii=False)
 
     def _post_chat(self, payload: dict) -> str:
-        with httpx.Client(timeout=30.0) as client:
-            response = client.post(
-                f"{self.base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-            )
-        response.raise_for_status()
-        return str(response.json()["choices"][0]["message"]["content"])
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                with httpx.Client(timeout=self.timeout) as client:
+                    response = client.post(
+                        f"{self.base_url}/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {self.api_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json=payload,
+                    )
+                response.raise_for_status()
+                return str(response.json()["choices"][0]["message"]["content"])
+            except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
+                if attempt == max_retries - 1:
+                    raise
+                wait_time = 2 ** (attempt + 1)  # 2s, 4s, 8s
+                logger.warning(f"LLM request failed (attempt {attempt + 1}/{max_retries}): {e}. Retrying in {wait_time}s...")
+                time.sleep(wait_time)
 
     def generate_json(
         self,
@@ -118,11 +137,13 @@ class LLMClient:
         user_prompt: str,
         temperature: float = 0.2,
         max_tokens: int = 1200,
+        model: Optional[str] = None,
     ) -> dict:
         if self.provider == "mock" or not self.api_key:
             raise LLMGenerationError("DeepSeek analysis requires LLM_API_KEY")
+        resolved_model = self._resolve_model(model)
         payload = {
-            "model": self.model,
+            "model": resolved_model,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
