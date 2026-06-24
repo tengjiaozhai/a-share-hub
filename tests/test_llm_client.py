@@ -110,3 +110,65 @@ def test_generate_json_accepts_json_after_text(monkeypatch):
     result = client.generate_json(system_prompt="system", user_prompt="user")
 
     assert result == {"action": "HOLD", "position_ratio": 0}
+
+
+def test_generate_json_retries_when_deepseek_returns_empty_content(monkeypatch):
+    responses = iter([
+        {
+            "choices": [
+                {
+                    "finish_reason": "length",
+                    "message": {
+                        "content": "",
+                        "reasoning_content": "internal reasoning",
+                    },
+                }
+            ]
+        },
+        {
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "message": {
+                        "content": '{"rating":"HOLD","confidence":0.4}',
+                    },
+                }
+            ]
+        },
+    ])
+    payloads = []
+
+    class RetryClient:
+        def __init__(self, *args, **kwargs):
+            return None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def post(self, url, headers, json):
+            payloads.append(dict(json))
+
+            class Response:
+                def __init__(self, body):
+                    self._body = body
+
+                def raise_for_status(self):
+                    return None
+
+                def json(self):
+                    return self._body
+
+            return Response(next(responses))
+
+    monkeypatch.setattr("src.agents.llm_client.httpx.Client", RetryClient)
+    monkeypatch.setattr("src.agents.llm_client.time.sleep", lambda *_: None)
+    client = LLMClient(Settings(llm_provider="deepseek", llm_api_key="test-key"))
+
+    result = client.generate_json(system_prompt="system", user_prompt="user", max_tokens=1400)
+
+    assert result == {"rating": "HOLD", "confidence": 0.4}
+    assert payloads[0]["max_tokens"] == 1400
+    assert payloads[1]["max_tokens"] == 2200

@@ -1,7 +1,7 @@
 import json
 import logging
 import time
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 
@@ -12,6 +12,16 @@ logger = logging.getLogger(__name__)
 
 class LLMGenerationError(RuntimeError):
     pass
+
+
+def _extract_content(response_json: dict[str, Any]) -> str:
+    choice = response_json["choices"][0]
+    message = choice["message"]
+    content = message.get("content")
+    if isinstance(content, str) and content.strip():
+        return content
+    finish_reason = choice.get("finish_reason") or "unknown"
+    raise LLMGenerationError(f"DeepSeek returned empty content (finish_reason={finish_reason})")
 
 
 def _normalize_model_name(model_name: str) -> str:
@@ -110,6 +120,7 @@ class LLMClient:
 
     def _post_chat(self, payload: dict) -> str:
         max_retries = 3
+        current_payload = dict(payload)
         for attempt in range(max_retries):
             try:
                 with httpx.Client(timeout=self.timeout) as client:
@@ -119,10 +130,35 @@ class LLMClient:
                             "Authorization": f"Bearer {self.api_key}",
                             "Content-Type": "application/json",
                         },
-                        json=payload,
+                        json=current_payload,
                     )
                 response.raise_for_status()
-                return str(response.json()["choices"][0]["message"]["content"])
+                response_json = response.json()
+                return _extract_content(response_json)
+            except LLMGenerationError:
+                if attempt == max_retries - 1:
+                    raise
+                choice = ((response_json or {}).get("choices") or [{}])[0]
+                message = choice.get("message") or {}
+                finish_reason = choice.get("finish_reason")
+                reasoning_len = len(message.get("reasoning_content") or "")
+                if finish_reason == "length":
+                    current_max_tokens = current_payload.get("max_tokens")
+                    if isinstance(current_max_tokens, int):
+                        current_payload = {
+                            **current_payload,
+                            "max_tokens": min(current_max_tokens + 800, 3200),
+                        }
+                wait_time = 2 ** (attempt + 1)
+                logger.warning(
+                    "DeepSeek returned empty content (attempt %s/%s, finish_reason=%s, reasoning_len=%s). Retrying in %ss...",
+                    attempt + 1,
+                    max_retries,
+                    finish_reason,
+                    reasoning_len,
+                    wait_time,
+                )
+                time.sleep(wait_time)
             except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
                 if attempt == max_retries - 1:
                     raise
