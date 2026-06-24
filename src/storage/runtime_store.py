@@ -1097,6 +1097,21 @@ class RuntimeStore:
                 for row in rows
             ]
 
+
+    def update_alpha_position_mark_prices(self, price_map: dict[str, float]) -> None:
+        """只更新 mark_price 和 updated_at，不动 quantity / avg_cost。"""
+        if not price_map:
+            return
+        now = datetime.utcnow()
+        with self.engine.begin() as conn:
+            for symbol, price in price_map.items():
+                conn.execute(
+                    AlphaPositionRow.__table__.update()
+                    .where(AlphaPositionRow.user_id == self.user_id)
+                    .where(AlphaPositionRow.symbol == symbol)
+                    .values(mark_price=price, updated_at=now)
+                )
+
     def insert_alpha_portfolio_snapshot(
         self,
         cash_balance: float,

@@ -1,4 +1,5 @@
 from src.alpha.ledger import AlphaPortfolioState, apply_manual_fill, mark_to_market
+from src.alpha.market_price_service import AlphaMarketPriceService, find_stale_symbols, is_stale
 
 
 class AlphaPortfolioService:
@@ -11,17 +12,35 @@ class AlphaPortfolioService:
         self._store = store
         self._user_id = user_id
 
-    def load_portfolio(self) -> dict:
+    def load_portfolio(
+        self,
+        *,
+        auto_refresh_prices: bool = True,
+        price_ttl_seconds: int = 300,
+        price_service: AlphaMarketPriceService | None = None,
+    ) -> dict:
         ticket_lookup = self._build_ticket_lookup()
         all_fills = [
             self._enrich_fill(fill, ticket_lookup[fill["ticket_id"]])
             for fill in reversed(self._store.list_all_alpha_manual_fills())
         ]
         positions = self._store.list_alpha_positions()
+
+        # 读时自动刷新：只刷新 stale positions
+        if auto_refresh_prices and positions:
+            stale_symbols = find_stale_symbols(positions, ttl_seconds=price_ttl_seconds)
+            if stale_symbols:
+                svc = price_service or AlphaMarketPriceService()
+                price_map = svc.latest_closes(stale_symbols)
+                if price_map:
+                    self._store.update_alpha_position_mark_prices(price_map)
+                    positions = self._store.list_alpha_positions()
+
         positions_with_pnl = [
             {
                 **pos,
                 "unrealized_pnl": (pos["mark_price"] - pos["avg_cost"]) * pos["quantity"],
+                "price_stale": is_stale(pos.get("updated_at"), price_ttl_seconds),
             }
             for pos in positions
         ]
