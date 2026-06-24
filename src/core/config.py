@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     llm_provider: str = "deepseek"
     llm_api_key: str = ""
     llm_model: str = "deepseek-v4-pro"
+    llm_model_research: str = "deepseek-v4-pro"
+    llm_model_trader: str = "deepseek-v4-flash"
+    llm_timeout: int = 300
     llm_base_url: str = "https://api.deepseek.com"
 
     # 行情数据源
