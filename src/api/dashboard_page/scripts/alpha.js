@@ -225,8 +225,10 @@ function aggregateAlphaHoldingsBySymbol(entries) {
     }
   });
   Object.values(groups).forEach((bucket) => {
+    bucket.total_quantity = Math.round(bucket.total_quantity * 1e8) / 1e8;
+    bucket.total_cost = Math.round(bucket.total_cost * 1e8) / 1e8;
     bucket.weighted_avg_cost = bucket.total_quantity > 0
-      ? bucket.total_cost / bucket.total_quantity
+      ? Math.round((bucket.total_cost / bucket.total_quantity) * 1e8) / 1e8
       : 0;
   });
   return groups;
