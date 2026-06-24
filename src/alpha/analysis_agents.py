@@ -113,8 +113,9 @@ class ResearchManager:
         '"confidence":0.4,"data_gaps":["news"]}'
     )
 
-    def __init__(self, llm) -> None:
+    def __init__(self, llm, model: str | None = None) -> None:
         self._llm = llm
+        self._model = model
 
     def analyze(self, snapshot: AnalysisSnapshot) -> ResearchPlan:
         try:
@@ -123,6 +124,7 @@ class ResearchManager:
                 user_prompt=snapshot.model_dump_json(),
                 temperature=0.2,
                 max_tokens=1400,
+                model=self._model,
             )
             return ResearchPlan.model_validate(_normalize_research_payload(payload, snapshot))
         except (LLMGenerationError, ValidationError) as exc:
@@ -140,8 +142,9 @@ class Trader:
         '"take_profit":15.0,"position_ratio":0.0}'
     )
 
-    def __init__(self, llm) -> None:
+    def __init__(self, llm, model: str | None = None) -> None:
         self._llm = llm
+        self._model = model
 
     def propose(self, snapshot: AnalysisSnapshot, research: ResearchPlan) -> TraderProposal:
         context = {"snapshot": snapshot.model_dump(), "research": research.model_dump()}
@@ -151,6 +154,7 @@ class Trader:
                 user_prompt=json.dumps(context, ensure_ascii=False, sort_keys=True),
                 temperature=0.1,
                 max_tokens=1500,
+                model=self._model,
             )
             return TraderProposal.model_validate(_normalize_trader_payload(payload, snapshot))
         except (LLMGenerationError, ValidationError) as exc:
