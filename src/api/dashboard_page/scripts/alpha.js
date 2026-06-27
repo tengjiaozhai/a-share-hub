@@ -840,6 +840,7 @@ async function openAlphaAnalysisDrawer(runId) {
     error: detail.error,
   }));
   setDrawerSection('research', renderAnalysisObject(detail.research));
+  setDrawerSection('news', renderNewsSection(detail.snapshot?.news));
   setDrawerSection('trader', renderAnalysisObject(detail.trader));
   setDrawerSection('risk', renderAnalysisObject(detail.risk));
   setDrawerSection('backtest', renderAnalysisObject(detail.backtest));
@@ -852,6 +853,26 @@ async function openAlphaAnalysisDrawer(runId) {
     </div>`).join('')}</div>`);
   drawer.hidden = false;
   drawer.setAttribute('aria-hidden', 'false');
+}
+
+function renderNewsSection(news) {
+  if (!news || !news.items || !news.items.length) {
+    return '<div class="alpha-empty-state">暂无新闻数据</div>';
+  }
+  return '<div class="alpha-news-list">' +
+    news.items.map(function(item) {
+      return '<div class="alpha-news-item">' +
+        '<div class="alpha-news-head">' +
+          '<span class="alpha-news-source">' + escapeHtml(item.source || '--') + '</span>' +
+          '<span class="alpha-news-time">' + escapeHtml(item.published_at || '--') + '</span>' +
+        '</div>' +
+        (item.url
+          ? '<a class="alpha-news-title" href="' + escapeHtml(item.url) + '" target="_blank" rel="noopener">' + escapeHtml(item.title || '--') + '</a>'
+          : '<span class="alpha-news-title">' + escapeHtml(item.title || '--') + '</span>') +
+        '<div class="alpha-news-summary">' + escapeHtml(item.summary || '') + '</div>' +
+      '</div>';
+    }).join('') +
+    '</div>';
 }
 
 function closeAlphaAnalysisDrawer() {

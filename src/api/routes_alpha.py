@@ -233,9 +233,28 @@ def _build_run_service(
                 return {"status": "error"}
         return {"status": "ok"}
 
+    def news_loader(symbol: str) -> dict:
+        try:
+            import akshare as ak
+            raw = symbol[:-3] if symbol.upper().endswith(".US") else symbol
+            df = ak.stock_news_em(symbol=raw)
+            items = []
+            for _, row in df.head(10).iterrows():
+                items.append({
+                    "title": str(row.get("新闻标题", "")),
+                    "summary": str(row.get("新闻内容", ""))[:200],
+                    "source": str(row.get("文章来源", "")),
+                    "published_at": str(row.get("发布时间", "")),
+                    "url": str(row.get("新闻链接", "")),
+                })
+            return {"status": "ok", "items": items}
+        except Exception:
+            return {"status": "error", "items": []}
+
     snapshot_builder = AnalysisSnapshotBuilder(
         history_loader=history_loader,
         fundamental_loader=fundamental_loader,
+        news_loader=news_loader,
     )
     # 构建回测运行器
     backtest_runner = _build_backtest_runner(store.engine, tenant, user_id)

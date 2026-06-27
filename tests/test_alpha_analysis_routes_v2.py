@@ -15,7 +15,7 @@ def test_post_analysis_runs_returns_202(authenticated_client, monkeypatch):
         async def execute(self, run_id: str) -> None:
             return None
 
-    monkeypatch.setattr(routes_alpha, "_build_run_service", lambda store, user_id, holdings_store: FakeService())
+    monkeypatch.setattr(routes_alpha, "_build_run_service", lambda store, user_id, holdings_store, tenant: FakeService())
 
     response = authenticated_client.post(
         "/api/v1/alpha/analysis-runs",

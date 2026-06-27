@@ -27,9 +27,11 @@ class AnalysisSnapshotBuilder:
         self,
         history_loader: Callable[[str], list[dict[str, Any]]],
         fundamental_loader: Callable[[str], dict[str, Any]],
+        news_loader: Callable[[str], dict[str, Any]] | None = None,
     ) -> None:
         self._history_loader = history_loader
         self._fundamental_loader = fundamental_loader
+        self._news_loader = news_loader
 
     def build(
         self,
@@ -60,7 +62,16 @@ class AnalysisSnapshotBuilder:
         if fundamentals.get("status") != "ok":
             missing.append("fundamentals")
 
-        missing.append("news")
+        if self._news_loader:
+            try:
+                news = self._news_loader(symbol)
+            except Exception:
+                news = {"status": "error", "items": []}
+        else:
+            news = {"status": "unavailable", "items": []}
+
+        if news.get("status") != "ok" or not news.get("items"):
+            missing.append("news")
 
         return AnalysisSnapshot(
             symbol=symbol,
@@ -78,6 +89,6 @@ class AnalysisSnapshotBuilder:
             take_profit_ratio=float(lots[-1].get("take_profit_ratio", 0.20)),
             technical=features,
             fundamentals=fundamentals,
-            news={"status": "unavailable", "items": []},
+            news=news,
             data_quality={"status": "partial" if missing else "complete", "missing": missing},
         )
