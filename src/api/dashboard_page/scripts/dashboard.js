@@ -2188,3 +2188,124 @@ function addToWorkspaceWatchlist(symbol, name) {
   showToast(symbol + ' 已添加到观察列表', 'success');
   return true;
 }
+
+// 基金快速分析功能
+function toggleFundQuickAnalysis() {
+  const panel = document.getElementById('fund-quick-analysis');
+  if (panel) {
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+  }
+}
+
+async function quickAnalyzeFund() {
+  const symbol = document.getElementById('fund-quick-symbol')?.value?.trim();
+  if (!symbol) {
+    alert('请输入基金代码');
+    return;
+  }
+  
+  const resultContainer = document.getElementById('fund-quick-result');
+  if (!resultContainer) return;
+  
+  resultContainer.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm" role="status"></div> 分析中...</div>';
+  
+  try {
+    const response = await fetch(`/api/v1/fund/analysis/performance/${symbol}`);
+    const data = await response.json();
+    
+    if (data.error) {
+      resultContainer.innerHTML = `<div class="text-danger">${data.error}</div>`;
+      return;
+    }
+    
+    const returns = data.returns || {};
+    const riskMetrics = data.risk_metrics || {};
+    
+    resultContainer.innerHTML = `
+      <div class="fund-quick-metric">
+        <span class="fund-quick-metric-label">最新净值</span>
+        <span class="fund-quick-metric-value">${data.latest_nav}</span>
+      </div>
+      <div class="fund-quick-metric">
+        <span class="fund-quick-metric-label">近1月收益</span>
+        <span class="fund-quick-metric-value ${returns['1m'] >= 0 ? 'positive' : 'negative'}">
+          ${returns['1m'] >= 0 ? '+' : ''}${returns['1m']}%
+        </span>
+      </div>
+      <div class="fund-quick-metric">
+        <span class="fund-quick-metric-label">近1年收益</span>
+        <span class="fund-quick-metric-value ${returns['1y'] >= 0 ? 'positive' : 'negative'}">
+          ${returns['1y'] >= 0 ? '+' : ''}${returns['1y']}%
+        </span>
+      </div>
+      <div class="fund-quick-metric">
+        <span class="fund-quick-metric-label">最大回撤</span>
+        <span class="fund-quick-metric-value negative">${riskMetrics['max_drawdown']}%</span>
+      </div>
+      <div class="fund-quick-metric">
+        <span class="fund-quick-metric-label">夏普比率</span>
+        <span class="fund-quick-metric-value">${riskMetrics['sharpe_ratio']}</span>
+      </div>
+      <div class="mt-2">
+        <button class="btn btn-sm btn-primary w-100" onclick="viewFullFundAnalysis('${symbol}')">
+          查看完整分析
+        </button>
+      </div>
+    `;
+  } catch (error) {
+    console.error('基金快速分析失败:', error);
+    resultContainer.innerHTML = '<div class="text-danger">分析失败，请稍后重试</div>';
+  }
+}
+
+function viewFullFundAnalysis(symbol) {
+  // 切换到基金视图
+  switchView(document.querySelector('[onclick*="view-fund"]'), 'view-fund');
+  
+  // 等待视图切换完成后加载分析
+  setTimeout(() => {
+    if (typeof FundModule !== 'undefined') {
+      FundModule.loadFundAnalysis(symbol);
+    }
+  }, 100);
+}
+
+// 添加基金到观察列表的辅助函数
+function addFundToWatchlist(symbol) {
+  const watchlistInput = document.getElementById('cfg-watchlist');
+  if (!watchlistInput) return;
+  
+  const current = watchlistInput.value || '';
+  const symbols = current.split(',').map(s => s.trim()).filter(s => s);
+  
+  if (!symbols.includes(symbol)) {
+    symbols.push(symbol);
+    watchlistInput.value = symbols.join(', ');
+    showNotification(`已将 ${symbol} 添加到观察列表`, 'success');
+  } else {
+    showNotification(`${symbol} 已在观察列表中`, 'info');
+  }
+}
+
+// 通知显示函数
+function showNotification(message, type = 'info') {
+  const notification = document.createElement('div');
+  notification.className = `notification notification-${type}`;
+  notification.innerHTML = `
+    <div class="notification-content">
+      <i class="bi bi-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+      <span>${message}</span>
+    </div>
+  `;
+  
+  document.body.appendChild(notification);
+  
+  // 添加显示动画
+  setTimeout(() => notification.classList.add('show'), 10);
+  
+  // 自动移除
+  setTimeout(() => {
+    notification.classList.remove('show');
+    setTimeout(() => notification.remove(), 300);
+  }, 3000);
+}

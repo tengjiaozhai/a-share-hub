@@ -93,3 +93,55 @@ def clear_cache(
     service = _get_fund_catalog_service()
     service.clear_cache(cache_type=cache_type)
     return {"message": f"Cache '{cache_type}' cleared successfully"}
+
+
+@router.get("/analysis/performance/{symbol}")
+def get_fund_performance(
+    symbol: str,
+    force_refresh: bool = Query(False, description="强制刷新缓存"),
+) -> dict:
+    """获取基金业绩分析"""
+    from src.fund.analysis_service import FundAnalysisService
+    service = FundAnalysisService()
+    return service.get_fund_performance(symbol=symbol, force_refresh=force_refresh)
+
+
+@router.post("/analysis/compare")
+def compare_funds(
+    symbols: list[str],
+    force_refresh: bool = Query(False, description="强制刷新缓存"),
+) -> dict:
+    """对比多个基金"""
+    from src.fund.analysis_service import FundAnalysisService
+    service = FundAnalysisService()
+    return service.compare_funds(symbols=symbols, force_refresh=force_refresh)
+
+
+@router.get("/analysis/screen")
+def screen_funds(
+    fund_type: str = Query("", description="基金类型"),
+    min_return_1y: float = Query(None, description="最低1年收益率"),
+    max_drawdown: float = Query(None, description="最大回撤限制"),
+    min_sharpe: float = Query(None, description="最低夏普比率"),
+    limit: int = Query(20, ge=1, le=100, description="返回数量限制"),
+    force_refresh: bool = Query(False, description="强制刷新缓存"),
+) -> list[dict]:
+    """筛选基金"""
+    from src.fund.analysis_service import FundAnalysisService
+    service = FundAnalysisService()
+    return service.screen_funds(
+        fund_type=fund_type,
+        min_return_1y=min_return_1y,
+        max_drawdown=max_drawdown,
+        min_sharpe=min_sharpe,
+        limit=limit,
+        force_refresh=force_refresh,
+    )
+
+
+@router.get("/analysis/rating/{symbol}")
+def get_fund_rating(symbol: str) -> dict:
+    """获取基金评级"""
+    from src.fund.analysis_service import FundAnalysisService
+    service = FundAnalysisService()
+    return service.get_fund_rating(symbol=symbol)

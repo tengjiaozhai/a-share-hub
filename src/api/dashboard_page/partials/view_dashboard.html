@@ -323,3 +323,22 @@
 
 </div>
 </div>
+
+<!-- 基金分析快速入口 -->
+<div class="fund-quick-analysis" id="fund-quick-analysis" style="display:none;">
+  <div class="fund-quick-analysis-header">
+    <h4><i class="bi bi-bank"></i> 基金快速分析</h4>
+    <button class="btn btn-sm btn-outline-secondary" onclick="toggleFundQuickAnalysis()">
+      <i class="bi bi-x"></i>
+    </button>
+  </div>
+  <div class="fund-quick-analysis-content">
+    <div class="input-group input-group-sm">
+      <input type="text" id="fund-quick-symbol" class="form-control" placeholder="输入基金代码快速分析">
+      <button class="btn btn-primary" type="button" onclick="quickAnalyzeFund()">
+        分析
+      </button>
+    </div>
+    <div id="fund-quick-result" class="fund-quick-result"></div>
+  </div>
+</div>

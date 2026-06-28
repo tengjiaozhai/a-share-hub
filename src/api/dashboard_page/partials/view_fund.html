@@ -29,6 +29,24 @@
         <i class="bi bi-calendar3"></i> 基金净值
       </button>
     </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="fund-analysis-tab" data-bs-toggle="tab" 
+              data-bs-target="#fund-analysis" type="button" role="tab">
+        <i class="bi bi-bar-chart-line"></i> 基金分析
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="fund-compare-tab" data-bs-toggle="tab" 
+              data-bs-target="#fund-compare" type="button" role="tab">
+        <i class="bi bi-columns-gap"></i> 基金对比
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="fund-screen-tab" data-bs-toggle="tab" 
+              data-bs-target="#fund-screen" type="button" role="tab">
+        <i class="bi bi-funnel"></i> 基金筛选
+      </button>
+    </li>
   </ul>
 
   <div class="tab-content" id="fund-tab-content">
@@ -170,6 +188,97 @@
             </tr>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- 基金分析 -->
+    <div class="tab-pane fade" id="fund-analysis" role="tabpanel">
+      <div class="fund-controls">
+        <div class="input-group input-group-sm" style="max-width: 300px;">
+          <input type="text" id="analysis-symbol" class="form-control" placeholder="输入基金代码 (如 511280)">
+          <button class="btn btn-outline-primary" type="button" id="btn-query-analysis">
+            分析基金
+          </button>
+        </div>
+      </div>
+      
+      <div id="fund-analysis-result" class="fund-analysis-result">
+        <div class="fund-analysis-empty">
+          <i class="bi bi-bar-chart-line"></i>
+          <p>请输入基金代码开始分析</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 基金对比 -->
+    <div class="tab-pane fade" id="fund-compare" role="tabpanel">
+      <div class="fund-controls">
+        <div class="input-group input-group-sm" style="max-width: 500px;">
+          <input type="text" id="compare-symbols" class="form-control" 
+                 placeholder="输入基金代码，用逗号分隔 (如 511280,510300,159915)">
+          <button class="btn btn-outline-primary" type="button" id="btn-compare-funds">
+            对比基金
+          </button>
+        </div>
+      </div>
+      
+      <div id="fund-compare-result" class="fund-compare-result">
+        <div class="fund-compare-empty">
+          <i class="bi bi-columns-gap"></i>
+          <p>请输入多个基金代码进行对比</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 基金筛选 -->
+    <div class="tab-pane fade" id="fund-screen" role="tabpanel">
+      <div class="fund-screen-controls">
+        <div class="fund-screen-filters">
+          <div class="filter-group">
+            <label>基金类型</label>
+            <select id="screen-fund-type" class="form-select form-select-sm">
+              <option value="">全部类型</option>
+              <option value="ETF">ETF</option>
+              <option value="股票型">股票型</option>
+              <option value="混合型">混合型</option>
+              <option value="债券型">债券型</option>
+              <option value="指数型">指数型</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>最低1年收益率 (%)</label>
+            <input type="number" id="screen-min-return" class="form-control form-control-sm" 
+                   placeholder="如 10" step="1">
+          </div>
+          <div class="filter-group">
+            <label>最大回撤限制 (%)</label>
+            <input type="number" id="screen-max-drawdown" class="form-control form-control-sm" 
+                   placeholder="如 -20" step="1">
+          </div>
+          <div class="filter-group">
+            <label>最低夏普比率</label>
+            <input type="number" id="screen-min-sharpe" class="form-control form-control-sm" 
+                   placeholder="如 0.5" step="0.1">
+          </div>
+          <div class="filter-group">
+            <label>显示数量</label>
+            <select id="screen-limit" class="form-select form-select-sm">
+              <option value="10">10 只</option>
+              <option value="20" selected>20 只</option>
+              <option value="50">50 只</option>
+            </select>
+          </div>
+          <button class="btn btn-primary btn-sm" type="button" id="btn-screen-funds">
+            <i class="bi bi-funnel"></i> 筛选基金
+          </button>
+        </div>
+      </div>
+      
+      <div id="fund-screen-result" class="fund-screen-result">
+        <div class="fund-screen-empty">
+          <i class="bi bi-funnel"></i>
+          <p>设置筛选条件后点击"筛选基金"按钮</p>
+        </div>
       </div>
     </div>
   </div>
