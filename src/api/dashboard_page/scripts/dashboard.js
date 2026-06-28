@@ -1875,27 +1875,25 @@ function finishRun() {
 }
 
 const SCAN_API = '/api/v1/dashboard/scan';
-const SCAN_US_API = '/api/v1/dashboard/scan-us';
 
 async function triggerScan() {
   if (scanRunning) return;
   scanRunning = true;
   const btn = document.getElementById('scan-btn');
   const market = document.getElementById('cfg-market').value;
-  const isUS = market === 'us';
   setButtonLoading(btn, true, '扫描中...');
-  document.getElementById('scan-content').innerHTML = '<span style="color:var(--yellow)">正在扫描' + (isUS ? '美股' : 'A股') + '全市场，请稍候...</span>';
+  const marketLabel = market === 'us' ? '美股' : market === 'fund' ? '基金' : 'A股';
+  document.getElementById('scan-content').innerHTML = '<span style="color:var(--yellow)">正在扫描' + marketLabel + '全市场，请稍候...</span>';
 
   try {
-    const api = isUS ? SCAN_US_API : SCAN_API;
-    const res = await fetch(api, {
+    const res = await fetch(SCAN_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ top_n: 10 }),
+      body: JSON.stringify({ market, top_n: 10 }),
     });
     const body = await res.json();
     if (!res.ok) throw new Error(body.detail || '扫描失败');
-    renderScanResult(body, isUS);
+    renderScanResult(body, market);
   } catch (e) {
     document.getElementById('scan-content').innerHTML = `<span style="color:var(--red)">扫描失败: ${escapeHtml(e.message)}</span>`;
   } finally {
@@ -1905,15 +1903,18 @@ async function triggerScan() {
   }
 }
 
-function renderScanResult(data, isUS) {
+function renderScanResult(data, market) {
   const area = document.getElementById('scan-content');
   if (data.status === 'no_catalog') {
-    area.innerHTML = '<span style="color:var(--yellow)">股票列表不可用，请检查网络</span>';
+    area.innerHTML = `<span style="color:var(--yellow)">${escapeHtml(market === 'fund' ? '基金列表' : '股票列表')}不可用，请检查网络</span>`;
     return;
   }
 
-  const marketLabel = isUS ? '美股' : 'A股';
-  let html = `<div class="scan-summary">已扫描 ${data.total_scanned} 只${marketLabel}股票</div>`;
+  const marketLabel = market === 'us' ? '美股' : market === 'fund' ? '基金' : 'A股';
+  const marketSummary = market === 'fund'
+    ? `${data.total_scanned} 只基金`
+    : `${data.total_scanned} 只${marketLabel}股票`;
+  let html = `<div class="scan-summary">已扫描 ${marketSummary}</div>`;
 
   const confirmedBuy = (data.buy || []).filter(item => item.confirmed);
   const unconfirmedBuy = (data.buy || []).filter(item => !item.confirmed);
@@ -2143,8 +2144,17 @@ function setButtonLoading(btn, loading, originalText) {
 
 // ── 观察列表同步 ──
 
-function isUSSymbol(symbol) {
-  return !symbol.endsWith('.SH') && !symbol.endsWith('.SZ');
+function isFundSymbol(symbol) {
+  const normalized = String(symbol || '').trim().toUpperCase();
+  return /^(15|16|18|50|51|56|58)\d{4}$/.test(normalized);
+}
+
+function classifyWorkspaceSymbol(symbol) {
+  const normalized = String(symbol || '').trim().toUpperCase();
+  if (!normalized) return 'a';
+  if (normalized.endsWith('.US')) return 'us';
+  if (isFundSymbol(normalized)) return 'fund';
+  return 'a';
 }
 
 function filterWatchlistByMarket() {
@@ -2154,7 +2164,7 @@ function filterWatchlistByMarket() {
 
   var symbols = watchlistEl.value.split(',').map(s => s.trim()).filter(Boolean);
   var filtered = symbols.filter(function(s) {
-    return market === 'us' ? isUSSymbol(s) : !isUSSymbol(s);
+    return classifyWorkspaceSymbol(s) === market;
   });
 
   watchlistEl.value = filtered.join(',');
@@ -2165,15 +2175,12 @@ function addToWorkspaceWatchlist(symbol, name) {
   if (!watchlistEl) return false;
 
   var market = document.getElementById('cfg-market').value;
-  var isUS = isUSSymbol(symbol);
-  
-  // 检查是否与当前市场匹配
-  if (market === 'us' && !isUS) {
-    showToast(symbol + ' 是A股股票，请切换到A股市场', 'info');
-    return false;
-  }
-  if (market === 'a' && isUS) {
-    showToast(symbol + ' 是美股股票，请切换到美股市场', 'info');
+  var symbolMarket = classifyWorkspaceSymbol(symbol);
+
+  if (symbolMarket !== market) {
+    var marketLabel = symbolMarket === 'us' ? '美股' : symbolMarket === 'fund' ? '基金' : 'A股';
+    var expectedLabel = market === 'us' ? '美股' : market === 'fund' ? '基金' : 'A股';
+    showToast(symbol + ' 属于' + marketLabel + '，请切换到' + expectedLabel + '市场', 'info');
     return false;
   }
 
@@ -2187,125 +2194,4 @@ function addToWorkspaceWatchlist(symbol, name) {
   watchlistEl.value = current.join(',');
   showToast(symbol + ' 已添加到观察列表', 'success');
   return true;
-}
-
-// 基金快速分析功能
-function toggleFundQuickAnalysis() {
-  const panel = document.getElementById('fund-quick-analysis');
-  if (panel) {
-    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-  }
-}
-
-async function quickAnalyzeFund() {
-  const symbol = document.getElementById('fund-quick-symbol')?.value?.trim();
-  if (!symbol) {
-    alert('请输入基金代码');
-    return;
-  }
-  
-  const resultContainer = document.getElementById('fund-quick-result');
-  if (!resultContainer) return;
-  
-  resultContainer.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm" role="status"></div> 分析中...</div>';
-  
-  try {
-    const response = await fetch(`/api/v1/fund/analysis/performance/${symbol}`);
-    const data = await response.json();
-    
-    if (data.error) {
-      resultContainer.innerHTML = `<div class="text-danger">${data.error}</div>`;
-      return;
-    }
-    
-    const returns = data.returns || {};
-    const riskMetrics = data.risk_metrics || {};
-    
-    resultContainer.innerHTML = `
-      <div class="fund-quick-metric">
-        <span class="fund-quick-metric-label">最新净值</span>
-        <span class="fund-quick-metric-value">${data.latest_nav}</span>
-      </div>
-      <div class="fund-quick-metric">
-        <span class="fund-quick-metric-label">近1月收益</span>
-        <span class="fund-quick-metric-value ${returns['1m'] >= 0 ? 'positive' : 'negative'}">
-          ${returns['1m'] >= 0 ? '+' : ''}${returns['1m']}%
-        </span>
-      </div>
-      <div class="fund-quick-metric">
-        <span class="fund-quick-metric-label">近1年收益</span>
-        <span class="fund-quick-metric-value ${returns['1y'] >= 0 ? 'positive' : 'negative'}">
-          ${returns['1y'] >= 0 ? '+' : ''}${returns['1y']}%
-        </span>
-      </div>
-      <div class="fund-quick-metric">
-        <span class="fund-quick-metric-label">最大回撤</span>
-        <span class="fund-quick-metric-value negative">${riskMetrics['max_drawdown']}%</span>
-      </div>
-      <div class="fund-quick-metric">
-        <span class="fund-quick-metric-label">夏普比率</span>
-        <span class="fund-quick-metric-value">${riskMetrics['sharpe_ratio']}</span>
-      </div>
-      <div class="mt-2">
-        <button class="btn btn-sm btn-primary w-100" onclick="viewFullFundAnalysis('${symbol}')">
-          查看完整分析
-        </button>
-      </div>
-    `;
-  } catch (error) {
-    console.error('基金快速分析失败:', error);
-    resultContainer.innerHTML = '<div class="text-danger">分析失败，请稍后重试</div>';
-  }
-}
-
-function viewFullFundAnalysis(symbol) {
-  // 切换到基金视图
-  switchView(document.querySelector('[onclick*="view-fund"]'), 'view-fund');
-  
-  // 等待视图切换完成后加载分析
-  setTimeout(() => {
-    if (typeof FundModule !== 'undefined') {
-      FundModule.loadFundAnalysis(symbol);
-    }
-  }, 100);
-}
-
-// 添加基金到观察列表的辅助函数
-function addFundToWatchlist(symbol) {
-  const watchlistInput = document.getElementById('cfg-watchlist');
-  if (!watchlistInput) return;
-  
-  const current = watchlistInput.value || '';
-  const symbols = current.split(',').map(s => s.trim()).filter(s => s);
-  
-  if (!symbols.includes(symbol)) {
-    symbols.push(symbol);
-    watchlistInput.value = symbols.join(', ');
-    showNotification(`已将 ${symbol} 添加到观察列表`, 'success');
-  } else {
-    showNotification(`${symbol} 已在观察列表中`, 'info');
-  }
-}
-
-// 通知显示函数
-function showNotification(message, type = 'info') {
-  const notification = document.createElement('div');
-  notification.className = `notification notification-${type}`;
-  notification.innerHTML = `
-    <div class="notification-content">
-      <i class="bi bi-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
-      <span>${message}</span>
-    </div>
-  `;
-  
-  document.body.appendChild(notification);
-  
-  // 添加显示动画
-  setTimeout(() => notification.classList.add('show'), 10);
-  
-  // 自动移除
-  setTimeout(() => {
-    notification.classList.remove('show');
-    setTimeout(() => notification.remove(), 300);
-  }, 3000);
 }

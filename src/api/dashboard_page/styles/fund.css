@@ -125,6 +125,22 @@
   border-radius: 4px;
 }
 
+.fund-action-cell {
+  white-space: nowrap;
+}
+
+.fund-action-cell .btn-view-nav + .btn-view-nav {
+  margin-left: 0.35rem;
+}
+
+.fund-action-cell {
+  white-space: nowrap;
+}
+
+.fund-action-cell .btn-view-nav + .btn-view-nav {
+  margin-left: 0.35rem;
+}
+
 /* 图表容器 */
 #nav-chart-container {
   background-color: var(--bg-secondary);

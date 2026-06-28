@@ -13,13 +13,16 @@ let alphaEditingEntryIds = [];
 let alphaAnalysisRunsCursor = null;
 let alphaAnalysisStatusFilter = 'all';
 
-const MARKET_LABEL = { a: 'A 股', us: '美股' };
-const MARKET_CURRENCY = { a: 'CNY', us: 'USD' };
+const MARKET_LABEL = { a: 'A 股', us: '美股', fund: '基金' };
+const MARKET_CURRENCY = { a: 'CNY', us: 'USD', fund: 'CNY' };
 const DEFAULT_STOP_LOSS_RATIO = -0.08;
 const DEFAULT_TAKE_PROFIT_RATIO = 0.20;
 
 function classifyAlphaMarket(symbol) {
-  return String(symbol || '').trim().toUpperCase().endsWith('.US') ? 'us' : 'a';
+  const normalized = String(symbol || '').trim().toUpperCase();
+  if (normalized.endsWith('.US')) return 'us';
+  if (/^(15|16|18|50|51|56|58)\d{4}$/.test(normalized)) return 'fund';
+  return 'a';
 }
 
 function alphaActionClass(action) {
@@ -1133,185 +1136,3 @@ document.getElementById('alpha-analysis-load-more')?.addEventListener('click', (
 setAlphaActiveMarketTab();
 ensureAlphaAnalysisBuilder();
 loadAlphaHoldings(currentMarket).then(() => loadAlphaAnalysisRuns()).catch((error) => console.error('加载持仓失败:', error));
-
-// Alpha 持仓助手 - 基金分析扩展
-
-// 检测是否为基金代码
-function isFundSymbol(symbol) {
-  if (!symbol) return false;
-  const s = String(symbol).trim();
-  // 基金代码通常是6位数字，或者以特定前缀开头
-  return /^\d{6}$/.test(s) || /^(51|15|16|56|58)\d{4}$/.test(s);
-}
-
-// 获取基金分析数据
-async function fetchFundAnalysis(symbol) {
-  try {
-    const response = await fetch(`/api/v1/fund/analysis/performance/${symbol}`);
-    return await response.json();
-  } catch (error) {
-    console.error('获取基金分析失败:', error);
-    return { error: '获取基金分析失败' };
-  }
-}
-
-// 获取基金评级
-async function fetchFundRating(symbol) {
-  try {
-    const response = await fetch(`/api/v1/fund/analysis/rating/${symbol}`);
-    return await response.json();
-  } catch (error) {
-    console.error('获取基金评级失败:', error);
-    return { error: '获取基金评级失败' };
-  }
-}
-
-// 渲染基金分析卡片
-function renderFundAnalysisCard(symbol, analysisData, ratingData) {
-  if (analysisData.error) {
-    return `<div class="alpha-fund-error">${analysisData.error}</div>`;
-  }
-  
-  const returns = analysisData.returns || {};
-  const riskMetrics = analysisData.risk_metrics || {};
-  const rating = ratingData.rating || 'N/A';
-  const ratingClass = rating.toLowerCase();
-  
-  return `
-    <div class="alpha-fund-analysis-card">
-      <div class="alpha-fund-header">
-        <div class="alpha-fund-title">
-          <i class="bi bi-bank"></i>
-          <span>${symbol} 基金分析</span>
-        </div>
-        <div class="alpha-fund-rating ${ratingClass}">
-          ${rating}
-        </div>
-      </div>
-      <div class="alpha-fund-metrics">
-        <div class="alpha-fund-metric">
-          <span class="alpha-fund-metric-label">最新净值</span>
-          <span class="alpha-fund-metric-value">${analysisData.latest_nav}</span>
-        </div>
-        <div class="alpha-fund-metric">
-          <span class="alpha-fund-metric-label">近1月收益</span>
-          <span class="alpha-fund-metric-value ${returns['1m'] >= 0 ? 'positive' : 'negative'}">
-            ${returns['1m'] >= 0 ? '+' : ''}${returns['1m']}%
-          </span>
-        </div>
-        <div class="alpha-fund-metric">
-          <span class="alpha-fund-metric-label">近1年收益</span>
-          <span class="alpha-fund-metric-value ${returns['1y'] >= 0 ? 'positive' : 'negative'}">
-            ${returns['1y'] >= 0 ? '+' : ''}${returns['1y']}%
-          </span>
-        </div>
-        <div class="alpha-fund-metric">
-          <span class="alpha-fund-metric-label">最大回撤</span>
-          <span class="alpha-fund-metric-value negative">${riskMetrics['max_drawdown']}%</span>
-        </div>
-        <div class="alpha-fund-metric">
-          <span class="alpha-fund-metric-label">夏普比率</span>
-          <span class="alpha-fund-metric-value">${riskMetrics['sharpe_ratio']}</span>
-        </div>
-      </div>
-      <div class="alpha-fund-actions">
-        <button class="btn btn-sm btn-outline-primary" onclick="viewFullFundAnalysisFromAlpha('${symbol}')">
-          查看完整分析
-        </button>
-        <button class="btn btn-sm btn-outline-secondary" onclick="addFundToAlphaWatchlist('${symbol}')">
-          加入观察列表
-        </button>
-      </div>
-    </div>
-  `;
-}
-
-// 从持仓分析查看完整基金分析
-function viewFullFundAnalysisFromAlpha(symbol) {
-  // 切换到基金视图
-  const fundBtn = document.querySelector('[onclick*="view-fund"]');
-  if (fundBtn) {
-    switchView(fundBtn, 'view-fund');
-    setTimeout(() => {
-      if (typeof FundModule !== 'undefined') {
-        FundModule.loadFundAnalysis(symbol);
-      }
-    }, 100);
-  }
-}
-
-// 添加基金到 Alpha 观察列表
-function addFundToAlphaWatchlist(symbol) {
-  const watchlistInput = document.getElementById('cfg-watchlist');
-  if (!watchlistInput) return;
-  
-  const current = watchlistInput.value || '';
-  const symbols = current.split(',').map(s => s.trim()).filter(s => s);
-  
-  if (!symbols.includes(symbol)) {
-    symbols.push(symbol);
-    watchlistInput.value = symbols.join(', ');
-    showNotification(`已将 ${symbol} 添加到观察列表`, 'success');
-  } else {
-    showNotification(`${symbol} 已在观察列表中`, 'info');
-  }
-}
-
-// 扩展现有的持仓分析功能
-const originalLoadAlphaHoldings = window.loadAlphaHoldings;
-if (typeof originalLoadAlphaHoldings === 'function') {
-  window.loadAlphaHoldings = async function() {
-    await originalLoadAlphaHoldings();
-    
-    // 检查持仓中是否有基金，如果有则显示基金分析
-    const positions = document.querySelectorAll('[data-alpha-stock-card]');
-    for (const card of positions) {
-      const symbolInput = card.querySelector('[data-alpha-symbol]');
-      if (symbolInput) {
-        const symbol = symbolInput.value?.trim();
-        if (symbol && isFundSymbol(symbol)) {
-          // 在卡片中添加基金分析按钮
-          const actionsDiv = card.querySelector('.alpha-stock-card-actions');
-          if (actionsDiv && !actionsDiv.querySelector('.alpha-fund-analyze-btn')) {
-            const analyzeBtn = document.createElement('button');
-            analyzeBtn.type = 'button';
-            analyzeBtn.className = 'alpha-builder-add-lot alpha-fund-analyze-btn';
-            analyzeBtn.textContent = '基金分析';
-            analyzeBtn.onclick = async () => {
-              const analysisData = await fetchFundAnalysis(symbol);
-              const ratingData = await fetchFundRating(symbol);
-              
-              // 显示基金分析结果
-              const resultHtml = renderFundAnalysisCard(symbol, analysisData, ratingData);
-              const existingResult = card.querySelector('.alpha-fund-analysis-result');
-              if (existingResult) {
-                existingResult.innerHTML = resultHtml;
-              } else {
-                const resultDiv = document.createElement('div');
-                resultDiv.className = 'alpha-fund-analysis-result';
-                resultDiv.innerHTML = resultHtml;
-                card.appendChild(resultDiv);
-              }
-            };
-            actionsDiv.appendChild(analyzeBtn);
-          }
-        }
-      }
-    }
-  };
-}
-
-// 扩展保存持仓功能，在保存时检测基金
-const originalSaveAlphaHoldings = window.saveAlphaHoldings;
-if (typeof originalSaveAlphaHoldings === 'function') {
-  window.saveAlphaHoldings = async function() {
-    const positions = collectAlphaReportPositions();
-    const fundSymbols = positions.filter(p => isFundSymbol(p.symbol)).map(p => p.symbol);
-    
-    if (fundSymbols.length > 0) {
-      console.log('[Alpha] 检测到基金代码:', fundSymbols);
-    }
-    
-    return await originalSaveAlphaHoldings();
-  };
-}
