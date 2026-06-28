@@ -41,27 +41,16 @@ def test_portfolio_service_rebuilds_positions_from_manual_fills(tmp_path):
     assert round(summary["nav"], 2) == 10_020.0
     assert summary["positions"][0]["symbol"] == "AAPLx"
 
-def test_portfolio_service_loads_enriched_fill_history(tmp_path):
+def test_portfolio_service_loads_saved_holdings_as_fill_history(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path}/runtime.db", future=True)
     Base.metadata.create_all(engine)
     store = RuntimeStore(engine, TenantContext("test-user"))
 
-    ticket_id = store.insert_alpha_ticket(
-        asset_symbol="AAPLx",
-        underlying_symbol="AAPL",
-        action="BUY",
-        thesis="phase2 seed",
-        suggested_quantity=2.0,
-        suggested_limit_price=200.0,
-        expires_at="2026-06-01T16:00:00+08:00",
-    )
-    store.insert_alpha_manual_fill(
-        ticket_id=ticket_id,
-        operator_id="trader-01",
-        executed_quantity=2.0,
-        executed_price=200.0,
-        executed_at="2026-06-01T10:30:00+08:00",
-        notes="buy fill",
+    entry_id = store.insert_alpha_holdings_entry(
+        symbol="AAPLx",
+        buy_date="2026-06-01",
+        buy_price=200.0,
+        quantity=2.0,
     )
     store.replace_alpha_positions(
         positions=[{"symbol": "AAPLx", "quantity": 2.0, "avg_cost": 200.0, "mark_price": 210.0}],
@@ -78,10 +67,10 @@ def test_portfolio_service_loads_enriched_fill_history(tmp_path):
 
     assert portfolio["snapshot"]["nav"] == 10_020.0
     assert portfolio["positions"][0]["symbol"] == "AAPLx"
-    assert portfolio["fills"][0]["ticket_id"] == ticket_id
+    assert portfolio["fills"][0]["ticket_id"] == entry_id
     assert portfolio["fills"][0]["asset_symbol"] == "AAPLx"
     assert portfolio["fills"][0]["action"] == "BUY"
-    assert portfolio["fills"][0]["executed_at"] == "2026-06-01T10:30:00+08:00"
+    assert portfolio["fills"][0]["executed_at"] == "2026-06-01"
 
 
 def test_portfolio_service_rebuilds_positions_from_holdings_entries(tmp_path):
@@ -115,3 +104,5 @@ def test_portfolio_service_rebuilds_positions_from_holdings_entries(tmp_path):
     portfolio = service.load_portfolio()
     assert portfolio["snapshot"]["unrealized_pnl"] == position["unrealized_pnl"]
     assert portfolio["positions"][0]["avg_cost"] == position["avg_cost"]
+    assert portfolio["fills"][0]["asset_symbol"] == "MSFT.US"
+    assert portfolio["fills"][0]["executed_quantity"] == 1.0

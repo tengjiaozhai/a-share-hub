@@ -408,9 +408,9 @@ def test_render_dashboard_html_contains_structured_decision_sections():
         "function beginAlphaSymbolEdit",
         "function alphaStageLabel",
         "weighted_avg_cost",
-        "Research",
-        "Trader",
-        "Backtest",
+        "研究",
+        "交易员",
+        "回测",
     ]:
         assert marker in html
 
@@ -505,3 +505,12 @@ def test_render_dashboard_html_alpha_css_injected():
     assert "alert-stop-loss" in html
     assert "alert-take-profit" in html
     assert "toast-bottom-right" in html
+
+
+def test_render_dashboard_html_contains_fund_view():
+    """Test that the dashboard HTML contains the fund view."""
+    html = render_dashboard_html()
+    assert 'id="view-fund"' in html, "Fund view HTML should be present"
+    assert 'FundModule' in html, "Fund JavaScript module should be present"
+    assert '.fund-controls' in html, "Fund CSS styles should be present"
+    assert '基金' in html, "Fund navigation button should be present"

@@ -133,26 +133,20 @@ def test_full_sell_removes_position(tmp_path):
     assert round(summary["cash_balance"], 2) == 10000.0 - 100 * 10 + 100 * 12
 
 
-def test_portfolio_query_returns_fills_grouped_by_symbol(tmp_path):
+def test_portfolio_query_groups_saved_holdings_by_symbol(tmp_path):
     store = _make_store(tmp_path)
 
-    aapl_ticket = _create_ticket(store, "AAPLx", "BUY", 50, 10.0)
-    goog_ticket = _create_ticket(store, "GOOGx", "BUY", 30, 100.0)
-    store.insert_alpha_manual_fill(
-        ticket_id=aapl_ticket,
-        operator_id="trader-01",
-        executed_quantity=50,
-        executed_price=10.0,
-        executed_at="2026-06-01T10:00:00+08:00",
-        notes="buy aapl",
+    store.insert_alpha_holdings_entry(
+        symbol="AAPLx",
+        buy_date="2026-06-01",
+        buy_price=10.0,
+        quantity=50,
     )
-    store.insert_alpha_manual_fill(
-        ticket_id=goog_ticket,
-        operator_id="trader-01",
-        executed_quantity=30,
-        executed_price=100.0,
-        executed_at="2026-06-01T11:00:00+08:00",
-        notes="buy goog",
+    store.insert_alpha_holdings_entry(
+        symbol="GOOGx",
+        buy_date="2026-06-02",
+        buy_price=100.0,
+        quantity=30,
     )
     store.replace_alpha_positions([
         {"symbol": "AAPLx", "quantity": 50, "avg_cost": 10.0, "mark_price": 11.0},
@@ -174,6 +168,38 @@ def test_portfolio_query_returns_fills_grouped_by_symbol(tmp_path):
     assert len(portfolio["fills_by_symbol"]["AAPLx"]) == 1
     assert len(portfolio["fills_by_symbol"]["GOOGx"]) == 1
     assert portfolio["fills_by_symbol"]["AAPLx"][0]["asset_symbol"] == "AAPLx"
+
+
+def test_load_portfolio_prefers_saved_holdings_over_manual_fills(tmp_path):
+    store = _make_store(tmp_path)
+
+    ticket_id = _create_ticket(store, "LEGACYx", "BUY", 10, 9.0)
+    store.insert_alpha_manual_fill(
+        ticket_id=ticket_id,
+        operator_id="trader-01",
+        executed_quantity=10,
+        executed_price=9.0,
+        notes="legacy fill",
+    )
+    store.insert_alpha_holdings_entry(
+        symbol="MSFT.US",
+        buy_date="2026-06-18",
+        buy_price=420.0,
+        quantity=2.0,
+    )
+    store.replace_alpha_positions([
+        {"symbol": "MSFT.US", "quantity": 2.0, "avg_cost": 420.0, "mark_price": 430.0},
+    ])
+    store.insert_alpha_portfolio_snapshot(
+        cash_balance=0.0,
+        realized_pnl=0.0,
+        unrealized_pnl=20.0,
+        nav=860.0,
+    )
+
+    portfolio = AlphaPortfolioService(store).load_portfolio()
+
+    assert [fill["asset_symbol"] for fill in portfolio["fills"]] == ["MSFT.US"]
 
 
 def test_portfolio_positions_include_unrealized_pnl(tmp_path):

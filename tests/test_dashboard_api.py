@@ -133,19 +133,11 @@ def test_workbench_payload_includes_alpha_panel(authenticated_client, test_app, 
     assert "portfolio" in payload["alpha"]
 
 def test_workbench_payload_includes_alpha_portfolio(authenticated_client, test_app, pg_store):
-    ticket_id = pg_store.insert_alpha_ticket(asset_symbol="AAPLx",
-        underlying_symbol="AAPL",
-        action="BUY",
-        thesis="portfolio seed",
-        suggested_quantity=1.2,
-        suggested_limit_price=201.0,
-        expires_at="2026-06-01T16:00:00+08:00",
-    )
-    pg_store.insert_alpha_manual_fill(ticket_id=ticket_id,
-        operator_id="trader-01",
-        executed_quantity=1.2,
-        executed_price=201.0,
-        notes="seed fill",
+    pg_store.insert_alpha_holdings_entry(
+        symbol="AAPLx",
+        buy_date="2026-06-01",
+        buy_price=201.0,
+        quantity=1.2,
     )
     pg_store.replace_alpha_positions(
         positions=[{"symbol": "AAPLx", "quantity": 1.2, "avg_cost": 201.0, "mark_price": 225.0}],

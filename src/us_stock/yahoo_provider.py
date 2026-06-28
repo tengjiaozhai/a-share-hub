@@ -1,6 +1,7 @@
 import logging
 import time
 from datetime import datetime
+import math
 
 import yfinance as yf
 
@@ -11,6 +12,19 @@ logger = logging.getLogger(__name__)
 
 _VALID_INTERVALS = {"1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "1d", "5d", "1wk", "1mo", "3mo"}
 _VALID_RANGES = {"1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"}
+
+
+def _safe_float(value, default: float = 0.0) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    return default if math.isnan(number) else number
+
+
+def _safe_int(value, default: int = 0) -> int:
+    number = _safe_float(value, float(default))
+    return default if math.isnan(number) else int(number)
 
 
 class YahooProvider:
@@ -97,11 +111,11 @@ class YahooProvider:
                         row = sym_df.iloc[-1] if sym_df is not None and not sym_df.empty else None
 
                     if row is not None:
-                        close = float(row.get("Close", 0))
-                        open_p = float(row.get("Open", 0))
-                        high = float(row.get("High", 0))
-                        low = float(row.get("Low", 0))
-                        volume = int(row.get("Volume", 0))
+                        close = _safe_float(row.get("Close", 0))
+                        open_p = _safe_float(row.get("Open", 0))
+                        high = _safe_float(row.get("High", 0))
+                        low = _safe_float(row.get("Low", 0))
+                        volume = _safe_int(row.get("Volume", 0))
                         change = close - open_p if open_p else 0
                         change_pct = (change / open_p * 100) if open_p else 0
 

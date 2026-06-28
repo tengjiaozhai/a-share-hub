@@ -172,7 +172,7 @@ Dashboard 页面由 `src/api/dashboard_page/render.py` 拼装。它读取 `shell
 | 工作台底部历史台账 | `partials/view_dashboard.html` | `scripts/dashboard.js` | `GET /api/v1/dashboard/history?market=a&source=all&limit=20` | `decision_runs`, `execution_orders`, `kill_switch_events` |
 | A 股行情页 | `partials/view_market.html` | `scripts/market.js` | `GET /api/v1/market/stocks`, `GET /api/v1/a-stock/watchlist`, `POST /api/v1/a-stock/watchlist`, `DELETE /api/v1/a-stock/watchlist/{symbol}`, `POST /api/v1/a-stock/quotes`, `GET /api/v1/a-stock/kline/{symbol}`, `GET /api/v1/a-stock/fundamental/{symbol}` | `a_share_watchlist` |
 | 美股页 | `partials/view_us_stock.html` | `scripts/us_stock.js` | `GET /api/v1/us-stock/quotes`, `GET /api/v1/us-stock/search`, `GET /api/v1/us-stock/watchlist`, `POST /api/v1/us-stock/watchlist`, `DELETE /api/v1/us-stock/watchlist/{symbol}`, `GET /api/v1/us-stock/kline/{symbol}`, `GET /api/v1/us-stock/fundamental/{symbol}`, `GET /api/v1/us-stock/binance/assets` | `us_watchlist` |
-| Alpha 区域 | `partials/view_alpha.html` | `scripts/alpha.js` | `GET /api/v1/dashboard/workbench`, `GET /api/v1/alpha/assets`, `POST /api/v1/alpha/tickets`, `POST /api/v1/alpha/research/scan`, `POST /api/v1/alpha/research/propose-top-ticket`, `GET /api/v1/alpha/capabilities` | `alpha_tickets`, `alpha_watchlist_items`, `alpha_positions`, `alpha_portfolio_snapshots`, `alpha_reconciliation_runs` |
+| Alpha 区域 | `partials/view_alpha.html` | `scripts/alpha.js` | `GET /api/v1/dashboard/workbench`, `GET /api/v1/alpha/holdings`, `POST /api/v1/alpha/holdings`, `PUT /api/v1/alpha/holdings/{entry_id}`, `DELETE /api/v1/alpha/holdings/{entry_id}`, `GET /api/v1/alpha/holdings/summary`, `POST /api/v1/alpha/analysis-runs`, `GET /api/v1/alpha/analysis-runs`, `GET /api/v1/alpha/analysis-runs/{run_id}/events` | `alpha_holdings_entries`, `alpha_positions`, `alpha_analysis_runs` |
 
 页面和 API 的关键点：
 
@@ -224,15 +224,14 @@ A 股扫描：
 4. 后端计算技术特征，调用 `build_signal()` 生成日频信号，再用 `run_daily_backtest()` 和 `calculate_metrics()` 计算收益、回撤和交易次数。
 5. 回测结果返回页面显示。当前实现没有回测结果表，因此不会写 PostgreSQL。
 
-### 5.4 一次 Alpha 工单和对账
+### 5.4 一次 Alpha 持仓分析
 
-1. Alpha 页加载时调用 `GET /api/v1/dashboard/workbench`，读取建议单、组合快照、持仓、观察列表和最近对账状态。
-2. 用户可手动录入建议单，`POST /api/v1/alpha/tickets` 写 `alpha_tickets`。
-3. 用户也可运行 `POST /api/v1/alpha/research/scan`，后端读取 `alpha_watchlist_items`，通过 Binance 历史 K 线和 `AlphaSignalEngine` 给候选排序。扫描本身不落表。
-4. 点击“生成建议单”会调用 `POST /api/v1/alpha/research/propose-top-ticket`，把排序第一的候选转为 `alpha_tickets`。
-5. API 支持审批和人工成交：`POST /api/v1/alpha/tickets/{ticket_id}/approve` 更新工单状态，`POST /api/v1/alpha/tickets/{ticket_id}/fills` 写 `alpha_manual_fills`。
-6. API 支持订单预览和提交：`POST /api/v1/alpha/orders/preview` 只返回提交预览，`POST /api/v1/alpha/orders/submit` 在能力开启时写 `alpha_api_order_attempts`。
-7. Alpha 对账调用 `POST /api/v1/alpha/reconciliation/run`。后端比较 `alpha_positions` 和外部持仓、最新 `alpha_portfolio_snapshots.cash_balance` 和外部现金，写入 `alpha_reconciliation_runs`。
+1. Alpha 页加载时调用 `GET /api/v1/dashboard/workbench`，读取当前组合快照、只读成交历史和 multi-leg 历史。
+2. 用户通过 `GET/POST/PUT/DELETE /api/v1/alpha/holdings` 维护持仓录入；后端把保存的批次重建到 `alpha_positions`。
+3. 页面通过 `GET /api/v1/alpha/holdings/summary` 展示按市场聚合的持仓成本、市值和未实现盈亏。
+4. 用户从持仓卡触发 `POST /api/v1/alpha/analysis-runs` 启动单标的异步分析；后端为同一批数据依次执行 snapshot、research、trader、risk 和 backtest。
+5. 前端通过 `GET /api/v1/alpha/analysis-runs/{run_id}/events` 订阅 SSE 事件流，并通过 `GET /api/v1/alpha/analysis-runs` / `GET /api/v1/alpha/analysis-runs/{run_id}` 查看历史摘要和详情。
+6. 分析结果只作为决策支持持久化在 `alpha_analysis_runs`，不会提交真实订单。
 
 ## 6. 新手名词解释
 

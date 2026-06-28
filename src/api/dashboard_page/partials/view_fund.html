@@ -1,0 +1,176 @@
+<!-- 基金视图 -->
+<section id="view-fund" class="view" style="display:none">
+  <div class="view-header">
+    <h2><i class="bi bi-bank"></i> 基金中心</h2>
+    <div class="view-actions">
+      <button id="btn-refresh-fund" class="btn btn-sm btn-outline-primary" title="刷新数据">
+        <i class="bi bi-arrow-clockwise"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- 标签页导航 -->
+  <ul class="nav nav-tabs" id="fund-tabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="etf-spot-tab" data-bs-toggle="tab" 
+              data-bs-target="#etf-spot" type="button" role="tab">
+        <i class="bi bi-graph-up-arrow"></i> ETF 实时行情
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="fund-catalog-tab" data-bs-toggle="tab" 
+              data-bs-target="#fund-catalog" type="button" role="tab">
+        <i class="bi bi-collection"></i> 基金目录
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="fund-nav-tab" data-bs-toggle="tab" 
+              data-bs-target="#fund-nav" type="button" role="tab">
+        <i class="bi bi-calendar3"></i> 基金净值
+      </button>
+    </li>
+  </ul>
+
+  <div class="tab-content" id="fund-tab-content">
+    <!-- ETF 实时行情 -->
+    <div class="tab-pane fade show active" id="etf-spot" role="tabpanel">
+      <div class="fund-controls">
+        <div class="input-group input-group-sm" style="max-width: 300px;">
+          <input type="text" id="etf-search" class="form-control" placeholder="搜索 ETF...">
+          <button class="btn btn-outline-secondary" type="button" id="btn-etf-search">
+            <i class="bi bi-search"></i>
+          </button>
+        </div>
+        <select id="etf-limit" class="form-select form-select-sm" style="max-width: 150px;">
+          <option value="20">显示 20 条</option>
+          <option value="50" selected>显示 50 条</option>
+          <option value="100">显示 100 条</option>
+        </select>
+      </div>
+      
+      <div class="table-responsive">
+        <table class="table table-hover table-sm" id="etf-spot-table">
+          <thead>
+            <tr>
+              <th>代码</th>
+              <th>名称</th>
+              <th class="text-end">最新价</th>
+              <th class="text-end">涨跌幅</th>
+              <th class="text-end">涨跌额</th>
+              <th class="text-end">成交量</th>
+              <th class="text-end">成交额</th>
+              <th class="text-end">开盘价</th>
+              <th class="text-end">最高价</th>
+              <th class="text-end">最低价</th>
+              <th class="text-end">昨收</th>
+            </tr>
+          </thead>
+          <tbody id="etf-spot-body">
+            <tr>
+              <td colspan="11" class="text-center text-muted">
+                <div class="spinner-border spinner-border-sm" role="status">
+                  <span class="visually-hidden">加载中...</span>
+                </div>
+                正在加载 ETF 行情...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 基金目录 -->
+    <div class="tab-pane fade" id="fund-catalog" role="tabpanel">
+      <div class="fund-controls">
+        <div class="input-group input-group-sm" style="max-width: 300px;">
+          <input type="text" id="fund-search" class="form-control" placeholder="搜索基金名称或代码...">
+          <button class="btn btn-outline-secondary" type="button" id="btn-fund-search">
+            <i class="bi bi-search"></i>
+          </button>
+        </div>
+        <select id="fund-type-filter" class="form-select form-select-sm" style="max-width: 200px;">
+          <option value="">全部类型</option>
+          <option value="股票型">股票型</option>
+          <option value="混合型">混合型</option>
+          <option value="债券型">债券型</option>
+          <option value="指数型">指数型</option>
+          <option value="ETF">ETF</option>
+          <option value="LOF">LOF</option>
+        </select>
+        <select id="fund-limit" class="form-select form-select-sm" style="max-width: 150px;">
+          <option value="20">显示 20 条</option>
+          <option value="50" selected>显示 50 条</option>
+          <option value="100">显示 100 条</option>
+        </select>
+      </div>
+      
+      <div class="table-responsive">
+        <table class="table table-hover table-sm" id="fund-catalog-table">
+          <thead>
+            <tr>
+              <th>代码</th>
+              <th>名称</th>
+              <th>类型</th>
+              <th>交易所</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="fund-catalog-body">
+            <tr>
+              <td colspan="5" class="text-center text-muted">
+                <div class="spinner-border spinner-border-sm" role="status">
+                  <span class="visually-hidden">加载中...</span>
+                </div>
+                正在加载基金目录...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 基金净值 -->
+    <div class="tab-pane fade" id="fund-nav" role="tabpanel">
+      <div class="fund-controls">
+        <div class="input-group input-group-sm" style="max-width: 300px;">
+          <input type="text" id="nav-symbol" class="form-control" placeholder="输入基金代码 (如 511280)">
+          <button class="btn btn-outline-primary" type="button" id="btn-query-nav">
+            查询净值
+          </button>
+        </div>
+        <div class="input-group input-group-sm" style="max-width: 400px;">
+          <span class="input-group-text">日期范围</span>
+          <input type="date" id="nav-start-date" class="form-control">
+          <span class="input-group-text">至</span>
+          <input type="date" id="nav-end-date" class="form-control">
+        </div>
+      </div>
+      
+      <div id="nav-chart-container" style="height: 300px; display: none;">
+        <canvas id="nav-chart"></canvas>
+      </div>
+      
+      <div class="table-responsive">
+        <table class="table table-hover table-sm" id="fund-nav-table">
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th class="text-end">单位净值</th>
+              <th class="text-end">累计净值</th>
+              <th class="text-end">日增长率</th>
+              <th>申购状态</th>
+              <th>赎回状态</th>
+            </tr>
+          </thead>
+          <tbody id="fund-nav-body">
+            <tr>
+              <td colspan="6" class="text-center text-muted">
+                请输入基金代码查询净值
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>

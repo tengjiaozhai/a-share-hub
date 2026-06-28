@@ -21,6 +21,7 @@ from src.api.routes_kill_switch import router as kill_switch_router
 from src.api.routes_market import router as market_router
 from src.api.routes_portfolio_targets import router as portfolio_targets_router
 from src.api.routes_reconciliation import router as reconciliation_router
+from src.api.routes_fund import router as fund_router
 from src.core.config import Settings
 from src.core.tenant import SYSTEM_TENANT
 from src.decision.decision_runner import build_decision_run_record
@@ -124,6 +125,7 @@ def build_app() -> FastAPI:
     app.include_router(alpha_router)
     app.include_router(us_stock_router)
     app.include_router(a_stock_router)
+    app.include_router(fund_router)
 
     @app.get("/", include_in_schema=False)
     def root_redirect(request: Request):

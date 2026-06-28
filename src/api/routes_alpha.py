@@ -64,7 +64,7 @@ def _build_backtest_runner(engine, tenant: TenantContext, user_id: str):
             ]
             lot_size = 1
         else:
-            from src.a_stock.akshare_provider import AkshareProvider
+            from src.data.providers.akshare_provider import AkshareProvider
             provider = AkshareProvider()
             bars_df = provider.get_history(symbol, start_date, end_date)
             if bars_df.empty:

@@ -302,32 +302,6 @@ Redis 是可选的，必须保持禁用直到负载门控运行手册另有说�
 - `POST /api/v1/kill-switch/activate` - 激活紧急停止
 - `POST /api/v1/kill-switch/deactivate` - 解除紧急停止
 
-## Alpha 代币化证券操作台
-
-- 公开资产数据通过 `/api/v1/alpha/assets` 提供
-- 建议单通过 `/api/v1/alpha/tickets` 创建与查看
-- 人工执行结果通过 `/api/v1/alpha/tickets/{ticket_id}/fills` 回填
-- 当前版本不支持自动下单
-- 研究扫描与候选转建议单流程见 `docs/runbooks/alpha-research-and-ops-ui.md`
-
-## Alpha 账本与对账
-
-- 组合快照通过 `/api/v1/alpha/portfolio` 查看
-- 对账通过 `/api/v1/alpha/reconciliation/run` 触发
-- Dashboard 异常区展示对账差异
-- 详细操作流程见 `docs/runbooks/alpha-ledger-and-reconciliation.md`
-
-## Alpha 执行能力门控
-
-Phase 4 引入了安全门控机制，控制 API 下单能力的启用：
-
-- 能力状态通过 `/api/v1/alpha/capabilities` 查询
-- 订单预览通过 `/api/v1/alpha/orders/preview` 验证
-- 订单提交通过 `/api/v1/alpha/orders/submit` 执行（需启用 API 模式）
-- 默认模式为 `manual`，需要人工确认
-- 启用 API 模式前必须通过 preview 验证
-- 详细操作流程见 `docs/runbooks/alpha-execution-capability-gate.md`
-
 ## Holdings Analysis 持仓分析
 
 持仓分析流水线：事实与 P&L → Research Manager (DeepSeek) → Trader (DeepSeek) → 确定性风控检查
@@ -340,6 +314,21 @@ Phase 4 引入了安全门控机制，控制 API 下单能力的启用：
 - 每次分析完整持久化（snapshot + research + trader + risk），支持审计历史
 - 必需环境变量：`LLM_PROVIDER=deepseek`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`
 - 分析历史通过 `GET /api/v1/alpha/analysis-runs` 查询
+- 持仓录入通过 `GET/POST/PUT/DELETE /api/v1/alpha/holdings` 维护
+- 持仓汇总通过 `GET /api/v1/alpha/holdings/summary` 查询
+- Dashboard Alpha 页仍展示只读的成交历史与 multi-leg 历史，供分析时参考
+
+## Alpha 当前 live API
+
+- `POST /api/v1/alpha/analysis-runs`：启动单标的异步流式分析
+- `GET /api/v1/alpha/analysis-runs`：分页查询分析历史摘要
+- `GET /api/v1/alpha/analysis-runs/{run_id}`：查询单次分析详情
+- `GET /api/v1/alpha/analysis-runs/{run_id}/events`：订阅分析事件流
+- `GET /api/v1/alpha/holdings`：查询已保存持仓录入
+- `POST /api/v1/alpha/holdings`：新增持仓录入
+- `PUT /api/v1/alpha/holdings/{entry_id}`：更新持仓录入
+- `DELETE /api/v1/alpha/holdings/{entry_id}`：删除持仓录入
+- `GET /api/v1/alpha/holdings/summary`：读取按市场聚合的持仓摘要
 
 ## Holdings Analysis Streaming 持仓分析流式流水线
 

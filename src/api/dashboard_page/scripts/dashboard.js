@@ -153,6 +153,10 @@ function switchView(btn, viewId) {
     marketInit();
   } else if (viewId === 'view-alpha') {
     loadAlphaWorkbench();
+  } else if (viewId === 'view-fund') {
+    if (typeof FundModule !== 'undefined') {
+      FundModule.init();
+    }
   }
 }
 

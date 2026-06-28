@@ -1,0 +1,274 @@
+/* 基金视图样式 */
+
+/* 标签页样式 */
+#fund-tabs {
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+#fund-tabs .nav-link {
+  color: var(--text-secondary);
+  border: none;
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}
+
+#fund-tabs .nav-link:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-hover);
+}
+
+#fund-tabs .nav-link.active {
+  color: var(--primary-color);
+  border-bottom: 2px solid var(--primary-color);
+  background-color: transparent;
+}
+
+#fund-tabs .nav-link i {
+  margin-right: 0.5rem;
+}
+
+/* 控制栏样式 */
+.fund-controls {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.fund-controls .input-group {
+  flex-shrink: 0;
+}
+
+.fund-controls .form-select {
+  min-width: 150px;
+}
+
+/* 表格样式 */
+#fund-tab-content .table {
+  font-size: 0.85rem;
+  margin-bottom: 0;
+}
+
+#fund-tab-content .table th {
+  background-color: var(--bg-secondary);
+  border-bottom: 2px solid var(--border-color);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  padding: 0.75rem 0.5rem;
+}
+
+#fund-tab-content .table td {
+  padding: 0.6rem 0.5rem;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--border-color-light);
+}
+
+#fund-tab-content .table tbody tr:hover {
+  background-color: var(--bg-hover);
+}
+
+/* 数值对齐 */
+.text-end {
+  text-align: right !important;
+}
+
+/* 涨跌颜色 */
+.change-positive {
+  color: var(--color-up, #22c55e);
+  font-weight: 600;
+}
+
+.change-negative {
+  color: var(--color-down, #ef4444);
+  font-weight: 600;
+}
+
+.change-zero {
+  color: var(--text-secondary);
+}
+
+/* 代码样式 */
+.fund-code {
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
+/* 名称样式 */
+.fund-name {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 类型标签 */
+.fund-type-badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background-color: var(--bg-secondary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+/* 操作按钮 */
+.btn-view-nav {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  border-radius: 4px;
+}
+
+/* 图表容器 */
+#nav-chart-container {
+  background-color: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border-color);
+}
+
+/* 加载状态 */
+.loading-spinner {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 空状态 */
+.empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--text-secondary);
+}
+
+.empty-state i {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.empty-state p {
+  font-size: 1rem;
+  margin: 0;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .fund-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .fund-controls .input-group,
+  .fund-controls .form-select {
+    max-width: 100% !important;
+  }
+  
+  #fund-tab-content .table {
+    font-size: 0.8rem;
+  }
+  
+  #fund-tab-content .table th,
+  #fund-tab-content .table td {
+    padding: 0.5rem 0.3rem;
+  }
+  
+  .fund-name {
+    max-width: 120px;
+  }
+}
+
+@media (max-width: 576px) {
+  #fund-tabs .nav-link {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8rem;
+  }
+  
+  #fund-tabs .nav-link i {
+    display: none;
+  }
+}
+
+/* 滚动条样式 */
+.table-responsive::-webkit-scrollbar {
+  height: 6px;
+}
+
+.table-responsive::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+  border-radius: 3px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
+/* 工具提示 */
+.tooltip-inner {
+  font-size: 0.8rem;
+  max-width: 300px;
+}
+
+/* 排序指示器 */
+.sortable-header {
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+}
+
+.sortable-header::after {
+  content: '';
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+
+.sortable-header.sort-asc::after {
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-bottom: 4px solid var(--primary-color);
+}
+
+.sortable-header.sort-desc::after {
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 4px solid var(--primary-color);
+}
+
+/* 刷新按钮动画 */
+#btn-refresh-fund.rotating i {
+  animation: rotate 1s linear infinite;
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -19,10 +19,9 @@ class AlphaPortfolioService:
         price_ttl_seconds: int = 300,
         price_service: AlphaMarketPriceService | None = None,
     ) -> dict:
-        ticket_lookup = self._build_ticket_lookup()
         all_fills = [
-            self._enrich_fill(fill, ticket_lookup[fill["ticket_id"]])
-            for fill in reversed(self._store.list_all_alpha_manual_fills())
+            self._entry_as_fill(entry)
+            for entry in reversed(self._store.list_alpha_holdings_entries())
         ]
         positions = self._store.list_alpha_positions()
 
@@ -148,11 +147,15 @@ class AlphaPortfolioService:
             for ticket in self._store.list_alpha_tickets()
         }
 
-    def _enrich_fill(self, fill: dict, ticket: dict) -> dict:
+    def _entry_as_fill(self, entry: dict) -> dict:
         return {
-            **fill,
-            "asset_symbol": ticket["asset_symbol"],
-            "underlying_symbol": ticket["underlying_symbol"],
-            "action": ticket["action"],
-            "ticket_status": ticket["status"],
+            "ticket_id": entry["entry_id"],
+            "asset_symbol": entry["symbol"],
+            "underlying_symbol": entry["symbol"],
+            "action": "BUY",
+            "ticket_status": "saved",
+            "executed_quantity": entry["quantity"],
+            "executed_price": entry["buy_price"],
+            "executed_at": entry["buy_date"],
+            "created_at": entry.get("created_at"),
         }

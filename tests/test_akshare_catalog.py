@@ -15,6 +15,13 @@ def test_normalize_symbol_infers_exchange_from_code():
     assert normalize_symbol("sz000858") == "000858.SZ"
 
 
+def test_normalize_symbol_accepts_verified_fund_codes():
+    assert normalize_symbol("512650") == "512650.SH"
+    assert normalize_symbol("511280") == "511280.SH"
+    assert normalize_symbol("159707") == "159707.SZ"
+    assert normalize_symbol("166009") == "166009.SZ"
+
+
 def test_normalize_stock_list_frame_adds_symbol_and_exchange():
     raw = pd.DataFrame(
         [

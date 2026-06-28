@@ -60,3 +60,14 @@ def test_akshare_provider_get_history_returns_dataframe():
     assert not df.empty
     assert "date" in df.columns
     assert "close" in df.columns
+
+
+def test_akshare_provider_get_history_accepts_verified_fund_code_without_exchange_suffix():
+    provider = AkshareProvider()
+    with patch("src.data.providers.akshare_provider.requests.get", return_value=_make_mock_resp()) as mock_get:
+        df = provider.get_history("512650", datetime(2025, 1, 1), datetime(2025, 1, 31))
+
+    assert not df.empty
+    called_url = mock_get.call_args.args[0]
+    assert "fqkline/get" in called_url
+    assert "sh512650" in called_url

@@ -5,6 +5,13 @@ def test_normalize_report_symbol_a_share():
     assert normalize_report_symbol("600519") == "600519.SH"
 
 
+def test_normalize_report_symbol_exchange_traded_fund_codes():
+    assert normalize_report_symbol("512650") == "512650.SH"
+    assert normalize_report_symbol("511280") == "511280.SH"
+    assert normalize_report_symbol("159707") == "159707.SZ"
+    assert normalize_report_symbol("166009") == "166009.SZ"
+
+
 def test_normalize_report_symbol_us():
     assert normalize_report_symbol("AAPL") == "AAPL.US"
 

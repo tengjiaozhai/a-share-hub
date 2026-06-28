@@ -80,3 +80,34 @@ def test_get_kline_returns_list():
     assert len(klines) == 2
     assert klines[0].symbol == "AAPL"
     assert klines[0].close == 191.5
+
+
+def test_get_quotes_keeps_price_when_batch_volume_is_nan(caplog):
+    import math
+
+    import pandas as pd
+
+    provider = YahooProvider(cache_ttl_quote=60, cache_ttl_kline=300, cache_ttl_fundamental=3600)
+    frame = pd.DataFrame(
+        {
+            ("BROKEN", "Open"): [10.0],
+            ("BROKEN", "High"): [11.0],
+            ("BROKEN", "Low"): [9.5],
+            ("BROKEN", "Close"): [10.5],
+            ("BROKEN", "Volume"): [math.nan],
+            ("GOOD", "Open"): [20.0],
+            ("GOOD", "High"): [21.0],
+            ("GOOD", "Low"): [19.5],
+            ("GOOD", "Close"): [20.5],
+            ("GOOD", "Volume"): [1000.0],
+        }
+    )
+
+    with patch("src.us_stock.yahoo_provider.yf.download", return_value=frame):
+        quotes = provider.get_quotes(["BROKEN", "GOOD"])
+
+    by_symbol = {quote.symbol: quote for quote in quotes}
+    assert by_symbol["BROKEN"].price == 10.5
+    assert by_symbol["BROKEN"].volume == 0
+    assert by_symbol["GOOD"].price == 20.5
+    assert "parse failed" not in caplog.text

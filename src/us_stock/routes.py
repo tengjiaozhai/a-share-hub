@@ -26,6 +26,10 @@ def _get_watchlist_store(tenant: TenantContext) -> WatchlistStore:
     return WatchlistStore(engine, tenant)
 
 
+def _get_yahoo_provider() -> YahooProvider:
+    return get_yahoo_provider()
+
+
 @router.get("/quotes")
 def get_quotes(tenant: TenantContext = Depends(get_tenant_context)) -> list[dict]:
     store = _get_watchlist_store(tenant)
@@ -33,14 +37,14 @@ def get_quotes(tenant: TenantContext = Depends(get_tenant_context)) -> list[dict
     if not items:
         return []
     symbols = [item.symbol for item in items]
-    provider = get_yahoo_provider()
+    provider = _get_yahoo_provider()
     quotes = provider.get_quotes(symbols)
     return [q.model_dump() for q in quotes]
 
 
 @router.get("/quote/{symbol}")
 def get_quote(symbol: str) -> dict:
-    provider = get_yahoo_provider()
+    provider = _get_yahoo_provider()
     quote = provider.get_quote(symbol.upper())
     return quote.model_dump()
 
@@ -51,14 +55,14 @@ def get_kline(
     interval: str = Query("1d"),
     range: str = Query("3mo"),  # noqa: A002 - matches Yahoo Finance API param name
 ) -> list[dict]:
-    provider = get_yahoo_provider()
+    provider = _get_yahoo_provider()
     klines = provider.get_kline(symbol.upper(), interval=interval, range_str=range)
     return [k.model_dump() for k in klines]
 
 
 @router.get("/fundamental/{symbol}")
 def get_fundamental(symbol: str) -> dict:
-    provider = get_yahoo_provider()
+    provider = _get_yahoo_provider()
     fund = provider.get_fundamental(symbol.upper())
     return fund.model_dump()
 
@@ -67,7 +71,7 @@ def get_fundamental(symbol: str) -> dict:
 def search(q: str = Query("", max_length=50)) -> list[dict]:
     if not q.strip():
         return []
-    provider = get_yahoo_provider()
+    provider = _get_yahoo_provider()
     return provider.search(q)
 
 
