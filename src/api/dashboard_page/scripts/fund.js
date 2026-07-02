@@ -548,22 +548,32 @@ const FundModule = {
     });
   },
 
-  addToWatchlist(symbol) {
+  async addToWatchlist(symbol) {
     if (!symbol) return;
-    if (typeof addToWorkspaceWatchlist === 'function') {
-      addToWorkspaceWatchlist(symbol);
-      return;
+    const match = this.state.catalogData.find((item) => (
+      item.symbol === symbol || item.code === symbol
+    ));
+    try {
+      const response = await fetch('/api/v1/fund/watchlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol,
+          name: match?.name || symbol,
+        }),
+      });
+      if (response.status === 409) {
+        alert(`${symbol} 已在基金观察列表中`);
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      alert(`已将 ${symbol} 添加到基金观察列表`);
+    } catch (error) {
+      console.error('添加基金观察失败:', error);
+      alert('添加基金观察失败，请稍后重试');
     }
-    const watchlistInput = document.getElementById('cfg-watchlist');
-    if (!watchlistInput) return;
-    const current = watchlistInput.value.split(',').map((item) => item.trim()).filter(Boolean);
-    if (current.includes(symbol)) {
-      alert(`${symbol} 已在观察列表中`);
-      return;
-    }
-    current.push(symbol);
-    watchlistInput.value = current.join(', ');
-    alert(`已将 ${symbol} 添加到观察列表`);
   },
 
   formatNumber(value) {

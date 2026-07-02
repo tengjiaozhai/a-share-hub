@@ -1,7 +1,12 @@
 """基金 API 路由"""
+
 from fastapi import APIRouter, Depends, HTTPException, Query
-from src.api.dependencies import get_current_user
+
+from src.api.dependencies import get_current_user, get_tenant_context
+from src.core.tenant import TenantContext
 from src.fund.catalog_service import FundCatalogService, FundNavUnavailableError, FundNotFoundError
+from src.fund.watchlist import FundWatchlistStore
+from src.storage.dependencies import get_runtime_engine
 
 router = APIRouter(prefix="/api/v1/fund", dependencies=[Depends(get_current_user)])
 
@@ -13,6 +18,11 @@ def _get_fund_catalog_service() -> FundCatalogService:
     if _fund_catalog_service is None:
         _fund_catalog_service = FundCatalogService()
     return _fund_catalog_service
+
+
+def _get_watchlist_store(tenant: TenantContext) -> FundWatchlistStore:
+    engine = get_runtime_engine()
+    return FundWatchlistStore(engine, tenant)
 
 
 @router.get("/catalog")
@@ -35,6 +45,59 @@ def get_fund_by_symbol(symbol: str) -> dict:
     if fund is None:
         raise HTTPException(status_code=404, detail=f"Fund {symbol} not found")
     return fund
+
+
+@router.get("/watchlist")
+def list_watchlist(
+    page: int = Query(default=1, ge=1, description="页码"),
+    page_size: int = Query(default=20, ge=1, le=100, description="每页条数"),
+    tenant: TenantContext = Depends(get_tenant_context),
+) -> dict:
+    store = _get_watchlist_store(tenant)
+    items, total = store.list_items(page=page, page_size=page_size)
+    return {
+        "items": [item.model_dump() for item in items],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": max(1, -(-total // page_size)),
+    }
+
+
+@router.post("/watchlist")
+def add_to_watchlist(
+    body: dict,
+    tenant: TenantContext = Depends(get_tenant_context),
+) -> dict:
+    symbol = body.get("symbol", "").strip().upper()
+    name = body.get("name", "").strip()
+    sort_order = int(body.get("sort_order", 0))
+    if not symbol:
+        raise HTTPException(status_code=422, detail="symbol is required")
+
+    if not name:
+        fund = _get_fund_catalog_service().get_fund_by_symbol(symbol)
+        name = str(fund.get("name") or symbol) if fund else symbol
+
+    store = _get_watchlist_store(tenant)
+    try:
+        item = store.add(symbol, name, sort_order)
+        return item.model_dump()
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+
+
+@router.delete("/watchlist/{symbol}")
+def remove_from_watchlist(
+    symbol: str,
+    tenant: TenantContext = Depends(get_tenant_context),
+) -> dict:
+    normalized = symbol.upper()
+    store = _get_watchlist_store(tenant)
+    removed = store.remove(normalized)
+    if not removed:
+        raise HTTPException(status_code=404, detail=f"Symbol {normalized} not found in watchlist")
+    return {"removed": True, "symbol": normalized}
 
 
 @router.get("/etf/spot")
@@ -87,7 +150,7 @@ def get_etf_history(
     """获取 ETF 历史行情（带缓存）"""
     service = _get_fund_catalog_service()
     return service.get_etf_history(
-        symbol=symbol, period=period, 
+        symbol=symbol, period=period,
         start_date=start_date, end_date=end_date,
         force_refresh=force_refresh
     )

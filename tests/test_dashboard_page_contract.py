@@ -291,6 +291,19 @@ def test_render_dashboard_html_contains_fund_nav_unsupported_message_contract():
         assert marker in html
 
 
+def test_render_dashboard_html_contains_fund_watchlist_contract():
+    html = render_dashboard_html()
+
+    required_markers = [
+        "FundModule.addToWatchlist(",
+        "/api/v1/fund/watchlist",
+        "添加基金观察失败",
+        "基金观察列表",
+    ]
+    for marker in required_markers:
+        assert marker in html
+
+
 def test_render_dashboard_html_contains_committed_fund_filter_state_contract():
     html = render_dashboard_html()
 

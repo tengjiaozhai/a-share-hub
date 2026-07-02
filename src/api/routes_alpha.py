@@ -3,7 +3,7 @@ import json
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from sse_starlette.sse import EventSourceResponse
 
 from src.alpha.analysis_event_broadcaster import EventBroadcaster
@@ -407,8 +407,17 @@ async def _event_iter(
 
 
 @router.get("/holdings")
-def list_holdings_entries(store: RuntimeStore = Depends(get_user_runtime_store)) -> dict:
-    return {"items": store.list_alpha_holdings_entries()}
+def list_holdings_entries(
+    market: str = Query(default="", pattern="^(|a|us|fund)$"),
+    store: RuntimeStore = Depends(get_user_runtime_store),
+) -> dict:
+    items = [_with_market(entry) for entry in store.list_alpha_holdings_entries()]
+    markets = {"a": [], "us": [], "fund": []}
+    for item in items:
+        markets.setdefault(item["market"], []).append(item)
+    if market:
+        items = markets[market]
+    return {"items": items, "markets": markets}
 
 
 @router.post("/holdings")
@@ -416,7 +425,7 @@ def create_holdings_entry(payload: dict, store: RuntimeStore = Depends(get_user_
     normalized = _normalize_holdings_entry(payload)
     entry_id = store.insert_alpha_holdings_entry(**normalized)
     _rebuild_holdings_portfolio(store)
-    return next(item for item in store.list_alpha_holdings_entries() if item["entry_id"] == entry_id)
+    return _with_market(next(item for item in store.list_alpha_holdings_entries() if item["entry_id"] == entry_id))
 
 
 @router.put("/holdings/{entry_id}")
@@ -426,7 +435,7 @@ def update_holdings_entry(entry_id: str, payload: dict, store: RuntimeStore = De
     _rebuild_holdings_portfolio(store)
     for item in store.list_alpha_holdings_entries():
         if item["entry_id"] == entry_id:
-            return item
+            return _with_market(item)
     raise HTTPException(status_code=404, detail="holdings entry not found")
 
 
@@ -438,7 +447,15 @@ def delete_holdings_entry(entry_id: str, store: RuntimeStore = Depends(get_user_
 
 
 def _classify_market(symbol: str) -> str:
-    return "us" if symbol.upper().endswith(".US") else "a"
+    from src.alpha.symbols import classify_report_market
+
+    return classify_report_market(symbol)
+
+
+def _with_market(entry: dict) -> dict:
+    item = dict(entry)
+    item["market"] = _classify_market(str(item.get("symbol", "")))
+    return item
 
 
 @router.get("/holdings/summary")
@@ -479,7 +496,7 @@ def get_holdings_summary(store: RuntimeStore = Depends(get_user_runtime_store)) 
         bucket["_weighted_cost_sum"] += total_cost
 
     summary: list[dict] = []
-    for market_key in ("a", "us"):
+    for market_key in ("a", "us", "fund"):
         bucket = aggregate.get(market_key)
         if not bucket:
             summary.append(

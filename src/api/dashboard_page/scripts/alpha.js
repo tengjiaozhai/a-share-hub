@@ -21,7 +21,8 @@ const DEFAULT_TAKE_PROFIT_RATIO = 0.20;
 function classifyAlphaMarket(symbol) {
   const normalized = String(symbol || '').trim().toUpperCase();
   if (normalized.endsWith('.US')) return 'us';
-  if (/^(15|16|18|50|51|56|58)\d{4}$/.test(normalized)) return 'fund';
+  if (normalized.endsWith('.OTC')) return 'fund';
+  if (/^(15|16|18|50|51|52|56|58)\d{4}(\.(SH|SZ))?$/.test(normalized)) return 'fund';
   return 'a';
 }
 
@@ -516,7 +517,9 @@ async function loadAlphaWorkbench() {
 }
 
 async function loadAlphaSavedHoldings(market = currentMarket) {
-  const res = await fetch(ALPHA_HOLDINGS_API);
+  const params = new URLSearchParams();
+  if (market) params.set('market', market);
+  const res = await fetch(`${ALPHA_HOLDINGS_API}?${params.toString()}`);
   if (!res.ok) {
     throw new Error('alpha holdings load failed');
   }
@@ -524,7 +527,10 @@ async function loadAlphaSavedHoldings(market = currentMarket) {
   const allItems = toList(data.items);
   alphaHoldingsEntriesCache = allItems;
   renderAlphaSavedHoldings(allItems);
-  return allItems.filter((item) => classifyAlphaMarket(item.symbol) === market);
+  if (data.markets && Array.isArray(data.markets[market])) {
+    return data.markets[market];
+  }
+  return allItems.filter((item) => (item.market || classifyAlphaMarket(item.symbol)) === market);
 }
 
 async function loadAlphaSummary(market = currentMarket) {

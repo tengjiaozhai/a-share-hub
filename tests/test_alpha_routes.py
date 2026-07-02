@@ -35,13 +35,16 @@ def test_alpha_holdings_crud_endpoints(authenticated_client, test_app, pg_store)
     assert create_resp.status_code == 200
     created = create_resp.json()
     assert created["symbol"] == "MSFT.US"
+    assert created["market"] == "us"
     assert created["buy_date"] == "2026-06-20"
     assert created["buy_price"] == 420.5
     assert created["quantity"] == 2.0
 
     list_resp = client.get("/api/v1/alpha/holdings")
     assert list_resp.status_code == 200
-    assert len(list_resp.json()["items"]) == 1
+    listed = list_resp.json()
+    assert len(listed["items"]) == 1
+    assert listed["markets"]["us"][0]["symbol"] == "MSFT.US"
 
     entry_id = created["entry_id"]
     update_resp = client.put(
@@ -81,8 +84,33 @@ def test_alpha_holdings_accepts_verified_fund_code_without_exchange_suffix(authe
     assert response.status_code == 200
     created = response.json()
     assert created["symbol"] == "512650.SH"
+    assert created["market"] == "fund"
     assert created["buy_price"] == 1.2345
     assert created["quantity"] == 1000.0
+
+
+def test_alpha_holdings_groups_markets_in_backend(authenticated_client, test_app, pg_store):
+    routes_alpha._rebuild_holdings_portfolio = lambda store: None
+    for symbol in ("600519.SH", "MSFT.US", "020972.OTC"):
+        response = authenticated_client.post(
+            "/api/v1/alpha/holdings",
+            json={
+                "symbol": symbol,
+                "buy_date": "2026-06-20",
+                "buy_price": 10.0,
+                "quantity": 1.0,
+            },
+        )
+        assert response.status_code == 200
+
+    data = authenticated_client.get("/api/v1/alpha/holdings").json()
+
+    assert [item["symbol"] for item in data["markets"]["a"]] == ["600519.SH"]
+    assert [item["symbol"] for item in data["markets"]["us"]] == ["MSFT.US"]
+    assert [item["symbol"] for item in data["markets"]["fund"]] == ["020972.OTC"]
+
+    fund_only = authenticated_client.get("/api/v1/alpha/holdings", params={"market": "fund"}).json()
+    assert [item["symbol"] for item in fund_only["items"]] == ["020972.OTC"]
 
 
 def test_backtest_runner_uses_current_akshare_provider(monkeypatch):

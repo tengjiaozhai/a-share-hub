@@ -192,6 +192,18 @@ class USStockWatchlistRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class FundWatchlistRow(Base):
+    __tablename__ = "fund_watchlist"
+    __table_args__ = (UniqueConstraint("user_id", "symbol", name="uq_fund_watchlist_user_symbol"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class AlphaTicketRow(Base):
     __tablename__ = "alpha_tickets"
 

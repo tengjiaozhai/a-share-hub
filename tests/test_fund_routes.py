@@ -1,10 +1,10 @@
 """基金 API 路由测试"""
+
 from unittest.mock import MagicMock, patch
 
 import requests
 
 from src.api import routes_fund
-
 
 FUNDCODE_SEARCH_JS = """
 var r = [
@@ -93,6 +93,43 @@ def test_fund_catalog_endpoint_enforces_page_size_max(authenticated_client):
     response = authenticated_client.get("/api/v1/fund/catalog?page_size=101")
 
     assert response.status_code == 422
+
+
+def test_fund_watchlist_endpoints(authenticated_client):
+    with patch("src.api.routes_fund._get_watchlist_store") as mock_store:
+        item = MagicMock()
+        item.model_dump.return_value = {"id": 1, "symbol": "020972.OTC", "name": "华夏基金", "sort_order": 0}
+        mock_store.return_value.add.return_value = item
+        create = authenticated_client.post(
+            "/api/v1/fund/watchlist",
+            json={"symbol": "020972.OTC", "name": "华夏基金"},
+        )
+    assert create.status_code == 200
+    assert create.json()["symbol"] == "020972.OTC"
+
+    with patch("src.api.routes_fund._get_watchlist_store") as mock_store:
+        item = MagicMock()
+        item.model_dump.return_value = {"id": 1, "symbol": "020972.OTC", "name": "华夏基金", "sort_order": 0}
+        mock_store.return_value.list_items.return_value = ([item], 1)
+        listing = authenticated_client.get("/api/v1/fund/watchlist")
+    assert listing.status_code == 200
+    data = listing.json()
+    assert data["total"] == 1
+    assert data["items"][0]["symbol"] == "020972.OTC"
+
+    with patch("src.api.routes_fund._get_watchlist_store") as mock_store:
+        mock_store.return_value.add.side_effect = ValueError("Symbol 020972.OTC already exists in watchlist")
+        duplicate = authenticated_client.post(
+            "/api/v1/fund/watchlist",
+            json={"symbol": "020972.OTC", "name": "华夏基金"},
+        )
+    assert duplicate.status_code == 409
+
+    with patch("src.api.routes_fund._get_watchlist_store") as mock_store:
+        mock_store.return_value.remove.return_value = True
+        delete = authenticated_client.delete("/api/v1/fund/watchlist/020972.OTC")
+    assert delete.status_code == 200
+    assert delete.json() == {"removed": True, "symbol": "020972.OTC"}
 
 
 def test_fund_catalog_endpoint_returns_empty_page_on_upstream_failure(authenticated_client):
