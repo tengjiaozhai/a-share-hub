@@ -13,8 +13,13 @@ class TestFundCatalogService:
         self.service = FundCatalogService()
     
     @patch('src.fund.catalog_service.ak')
-    def test_get_etf_spot(self, mock_ak):
-        """测试获取 ETF 实时行情"""
+    @patch.object(FundCatalogService, 'get_fund_catalog')
+    def test_get_etf_spot_returns_paginated_shape(self, mock_catalog, mock_ak):
+        """测试获取 ETF 实时行情返回分页对象"""
+        mock_catalog.return_value = pd.DataFrame([
+            {"code": "510300", "name": "沪深300ETF", "fund_type": "ETF", "pinyin_abbr": "hs300", "pinyin_full": "hushen300etf", "is_exchange_traded": True, "exchange": "SH", "symbol": "510300.SH"},
+            {"code": "159919", "name": "嘉实沪深300ETF", "fund_type": "ETF", "pinyin_abbr": "js300", "pinyin_full": "jiashihushen300etf", "is_exchange_traded": True, "exchange": "SZ", "symbol": "159919.SZ"},
+        ])
         # 模拟 akshare 返回数据
         mock_df = pd.DataFrame({
             '代码': ['510300', '159919'],
@@ -31,18 +36,66 @@ class TestFundCatalogService:
         })
         mock_ak.fund_etf_spot_em.return_value = mock_df
         
-        result = self.service.get_etf_spot(limit=2)
+        result = self.service.get_etf_spot(page=1, page_size=1)
         
-        assert len(result) == 2
-        assert result[0]['code'] == '510300'
-        assert result[0]['name'] == '沪深300ETF'
-        assert result[0]['price'] == 4.123
-        assert result[0]['change_pct'] == 1.23
+        assert result["total"] == 2
+        assert result["page"] == 1
+        assert result["page_size"] == 1
+        assert result["total_pages"] == 2
+        assert len(result["items"]) == 1
+        assert result["items"][0]['code'] == '510300'
+        assert result["items"][0]['name'] == '沪深300ETF'
+        assert result["items"][0]['price'] == 4.123
+        assert result["items"][0]['change_pct'] == 1.23
         mock_ak.fund_etf_spot_em.assert_called_once()
-    
+
     @patch('src.fund.catalog_service.ak')
-    def test_get_etf_spot_with_cache(self, mock_ak):
-        """测试 ETF 实时行情缓存"""
+    @patch.object(FundCatalogService, 'get_fund_catalog')
+    def test_get_etf_spot_supports_code_name_filter_before_pagination(self, mock_catalog, mock_ak):
+        """测试 ETF 实时行情仅按代码和名称过滤，并在分页前过滤"""
+        mock_catalog.return_value = pd.DataFrame([
+            {"code": "510300", "name": "沪深300ETF", "fund_type": "ETF", "pinyin_abbr": "hs300", "pinyin_full": "hushen300etf", "is_exchange_traded": True, "exchange": "SH", "symbol": "510300.SH"},
+            {"code": "159919", "name": "嘉实沪深300ETF", "fund_type": "ETF", "pinyin_abbr": "js300", "pinyin_full": "jiashihushen300etf", "is_exchange_traded": True, "exchange": "SZ", "symbol": "159919.SZ"},
+            {"code": "512650", "name": "华泰柏瑞沪深300ETF", "fund_type": "ETF", "pinyin_abbr": "ht300", "pinyin_full": "huataibairui300etf", "is_exchange_traded": True, "exchange": "SH", "symbol": "512650.SH"},
+        ])
+        mock_df = pd.DataFrame({
+            '代码': ['510300', '159919', '512650'],
+            '名称': ['沪深300ETF', '嘉实沪深300ETF', '华泰柏瑞沪深300ETF'],
+            '最新价': [4.123, 4.056, 4.222],
+            '涨跌幅': [1.23, -0.45, 0.66],
+            '涨跌额': [0.05, -0.02, 0.03],
+            '成交量': [1000000, 500000, 800000],
+            '成交额': [4123000, 2028000, 3377600],
+        })
+        mock_ak.fund_etf_spot_em.return_value = mock_df
+
+        result = self.service.get_etf_spot(query='沪深300', page=2, page_size=1)
+
+        assert result["total"] == 3
+        assert result["page"] == 2
+        assert result["page_size"] == 1
+        assert result["total_pages"] == 3
+        assert [item["code"] for item in result["items"]] == ["159919"]
+
+        name_only = self.service.get_etf_spot(query='嘉实', page=1, page_size=10)
+        assert [item["code"] for item in name_only["items"]] == ["159919"]
+
+        no_pinyin_match = self.service.get_etf_spot(query='htbrhs300', page=1, page_size=10)
+        assert no_pinyin_match == {
+            "items": [],
+            "total": 0,
+            "page": 1,
+            "page_size": 10,
+            "total_pages": 0,
+        }
+
+    @patch('src.fund.catalog_service.ak')
+    @patch.object(FundCatalogService, 'get_fund_catalog')
+    def test_get_etf_spot_with_cache(self, mock_catalog, mock_ak):
+        """测试 ETF 实时行情缓存复用原始列表，再做过滤分页"""
+        mock_catalog.return_value = pd.DataFrame([
+            {"code": "510300", "name": "沪深300ETF", "fund_type": "ETF", "pinyin_abbr": "hs300", "pinyin_full": "hushen300etf", "is_exchange_traded": True, "exchange": "SH", "symbol": "510300.SH"},
+        ])
         mock_df = pd.DataFrame({
             '代码': ['510300'],
             '名称': ['沪深300ETF'],
@@ -55,15 +108,15 @@ class TestFundCatalogService:
         mock_ak.fund_etf_spot_em.return_value = mock_df
         
         # 第一次调用
-        result1 = self.service.get_etf_spot(limit=1)
+        result1 = self.service.get_etf_spot(page=1, page_size=1)
         assert mock_ak.fund_etf_spot_em.call_count == 1
         
         # 第二次调用应该使用缓存
-        result2 = self.service.get_etf_spot(limit=1)
+        result2 = self.service.get_etf_spot(query='510300', page=1, page_size=1)
         assert mock_ak.fund_etf_spot_em.call_count == 1  # 没有再次调用
         
         # 强制刷新
-        result3 = self.service.get_etf_spot(limit=1, force_refresh=True)
+        result3 = self.service.get_etf_spot(page=1, page_size=1, force_refresh=True)
         assert mock_ak.fund_etf_spot_em.call_count == 2
         
         # 验证缓存统计
@@ -72,60 +125,94 @@ class TestFundCatalogService:
         assert stats['etf_spot']['misses'] == 2
     
     @patch('src.fund.catalog_service.ak')
-    def test_get_etf_spot_error(self, mock_ak):
+    @patch.object(FundCatalogService, 'get_fund_catalog')
+    def test_get_etf_spot_error(self, mock_catalog, mock_ak):
         """测试获取 ETF 实时行情失败"""
+        mock_catalog.return_value = pd.DataFrame(columns=["code", "name", "fund_type", "pinyin_abbr", "pinyin_full", "is_exchange_traded", "exchange", "symbol"])
         mock_ak.fund_etf_spot_em.side_effect = Exception("Network error")
         
         result = self.service.get_etf_spot()
         
-        assert result == []
-    
+        assert result == {
+            "items": [],
+            "total": 0,
+            "page": 1,
+            "page_size": 20,
+            "total_pages": 0,
+        }
+
     @patch('src.fund.catalog_service.ak')
-    def test_get_fund_nav(self, mock_ak):
-        """测试获取基金历史净值"""
+    @patch.object(FundCatalogService, 'get_fund_catalog')
+    def test_get_fund_nav_routes_otc_open_fund_to_open_fund_api(self, mock_catalog, mock_ak):
+        """测试 OTC 开放式基金走开放式基金净值接口"""
+        mock_catalog.return_value = pd.DataFrame([
+            {
+                "code": "000041",
+                "name": "华夏全球股票(QDII)",
+                "fund_type": "股票型",
+                "pinyin_abbr": "hxqqgp",
+                "pinyin_full": "huaxiaquanqiugupiao",
+                "is_exchange_traded": False,
+                "exchange": "OTC",
+                "symbol": "000041.OTC",
+            }
+        ])
+
         # 模拟 akshare 返回数据
         mock_df = pd.DataFrame({
             '净值日期': ['2024-01-01', '2024-01-02'],
             '单位净值': [1.2345, 1.2400],
             '累计净值': [1.5678, 1.5733],
             '日增长率': [0.45, 0.44],
-            '申购状态': ['开放申购', '开放申购'],
-            '赎回状态': ['开放赎回', '开放赎回'],
         })
-        mock_ak.fund_etf_fund_info_em.return_value = mock_df
+        mock_ak.fund_open_fund_info_em.return_value = mock_df
         
-        result = self.service.get_fund_nav(symbol='511280', start_date='20240101', end_date='20240102')
+        result = self.service.get_fund_nav(symbol='000041', start_date='20240101', end_date='20240102')
         
         assert len(result) == 2
         assert result[0]['date'] == '2024-01-01'
         assert result[0]['nav'] == 1.2345
         assert result[0]['acc_nav'] == 1.5678
-        mock_ak.fund_etf_fund_info_em.assert_called_once_with(
-            fund='511280', start_date='20240101', end_date='20240102'
+        mock_ak.fund_open_fund_info_em.assert_called_once_with(
+            symbol='000041', indicator='单位净值走势', period='成立来'
         )
-    
+        mock_ak.fund_etf_fund_info_em.assert_not_called()
+
     @patch('src.fund.catalog_service.ak')
-    def test_get_fund_nav_with_cache(self, mock_ak):
+    @patch.object(FundCatalogService, 'get_fund_catalog')
+    def test_get_fund_nav_with_cache(self, mock_catalog, mock_ak):
         """测试基金净值缓存"""
+        mock_catalog.return_value = pd.DataFrame([
+            {
+                "code": "000041",
+                "name": "华夏全球股票(QDII)",
+                "fund_type": "股票型",
+                "pinyin_abbr": "hxqqgp",
+                "pinyin_full": "huaxiaquanqiugupiao",
+                "is_exchange_traded": False,
+                "exchange": "OTC",
+                "symbol": "000041.OTC",
+            }
+        ])
         mock_df = pd.DataFrame({
             '净值日期': ['2024-01-01'],
             '单位净值': [1.0],
             '累计净值': [1.0],
             '日增长率': [0.0],
         })
-        mock_ak.fund_etf_fund_info_em.return_value = mock_df
+        mock_ak.fund_open_fund_info_em.return_value = mock_df
         
         # 第一次调用
-        result1 = self.service.get_fund_nav(symbol='511280')
-        assert mock_ak.fund_etf_fund_info_em.call_count == 1
+        result1 = self.service.get_fund_nav(symbol='000041.OTC')
+        assert mock_ak.fund_open_fund_info_em.call_count == 1
         
         # 第二次调用应该使用缓存
-        result2 = self.service.get_fund_nav(symbol='511280')
-        assert mock_ak.fund_etf_fund_info_em.call_count == 1
+        result2 = self.service.get_fund_nav(symbol='000041.OTC')
+        assert mock_ak.fund_open_fund_info_em.call_count == 1
         
         # 不同参数应该重新调用
-        result3 = self.service.get_fund_nav(symbol='511280', start_date='20240101')
-        assert mock_ak.fund_etf_fund_info_em.call_count == 2
+        result3 = self.service.get_fund_nav(symbol='000041.OTC', start_date='20240101')
+        assert mock_ak.fund_open_fund_info_em.call_count == 2
         
         # 验证缓存统计
         stats = self.service.get_cache_stats()
@@ -133,31 +220,163 @@ class TestFundCatalogService:
         assert stats['fund_nav']['misses'] == 2
     
     @patch('src.fund.catalog_service.ak')
-    def test_get_fund_nav_with_symbol_suffix(self, mock_ak):
-        """测试获取基金历史净值（带交易所后缀）"""
-        mock_df = pd.DataFrame({
-            '净值日期': ['2024-01-01'],
-            '单位净值': [1.0],
-            '累计净值': [1.0],
-            '日增长率': [0.0],
-        })
-        mock_ak.fund_etf_fund_info_em.return_value = mock_df
-        
-        result = self.service.get_fund_nav(symbol='511280.SH')
-        
-        # 应该提取纯代码 511280
-        mock_ak.fund_etf_fund_info_em.assert_called_once()
-        call_args = mock_ak.fund_etf_fund_info_em.call_args
-        assert call_args[1]['fund'] == '511280'
+    @patch.object(FundCatalogService, 'get_fund_catalog')
+    def test_get_fund_nav_rejects_exchange_traded_etf_without_true_nav(self, mock_catalog, mock_ak):
+        """测试交易所基金无真实净值时返回受控领域错误"""
+        from src.fund.catalog_service import FundNavUnavailableError
+
+        mock_catalog.return_value = pd.DataFrame([
+            {
+                "code": "511280",
+                "name": "某场内ETF",
+                "fund_type": "ETF",
+                "pinyin_abbr": "etf",
+                "pinyin_full": "etf",
+                "is_exchange_traded": True,
+                "exchange": "SH",
+                "symbol": "511280.SH",
+            }
+        ])
+
+        with pytest.raises(FundNavUnavailableError) as exc_info:
+            self.service.get_fund_nav(symbol='511280.SH')
+
+        assert exc_info.value.code == "fund_nav_unsupported"
+        assert "511280.SH" in str(exc_info.value)
+        mock_ak.fund_open_fund_info_em.assert_not_called()
+        mock_ak.fund_etf_fund_info_em.assert_not_called()
     
     @patch('src.fund.catalog_service.ak')
-    def test_get_fund_nav_error(self, mock_ak):
+    @patch.object(FundCatalogService, 'get_fund_catalog')
+    def test_get_fund_nav_error(self, mock_catalog, mock_ak):
         """测试获取基金历史净值失败"""
-        mock_ak.fund_etf_fund_info_em.side_effect = Exception("API error")
+        mock_catalog.return_value = pd.DataFrame([
+            {
+                "code": "000041",
+                "name": "华夏全球股票(QDII)",
+                "fund_type": "股票型",
+                "pinyin_abbr": "hxqqgp",
+                "pinyin_full": "huaxiaquanqiugupiao",
+                "is_exchange_traded": False,
+                "exchange": "OTC",
+                "symbol": "000041.OTC",
+            }
+        ])
+        mock_ak.fund_open_fund_info_em.side_effect = Exception("API error")
         
-        result = self.service.get_fund_nav(symbol='511280')
+        result = self.service.get_fund_nav(symbol='000041')
         
         assert result == []
+
+    @patch('src.fund.catalog_service.ak')
+    @patch.object(FundCatalogService, 'get_fund_catalog')
+    def test_get_fund_nav_uses_explicit_market_metadata_not_fund_type_heuristic(self, mock_catalog, mock_ak):
+        """测试 NAV 路由使用显式市场属性，而不是 fund_type 子串猜测"""
+        mock_catalog.return_value = pd.DataFrame([
+            {
+                "code": "013456",
+                "name": "某ETF联接A",
+                "fund_type": "ETF联接",
+                "pinyin_abbr": "etflj",
+                "pinyin_full": "etflianjie",
+                "is_exchange_traded": False,
+                "exchange": "OTC",
+                "symbol": "013456.OTC",
+            }
+        ])
+        mock_ak.fund_open_fund_info_em.return_value = pd.DataFrame({
+            '净值日期': ['2024-01-01'],
+            '单位净值': [1.1111],
+            '累计净值': [1.1111],
+            '日增长率': [0.0],
+        })
+
+        result = self.service.get_fund_nav(symbol='013456.OTC', start_date='20240101', end_date='20240131')
+
+        assert result[0]['nav'] == 1.1111
+        mock_ak.fund_open_fund_info_em.assert_called_once_with(
+            symbol='013456', indicator='单位净值走势', period='成立来'
+        )
+
+    @patch('src.fund.catalog_service.ak')
+    @patch.object(FundCatalogService, 'get_fund_catalog')
+    def test_get_etf_spot_uses_catalog_exchange_traded_metadata_for_scope(self, mock_catalog, mock_ak):
+        """测试 ETF 实时行情使用 catalog 显式元数据限制场内范围"""
+        mock_catalog.return_value = pd.DataFrame([
+            {
+                "code": "510300",
+                "name": "沪深300ETF",
+                "fund_type": "ETF",
+                "pinyin_abbr": "hs300",
+                "pinyin_full": "hushen300etf",
+                "is_exchange_traded": True,
+                "exchange": "SH",
+                "symbol": "510300.SH",
+            },
+            {
+                "code": "013456",
+                "name": "某ETF联接A",
+                "fund_type": "ETF联接",
+                "pinyin_abbr": "etflj",
+                "pinyin_full": "etflianjie",
+                "is_exchange_traded": False,
+                "exchange": "OTC",
+                "symbol": "013456.OTC",
+            },
+        ])
+        mock_ak.fund_etf_spot_em.return_value = pd.DataFrame({
+            '代码': ['510300', '013456'],
+            '名称': ['沪深300ETF', '某ETF联接A'],
+            '最新价': [4.123, 1.234],
+            '涨跌幅': [1.23, 0.1],
+            '涨跌额': [0.05, 0.01],
+            '成交量': [1000000, 200000],
+            '成交额': [4123000, 246800],
+            '开盘价': [4.10, 1.22],
+            '最高价': [4.15, 1.25],
+            '最低价': [4.08, 1.20],
+            '昨收': [4.07, 1.22],
+        })
+
+        result = self.service.get_etf_spot(page=1, page_size=10)
+
+        assert [item['code'] for item in result['items']] == ['510300']
+
+    @patch('src.fund.catalog_service.ak')
+    @patch.object(FundCatalogService, 'get_fund_catalog')
+    def test_get_etf_spot_drops_rows_without_catalog_metadata(self, mock_catalog, mock_ak):
+        """测试 ETF 实时行情无法通过 catalog 解析元数据时 fail closed"""
+        mock_catalog.return_value = pd.DataFrame([
+            {
+                "code": "510300",
+                "name": "沪深300ETF",
+                "fund_type": "ETF",
+                "pinyin_abbr": "hs300",
+                "pinyin_full": "hushen300etf",
+                "is_exchange_traded": True,
+                "exchange": "SH",
+                "symbol": "510300.SH",
+            },
+        ])
+        mock_ak.fund_etf_spot_em.return_value = pd.DataFrame({
+            '代码': ['510300', '159919'],
+            '名称': ['沪深300ETF', '未收录ETF'],
+            '最新价': [4.123, 2.345],
+            '涨跌幅': [1.23, 0.5],
+            '涨跌额': [0.05, 0.01],
+            '成交量': [1000000, 300000],
+            '成交额': [4123000, 703500],
+            '开盘价': [4.10, 2.33],
+            '最高价': [4.15, 2.36],
+            '最低价': [4.08, 2.30],
+            '昨收': [4.07, 2.34],
+        })
+
+        result = self.service.get_etf_spot(page=1, page_size=10)
+
+        assert [item['code'] for item in result['items']] == ['510300']
+        assert result['items'][0]['exchange'] == 'SH'
+        assert result['items'][0]['symbol'] == '510300.SH'
     
     @patch('src.fund.catalog_service.ak')
     def test_get_etf_history(self, mock_ak):
@@ -228,8 +447,13 @@ class TestFundCatalogService:
         assert result == []
     
     @patch('src.fund.catalog_service.ak')
-    def test_get_etf_spot_nan_handling(self, mock_ak):
+    @patch.object(FundCatalogService, 'get_fund_catalog')
+    def test_get_etf_spot_nan_handling(self, mock_catalog, mock_ak):
         """测试 ETF 实时行情 NaN 处理"""
+        mock_catalog.return_value = pd.DataFrame([
+            {"code": "510300", "name": "沪深300ETF", "fund_type": "ETF", "pinyin_abbr": "hs300", "pinyin_full": "hushen300etf", "is_exchange_traded": True, "exchange": "SH", "symbol": "510300.SH"},
+            {"code": "159919", "name": "嘉实沪深300ETF", "fund_type": "ETF", "pinyin_abbr": "js300", "pinyin_full": "jiashihushen300etf", "is_exchange_traded": True, "exchange": "SZ", "symbol": "159919.SZ"},
+        ])
         # 模拟包含 NaN 的数据
         mock_df = pd.DataFrame({
             '代码': ['510300', '159919'],
@@ -246,11 +470,11 @@ class TestFundCatalogService:
         })
         mock_ak.fund_etf_spot_em.return_value = mock_df
         
-        result = self.service.get_etf_spot(limit=2)
+        result = self.service.get_etf_spot(page=1, page_size=2)
         
         # 应该只返回有效价格的 ETF
-        assert len(result) == 1
-        assert result[0]['code'] == '510300'
+        assert len(result["items"]) == 1
+        assert result["items"][0]['code'] == '510300'
     
     def test_clear_cache(self):
         """测试清除缓存"""
@@ -281,28 +505,39 @@ class TestFundRoutes:
     def test_get_etf_spot_endpoint(self, authenticated_client):
         """测试 ETF 实时行情接口"""
         with patch('src.api.routes_fund._get_fund_catalog_service') as mock_service:
-            mock_service.return_value.get_etf_spot.return_value = [
-                {'code': '510300', 'name': '沪深300ETF', 'price': 4.123}
-            ]
+            mock_service.return_value.get_etf_spot.return_value = {
+                "items": [{'code': '510300', 'name': '沪深300ETF', 'price': 4.123}],
+                "total": 1,
+                "page": 2,
+                "page_size": 5,
+                "total_pages": 1,
+            }
             
-            response = authenticated_client.get('/api/v1/fund/etf/spot?limit=10')
+            response = authenticated_client.get('/api/v1/fund/etf/spot?page=2&page_size=5&query=5103')
             
             assert response.status_code == 200
             data = response.json()
-            assert len(data) == 1
-            assert data[0]['code'] == '510300'
-            mock_service.return_value.get_etf_spot.assert_called_once_with(limit=10, force_refresh=False)
+            assert data["items"][0]['code'] == '510300'
+            assert data["page"] == 2
+            assert data["page_size"] == 5
+            mock_service.return_value.get_etf_spot.assert_called_once_with(page=2, page_size=5, query='5103', force_refresh=False)
     
     def test_get_etf_spot_with_force_refresh(self, authenticated_client):
         """测试 ETF 实时行情接口强制刷新"""
         with patch('src.api.routes_fund._get_fund_catalog_service') as mock_service:
-            mock_service.return_value.get_etf_spot.return_value = []
+            mock_service.return_value.get_etf_spot.return_value = {
+                "items": [],
+                "total": 0,
+                "page": 1,
+                "page_size": 20,
+                "total_pages": 0,
+            }
             
             response = authenticated_client.get('/api/v1/fund/etf/spot?force_refresh=true')
             
             assert response.status_code == 200
-            mock_service.return_value.get_etf_spot.assert_called_once_with(limit=50, force_refresh=True)
-    
+            mock_service.return_value.get_etf_spot.assert_called_once_with(page=1, page_size=20, query='', force_refresh=True)
+
     def test_get_fund_nav_endpoint(self, authenticated_client):
         """测试基金净值查询接口"""
         with patch('src.api.routes_fund._get_fund_catalog_service') as mock_service:
@@ -316,6 +551,27 @@ class TestFundRoutes:
             data = response.json()
             assert len(data) == 1
             assert data[0]['nav'] == 1.2345
+
+    def test_get_fund_nav_endpoint_returns_422_for_unsupported_exchange_traded_nav(self, authenticated_client):
+        """测试场内基金无真实净值时接口返回 422 领域错误"""
+        from src.fund.catalog_service import FundNavUnavailableError
+
+        with patch('src.api.routes_fund._get_fund_catalog_service') as mock_service:
+            mock_service.return_value.get_fund_nav.side_effect = FundNavUnavailableError(
+                symbol='511280.SH',
+                reason='true NAV unavailable for exchange-traded fund via current provider',
+            )
+
+            response = authenticated_client.get('/api/v1/fund/nav/511280.SH')
+
+        assert response.status_code == 422
+        assert response.json() == {
+            'detail': {
+                'code': 'fund_nav_unsupported',
+                'symbol': '511280.SH',
+                'reason': 'true NAV unavailable for exchange-traded fund via current provider',
+            }
+        }
     
     def test_get_etf_history_endpoint(self, authenticated_client):
         """测试 ETF 历史行情接口"""

@@ -1,804 +1,135 @@
-/* 基金视图样式 */
-
-/* 标签页样式 */
-#fund-tabs {
-  margin-bottom: 1rem;
-  border-bottom: 1px solid var(--border-color);
-}
-
-#fund-tabs .nav-link {
-  color: var(--text-secondary);
-  border: none;
-  padding: 0.75rem 1rem;
-  font-size: 0.9rem;
-  transition: all 0.2s ease;
-}
-
-#fund-tabs .nav-link:hover {
-  color: var(--text-primary);
-  background-color: var(--bg-hover);
-}
-
-#fund-tabs .nav-link.active {
-  color: var(--primary-color);
-  border-bottom: 2px solid var(--primary-color);
-  background-color: transparent;
-}
-
-#fund-tabs .nav-link i {
-  margin-right: 0.5rem;
-}
-
-/* 控制栏样式 */
-.fund-controls {
-  display: flex;
-  gap: 1rem;
-  margin-bottom: 1rem;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.fund-controls .input-group {
-  flex-shrink: 0;
-}
-
-.fund-controls .form-select {
-  min-width: 150px;
-}
-
-/* 表格样式 */
-#fund-tab-content .table {
-  font-size: 0.85rem;
-  margin-bottom: 0;
-}
-
-#fund-tab-content .table th {
-  background-color: var(--bg-secondary);
-  border-bottom: 2px solid var(--border-color);
-  font-weight: 600;
-  color: var(--text-primary);
-  white-space: nowrap;
-  padding: 0.75rem 0.5rem;
-}
-
-#fund-tab-content .table td {
-  padding: 0.6rem 0.5rem;
-  vertical-align: middle;
-  border-bottom: 1px solid var(--border-color-light);
-}
-
-#fund-tab-content .table tbody tr:hover {
-  background-color: var(--bg-hover);
-}
-
-/* 数值对齐 */
-.text-end {
-  text-align: right !important;
-}
-
-/* 涨跌颜色 */
-.change-positive {
-  color: var(--color-up, #22c55e);
-  font-weight: 600;
-}
-
-.change-negative {
-  color: var(--color-down, #ef4444);
-  font-weight: 600;
-}
-
-.change-zero {
-  color: var(--text-secondary);
-}
-
-/* 代码样式 */
-.fund-code {
-  font-family: 'Courier New', monospace;
-  font-weight: 600;
-  color: var(--primary-color);
-}
-
-/* 名称样式 */
-.fund-name {
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* 类型标签 */
-.fund-type-badge {
-  display: inline-block;
-  padding: 0.2rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  background-color: var(--bg-secondary);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
-}
-
-/* 操作按钮 */
-.btn-view-nav {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
-  border-radius: 4px;
-}
-
-.fund-action-cell {
-  white-space: nowrap;
-}
-
-.fund-action-cell .btn-view-nav + .btn-view-nav {
-  margin-left: 0.35rem;
-}
-
-.fund-action-cell {
-  white-space: nowrap;
-}
-
-.fund-action-cell .btn-view-nav + .btn-view-nav {
-  margin-left: 0.35rem;
-}
-
-/* 图表容器 */
-#nav-chart-container {
-  background-color: var(--bg-secondary);
-  border-radius: 8px;
-  padding: 1rem;
-  margin-bottom: 1rem;
-  border: 1px solid var(--border-color);
-}
-
-/* 加载状态 */
-.loading-spinner {
-  display: inline-block;
-  width: 1rem;
-  height: 1rem;
-  border: 2px solid var(--border-color);
-  border-top-color: var(--primary-color);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* 空状态 */
-.empty-state {
-  text-align: center;
-  padding: 3rem 1rem;
-  color: var(--text-secondary);
-}
-
-.empty-state i {
-  font-size: 3rem;
-  margin-bottom: 1rem;
-  opacity: 0.5;
-}
-
-.empty-state p {
-  font-size: 1rem;
-  margin: 0;
-}
-
-/* 响应式设计 */
-@media (max-width: 768px) {
-  .fund-controls {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  
-  .fund-controls .input-group,
-  .fund-controls .form-select {
-    max-width: 100% !important;
-  }
-  
-  #fund-tab-content .table {
-    font-size: 0.8rem;
-  }
-  
-  #fund-tab-content .table th,
-  #fund-tab-content .table td {
-    padding: 0.5rem 0.3rem;
-  }
-  
-  .fund-name {
-    max-width: 120px;
-  }
-}
-
-@media (max-width: 576px) {
-  #fund-tabs .nav-link {
-    padding: 0.5rem 0.75rem;
-    font-size: 0.8rem;
-  }
-  
-  #fund-tabs .nav-link i {
-    display: none;
-  }
-}
-
-/* 滚动条样式 */
-.table-responsive::-webkit-scrollbar {
-  height: 6px;
-}
-
-.table-responsive::-webkit-scrollbar-track {
-  background: var(--bg-secondary);
-  border-radius: 3px;
-}
-
-.table-responsive::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 3px;
-}
-
-.table-responsive::-webkit-scrollbar-thumb:hover {
-  background: var(--text-secondary);
-}
-
-/* 工具提示 */
-.tooltip-inner {
-  font-size: 0.8rem;
-  max-width: 300px;
-}
-
-/* 排序指示器 */
-.sortable-header {
-  cursor: pointer;
-  user-select: none;
-  position: relative;
-}
-
-.sortable-header::after {
-  content: '';
-  display: inline-block;
-  width: 0;
-  height: 0;
-  margin-left: 0.5rem;
-  vertical-align: middle;
-}
-
-.sortable-header.sort-asc::after {
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-bottom: 4px solid var(--primary-color);
-}
-
-.sortable-header.sort-desc::after {
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-top: 4px solid var(--primary-color);
-}
-
-/* 刷新按钮动画 */
-#btn-refresh-fund.rotating i {
-  animation: rotate 1s linear infinite;
-}
-
-@keyframes rotate {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* 基金分析结果样式 */
-.fund-analysis-result {
-  margin-top: 1rem;
-}
-
-.fund-analysis-empty {
-  text-align: center;
-  padding: 3rem;
-  color: var(--text-muted);
-}
-
-.fund-analysis-empty i {
-  font-size: 3rem;
-  margin-bottom: 1rem;
-  display: block;
-}
-
-.fund-analysis-card {
-  background: var(--bg-card);
-  border-radius: 8px;
-  padding: 1.5rem;
-  margin-bottom: 1rem;
-}
-
-.fund-analysis-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.fund-analysis-header h3 {
-  margin: 0;
-  font-size: 1.2rem;
-}
-
-.fund-rating-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  font-weight: bold;
-  font-size: 1.2rem;
-}
-
-.fund-rating-badge.aaa {
-  background: linear-gradient(135deg, #22c55e, #16a34a);
-  color: white;
-}
-
-.fund-rating-badge.aa {
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
-  color: white;
-}
-
-.fund-rating-badge.a {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  color: white;
-}
-
-.fund-rating-badge.b {
-  background: linear-gradient(135deg, #f97316, #ea580c);
-  color: white;
-}
-
-.fund-rating-badge.c {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-  color: white;
-}
-
-.fund-metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.fund-metric-item {
-  background: var(--bg-secondary);
-  padding: 1rem;
-  border-radius: 6px;
-}
-
-.fund-metric-label {
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  margin-bottom: 0.5rem;
-}
-
-.fund-metric-value {
-  font-size: 1.5rem;
-  font-weight: 600;
-}
-
-.fund-metric-value.positive {
-  color: var(--color-up, #22c55e);
-}
-
-.fund-metric-value.negative {
-  color: var(--color-down, #ef4444);
-}
-
-/* 基金对比样式 */
-.fund-compare-result {
-  margin-top: 1rem;
-}
-
-.fund-compare-empty {
-  text-align: center;
-  padding: 3rem;
-  color: var(--text-muted);
-}
-
-.fund-compare-empty i {
-  font-size: 3rem;
-  margin-bottom: 1rem;
-  display: block;
-}
-
-.fund-compare-table {
-  width: 100%;
-}
-
-.fund-compare-table th {
-  background: var(--bg-secondary);
-  padding: 0.75rem;
-  text-align: left;
-  font-weight: 600;
-}
-
-.fund-compare-table td {
-  padding: 0.75rem;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.fund-compare-table tr:hover {
-  background: var(--bg-hover);
-}
-
-.fund-compare-best {
-  background: rgba(34, 197, 94, 0.1);
-  font-weight: 600;
-  color: var(--color-up, #22c55e);
-}
-
-/* 基金筛选样式 */
-.fund-screen-controls {
-  margin-bottom: 1.5rem;
-}
-
-.fund-screen-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  align-items: flex-end;
-}
-
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.filter-group label {
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-.filter-group .form-control,
-.filter-group .form-select {
-  min-width: 150px;
-}
-
-.fund-screen-result {
-  margin-top: 1rem;
-}
-
-.fund-screen-empty {
-  text-align: center;
-  padding: 3rem;
-  color: var(--text-muted);
-}
-
-.fund-screen-empty i {
-  font-size: 3rem;
-  margin-bottom: 1rem;
-  display: block;
-}
-
-.fund-screen-table {
-  width: 100%;
-}
-
-.fund-screen-table th {
-  background: var(--bg-secondary);
-  padding: 0.75rem;
-  text-align: left;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.fund-screen-table td {
-  padding: 0.75rem;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.fund-screen-table tr:hover {
-  background: var(--bg-hover);
-}
-
-/* 图表容器 */
-.fund-chart-container {
-  background: var(--bg-card);
-  border-radius: 8px;
-  padding: 1rem;
-  margin-bottom: 1rem;
-}
-
-.fund-chart-container canvas {
-  width: 100%;
-  height: 300px;
-}
-
-/* 加载状态 */
-.fund-loading {
-  text-align: center;
-  padding: 2rem;
-  color: var(--text-muted);
-}
-
-.fund-loading .spinner-border {
-  width: 2rem;
-  height: 2rem;
-  margin-bottom: 1rem;
-}
-
-/* 响应式调整 */
-@media (max-width: 768px) {
-  .fund-metrics-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .fund-screen-filters {
-    flex-direction: column;
-  }
-  
-  .filter-group .form-control,
-  .filter-group .form-select {
-    min-width: 100%;
-  }
-}
-
-/* 基金快速分析样式 */
-.fund-quick-analysis {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  width: 350px;
-  background: var(--bg-card);
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  z-index: 1000;
-  overflow: hidden;
-}
-
-.fund-quick-analysis-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1rem;
-  background: var(--primary-color);
-  color: white;
-}
-
-.fund-quick-analysis-header h4 {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.fund-quick-analysis-header .btn {
-  color: white;
-  border-color: white;
-}
-
-.fund-quick-analysis-content {
-  padding: 1rem;
-}
-
-.fund-quick-result {
-  margin-top: 1rem;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.fund-quick-metric {
-  display: flex;
-  justify-content: space-between;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.fund-quick-metric:last-child {
-  border-bottom: none;
-}
-
-.fund-quick-metric-label {
-  color: var(--text-muted);
-  font-size: 0.85rem;
-}
-
-.fund-quick-metric-value {
-  font-weight: 600;
-}
-
-.fund-quick-metric-value.positive {
-  color: var(--color-up, #22c55e);
-}
-
-.fund-quick-metric-value.negative {
-  color: var(--color-down, #ef4444);
-}
-
-/* 通知样式 */
-.notification {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  padding: 1rem 1.5rem;
-  border-radius: 8px;
-  background: var(--bg-card);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 9999;
-  transform: translateX(120%);
-  transition: transform 0.3s ease;
-}
-
-.notification.show {
-  transform: translateX(0);
-}
-
-.notification-content {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.notification-success {
-  border-left: 4px solid var(--color-up, #22c55e);
-}
-
-.notification-success i {
-  color: var(--color-up, #22c55e);
-}
-
-.notification-error {
-  border-left: 4px solid var(--color-down, #ef4444);
-}
-
-.notification-error i {
-  color: var(--color-down, #ef4444);
-}
-
-.notification-info {
-  border-left: 4px solid var(--primary-color, #3b82f6);
+/* 基金行情页复用 A股/美股市场工作台结构，仅保留基金专属扩展。 */
+#view-fund{
+  height:calc(100vh - 36px);
+  overflow:hidden;
 }
 
-.notification-info i {
-  color: var(--primary-color, #3b82f6);
+.fund-shell .fund-filter-stack{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
 }
 
-/* Alpha 持仓分析中的基金分析样式 */
-.alpha-fund-analysis-card {
-  background: var(--bg-card);
-  border-radius: 8px;
-  padding: 1rem;
-  margin-top: 1rem;
-  border: 1px solid var(--border-color);
+.fund-shell .fund-date-row{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:8px;
 }
 
-.alpha-fund-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--border-color);
+.fund-refresh-btn{
+  width:100%;
+  margin-top:8px;
 }
 
-.alpha-fund-title {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-weight: 600;
+#btn-refresh-fund.rotating{
+  animation:fund-refresh-spin 1s linear infinite;
 }
 
-.alpha-fund-title i {
-  color: var(--primary-color);
+@keyframes fund-refresh-spin{
+  to{transform:rotate(360deg)}
 }
 
-.alpha-fund-rating {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  font-weight: bold;
-  font-size: 0.9rem;
+.fund-pane{
+  display:none;
+  flex:1;
+  min-height:0;
+  flex-direction:column;
+  gap:8px;
 }
 
-.alpha-fund-rating.aaa {
-  background: linear-gradient(135deg, #22c55e, #16a34a);
-  color: white;
+.fund-pane.active{
+  display:flex;
 }
 
-.alpha-fund-rating.aa {
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
-  color: white;
+.fund-shell .mkt-table th,
+.fund-shell .mkt-table td{
+  text-align:right;
 }
 
-.alpha-fund-rating.a {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  color: white;
+.fund-shell .mkt-table th:first-child,
+.fund-shell .mkt-table th:nth-child(2),
+.fund-shell .mkt-table td:first-child,
+.fund-shell .mkt-table td:nth-child(2){
+  text-align:left;
 }
 
-.alpha-fund-rating.b {
-  background: linear-gradient(135deg, #f97316, #ea580c);
-  color: white;
+#fund-catalog-table th,
+#fund-catalog-table td,
+#fund-nav-table th:first-child,
+#fund-nav-table td:first-child,
+#fund-nav-table th:nth-child(n+5),
+#fund-nav-table td:nth-child(n+5){
+  text-align:left;
 }
 
-.alpha-fund-rating.c {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-  color: white;
+.fund-code{
+  color:var(--accent);
+  font-family:var(--font-mono);
+  font-weight:700;
 }
 
-.alpha-fund-metrics {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0.75rem;
-  margin-bottom: 1rem;
+.fund-name{
+  display:inline-block;
+  max-width:220px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  vertical-align:bottom;
+  white-space:nowrap;
 }
 
-.alpha-fund-metric {
-  display: flex;
-  justify-content: space-between;
-  padding: 0.5rem;
-  background: var(--bg-secondary);
-  border-radius: 4px;
+.fund-action-cell{
+  white-space:nowrap;
 }
 
-.alpha-fund-metric-label {
-  font-size: 0.85rem;
-  color: var(--text-muted);
+.fund-action-cell .btn-view-nav{
+  padding:4px 8px;
+  font-size:10px;
 }
 
-.alpha-fund-metric-value {
-  font-weight: 600;
+.fund-action-cell .btn-view-nav+.btn-view-nav{
+  margin-left:4px;
 }
 
-.alpha-fund-metric-value.positive {
-  color: var(--color-up, #22c55e);
+.fund-shell .fund-page-info{
+  min-width:56px;
+  color:var(--muted);
+  text-align:center;
 }
 
-.alpha-fund-metric-value.negative {
-  color: var(--color-down, #ef4444);
+.change-positive{
+  color:var(--green);
+  font-weight:700;
 }
 
-.alpha-fund-actions {
-  display: flex;
-  gap: 0.5rem;
+.change-negative{
+  color:var(--red);
+  font-weight:700;
 }
 
-.alpha-fund-error {
-  color: var(--color-down, #ef4444);
-  padding: 0.5rem;
-  font-size: 0.9rem;
+.change-zero{
+  color:var(--dim);
 }
 
-.alpha-fund-analyze-btn {
-  background: var(--primary-color);
-  color: white;
-  border: none;
-  padding: 0.25rem 0.75rem;
-  border-radius: 4px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: background-color 0.2s;
+.fund-error{
+  color:var(--red);
 }
 
-.alpha-fund-analyze-btn:hover {
-  background: var(--primary-color-dark, #2563eb);
+.fund-nav-chart{
+  height:280px;
+  min-height:280px;
+  padding:10px;
+  background:var(--panel-2);
+  border:1px solid var(--stroke);
+  border-radius:var(--radius);
 }
 
-.alpha-fund-analysis-result {
-  margin-top: 1rem;
-  animation: fadeIn 0.3s ease;
+.fund-nav-chart canvas{
+  width:100%;
+  height:100%;
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+@media(max-width:1023px){
+  .fund-name{
+    max-width:160px;
   }
 }

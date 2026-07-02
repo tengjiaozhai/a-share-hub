@@ -229,6 +229,80 @@ def test_render_dashboard_html_contains_market_and_alpha_controls():
     for marker in forbidden_markers:
         assert marker not in html
 
+
+def test_render_dashboard_html_contains_fund_catalog_pagination_contract():
+    html = render_dashboard_html()
+
+    required_markers = [
+        'id="fund-catalog-table"',
+        'id="fund-catalog-count"',
+        'id="fund-catalog-pagination"',
+        "catalogPagination: {",
+        "pageSize: 20",
+        "catalogRequestToken: 0",
+        "resetCatalogPagination(",
+        "goToCatalogPage(",
+        "response.ok",
+    ]
+    for marker in required_markers:
+        assert marker in html
+
+    assert 'id="fund-limit"' not in html
+    assert 'id="fund-catalog-page-size"' not in html
+    assert "20 / 页" not in html
+
+
+def test_render_dashboard_html_contains_etf_spot_pagination_contract():
+    html = render_dashboard_html()
+
+    required_markers = [
+        'data-target="#etf-spot"',
+        'id="etf-spot-table"',
+        'id="etf-spot-count"',
+        'id="etf-spot-pagination"',
+        "etfPagination: {",
+        "pageSize: 20",
+        "etfRequestToken: 0",
+        "resetEtfPagination(",
+        "goToEtfPage(",
+        "commitEtfSearch(",
+        "query: ''",
+        "response.ok",
+    ]
+    for marker in required_markers:
+        assert marker in html
+
+    assert 'id="etf-limit"' not in html
+    assert "ETF 条数" not in html
+
+
+def test_render_dashboard_html_contains_fund_nav_unsupported_message_contract():
+    html = render_dashboard_html()
+
+    required_markers = [
+        "navRequestToken: 0",
+        "navRequestKey: ''",
+        "fund_nav_unsupported",
+        "该品种仅支持实时行情/K线，不支持净值查询",
+        "查询净值",
+        "历史 NAV",
+    ]
+    for marker in required_markers:
+        assert marker in html
+
+
+def test_render_dashboard_html_contains_committed_fund_filter_state_contract():
+    html = render_dashboard_html()
+
+    required_markers = [
+        "catalogFilters: {",
+        "fundType: ''",
+        "commitCatalogFilters(",
+        "skipNavReload = false",
+    ]
+    for marker in required_markers:
+        assert marker in html
+
 def test_dashboard_split_has_no_legacy_frontend_paths():
     from pathlib import Path
 
@@ -512,5 +586,6 @@ def test_render_dashboard_html_contains_fund_view():
     html = render_dashboard_html()
     assert 'id="view-fund"' in html, "Fund view HTML should be present"
     assert 'FundModule' in html, "Fund JavaScript module should be present"
-    assert '.fund-controls' in html, "Fund CSS styles should be present"
+    assert 'market-shell fund-shell' in html, "Fund view should use market shell layout"
+    assert '.fund-shell .fund-filter-stack' in html, "Fund CSS styles should be present"
     assert '基金' in html, "Fund navigation button should be present"

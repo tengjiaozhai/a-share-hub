@@ -7,8 +7,29 @@ const FundModule = {
   state: {
     initialized: false,
     etfData: [],
+    etfRequestToken: 0,
+    etfPagination: {
+      page: 1,
+      pageSize: 20,
+      total: 0,
+      totalPages: 0,
+      query: '',
+    },
+    catalogFilters: {
+      query: '',
+      fundType: '',
+    },
     catalogData: [],
+    catalogRequestToken: 0,
+    catalogPagination: {
+      page: 1,
+      pageSize: 20,
+      total: 0,
+      totalPages: 0,
+    },
     navData: [],
+    navRequestToken: 0,
+    navRequestKey: '',
     currentSymbol: '',
     navChart: null,
   },
@@ -28,25 +49,33 @@ const FundModule = {
     });
 
     document.getElementById('btn-etf-search')?.addEventListener('click', () => {
-      this.filterEtfTable();
+      this.commitEtfSearch();
+      this.resetEtfPagination();
+      this.loadEtfSpot();
     });
     document.getElementById('etf-search')?.addEventListener('keyup', (event) => {
-      if (event.key === 'Enter') this.filterEtfTable();
-    });
-    document.getElementById('etf-limit')?.addEventListener('change', () => {
-      this.loadEtfSpot();
+      if (event.key === 'Enter') {
+        this.commitEtfSearch();
+        this.resetEtfPagination();
+        this.loadEtfSpot();
+      }
     });
 
     document.getElementById('btn-fund-search')?.addEventListener('click', () => {
+      this.commitCatalogFilters();
+      this.resetCatalogPagination();
       this.loadFundCatalog();
     });
     document.getElementById('fund-search')?.addEventListener('keyup', (event) => {
-      if (event.key === 'Enter') this.loadFundCatalog();
+      if (event.key === 'Enter') {
+        this.commitCatalogFilters();
+        this.resetCatalogPagination();
+        this.loadFundCatalog();
+      }
     });
     document.getElementById('fund-type-filter')?.addEventListener('change', () => {
-      this.loadFundCatalog();
-    });
-    document.getElementById('fund-limit')?.addEventListener('change', () => {
+      this.commitCatalogFilters();
+      this.resetCatalogPagination();
       this.loadFundCatalog();
     });
 
@@ -57,14 +86,25 @@ const FundModule = {
       if (event.key === 'Enter') this.queryFundNav();
     });
 
-    document.querySelectorAll('#fund-tabs .nav-link').forEach((tab) => {
-      tab.addEventListener('shown.bs.tab', (event) => {
-        this.onTabChange(event.target.getAttribute('data-bs-target'));
+    document.querySelectorAll('#fund-tabs button').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        this.switchTab(tab, tab.dataset.target);
       });
     });
   },
 
-  onTabChange(target) {
+  switchTab(tab, target, { skipNavReload = false } = {}) {
+    if (!target) return;
+    document.querySelectorAll('#fund-tabs button').forEach((button) => {
+      button.classList.toggle('active', button === tab);
+    });
+    document.querySelectorAll('#view-fund .tab-pane').forEach((pane) => {
+      pane.classList.toggle('active', `#${pane.id}` === target);
+    });
+    this.onTabChange(target, { skipNavReload });
+  },
+
+  onTabChange(target, { skipNavReload = false } = {}) {
     if (target === '#etf-spot') {
       if (!this.state.etfData.length) this.loadEtfSpot();
       return;
@@ -73,14 +113,14 @@ const FundModule = {
       if (!this.state.catalogData.length) this.loadFundCatalog();
       return;
     }
-    if (target === '#fund-nav' && this.state.currentSymbol) {
+    if (target === '#fund-nav' && this.state.currentSymbol && !skipNavReload) {
       this.queryFundNav(this.state.currentSymbol);
     }
   },
 
   refreshCurrentTab() {
-    const activeTab = document.querySelector('#fund-tabs .nav-link.active');
-    const target = activeTab?.getAttribute('data-bs-target') || '#etf-spot';
+    const activeTab = document.querySelector('#fund-tabs button.active');
+    const target = activeTab?.dataset.target || '#etf-spot';
     const btn = document.getElementById('btn-refresh-fund');
     btn?.classList.add('rotating');
     setTimeout(() => btn?.classList.remove('rotating'), 1000);
@@ -99,28 +139,64 @@ const FundModule = {
   },
 
   async loadEtfSpot() {
-    const limit = document.getElementById('etf-limit')?.value || '50';
     const body = document.getElementById('etf-spot-body');
+    const paginationEl = document.getElementById('etf-spot-pagination');
     if (!body) return;
 
-    body.innerHTML = '<tr><td colspan="11" class="text-center"><div class="spinner-border spinner-border-sm" role="status"></div> 加载中...</td></tr>';
+    const requestToken = ++this.state.etfRequestToken;
+    body.innerHTML = '<tr><td colspan="11" class="mkt-empty">加载中...</td></tr>';
+    if (paginationEl) paginationEl.innerHTML = '';
 
     try {
-      const response = await fetch(`/api/v1/fund/etf/spot?limit=${encodeURIComponent(limit)}`);
+      const { page, pageSize, query } = this.state.etfPagination;
+      const params = new URLSearchParams({
+        page: String(page),
+        page_size: String(pageSize),
+      });
+      if (query) params.append('query', query);
+      const response = await fetch(`/api/v1/fund/etf/spot?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
       const data = await response.json();
-      this.state.etfData = Array.isArray(data) ? data : [];
-      this.renderEtfTable(this.state.etfData);
+      if (requestToken !== this.state.etfRequestToken) return;
+      this.state.etfData = Array.isArray(data.items) ? data.items : [];
+      this.state.etfPagination = {
+        page: Number(data.page) || page,
+        pageSize: Number(data.page_size) || pageSize,
+        total: Number(data.total) || 0,
+        totalPages: Number(data.total_pages) || 0,
+        query,
+      };
+      this.updateRefreshTime();
+      this.renderEtfTable();
     } catch (error) {
+      if (requestToken !== this.state.etfRequestToken) return;
       console.error('加载 ETF 行情失败:', error);
-      body.innerHTML = '<tr><td colspan="11" class="text-center text-danger">加载失败，请稍后重试</td></tr>';
+      this.clearEtfState({
+        page: this.state.etfPagination.page,
+        pageSize: this.state.etfPagination.pageSize,
+        query: this.state.etfPagination.query,
+      });
+      body.innerHTML = '<tr><td colspan="11" class="mkt-empty fund-error">加载失败，请稍后重试</td></tr>';
     }
   },
 
-  renderEtfTable(data) {
+  renderEtfTable() {
     const body = document.getElementById('etf-spot-body');
+    const count = document.getElementById('etf-spot-count');
+    const paginationEl = document.getElementById('etf-spot-pagination');
+    const data = this.state.etfData;
+    const { page, total, totalPages } = this.state.etfPagination;
     if (!body) return;
+    if (count) {
+      const safePage = totalPages > 0 ? page : 0;
+      const safeTotalPages = totalPages > 0 ? totalPages : 0;
+      count.textContent = `共 ${total} 只，第 ${safePage} / ${safeTotalPages} 页`;
+    }
     if (!data.length) {
-      body.innerHTML = '<tr><td colspan="11" class="text-center text-muted">暂无数据</td></tr>';
+      body.innerHTML = '<tr><td colspan="11" class="mkt-empty">暂无数据</td></tr>';
+      if (paginationEl) paginationEl.innerHTML = '';
       return;
     }
 
@@ -139,49 +215,107 @@ const FundModule = {
         <td class="text-end">${this.formatNumber(item.prev_close)}</td>
       </tr>
     `).join('');
-  },
-
-  filterEtfTable() {
-    const searchText = document.getElementById('etf-search')?.value?.trim().toLowerCase() || '';
-    if (!searchText) {
-      this.renderEtfTable(this.state.etfData);
+    if (!paginationEl) return;
+    if (totalPages <= 1) {
+      paginationEl.innerHTML = '';
       return;
     }
-    const filtered = this.state.etfData.filter((item) => (
-      String(item.code || '').toLowerCase().includes(searchText)
-      || String(item.name || '').toLowerCase().includes(searchText)
-    ));
-    this.renderEtfTable(filtered);
+    paginationEl.innerHTML = `
+      <button type="button" onclick="FundModule.goToEtfPage(1)" ${page === 1 ? 'disabled' : ''}>&laquo;</button>
+      <button type="button" onclick="FundModule.goToEtfPage(${page - 1})" ${page === 1 ? 'disabled' : ''}>&lsaquo;</button>
+      <span class="fund-page-info">${page} / ${totalPages}</span>
+      <button type="button" onclick="FundModule.goToEtfPage(${page + 1})" ${page === totalPages ? 'disabled' : ''}>&rsaquo;</button>
+      <button type="button" onclick="FundModule.goToEtfPage(${totalPages})" ${page === totalPages ? 'disabled' : ''}>&raquo;</button>
+    `;
+  },
+
+  clearEtfState({ page = 1, pageSize = this.state.etfPagination.pageSize, query = '' } = {}) {
+    this.state.etfData = [];
+    this.state.etfPagination = {
+      page,
+      pageSize,
+      total: 0,
+      totalPages: 0,
+      query,
+    };
+    const count = document.getElementById('etf-spot-count');
+    const paginationEl = document.getElementById('etf-spot-pagination');
+    if (count) count.textContent = '共 0 只，第 0 / 0 页';
+    if (paginationEl) paginationEl.innerHTML = '';
+  },
+
+  resetEtfPagination() {
+    this.clearEtfState({ page: 1, query: this.state.etfPagination.query });
+  },
+
+  goToEtfPage(page) {
+    const totalPages = this.state.etfPagination.totalPages || 1;
+    const nextPage = Math.min(Math.max(Number(page) || 1, 1), totalPages);
+    if (nextPage === this.state.etfPagination.page) return;
+    this.state.etfPagination.page = nextPage;
+    this.loadEtfSpot();
+    document.getElementById('etf-spot')?.scrollTo({ top: 0, behavior: 'smooth' });
+  },
+
+  commitEtfSearch() {
+    this.state.etfPagination.query = document.getElementById('etf-search')?.value?.trim() || '';
   },
 
   async loadFundCatalog() {
-    const query = document.getElementById('fund-search')?.value || '';
-    const fundType = document.getElementById('fund-type-filter')?.value || '';
-    const limit = document.getElementById('fund-limit')?.value || '50';
     const body = document.getElementById('fund-catalog-body');
+    const paginationEl = document.getElementById('fund-catalog-pagination');
     if (!body) return;
 
-    body.innerHTML = '<tr><td colspan="5" class="text-center"><div class="spinner-border spinner-border-sm" role="status"></div> 加载中...</td></tr>';
+    const requestToken = ++this.state.catalogRequestToken;
+    body.innerHTML = '<tr><td colspan="5" class="mkt-empty">加载中...</td></tr>';
+    if (paginationEl) paginationEl.innerHTML = '';
 
     try {
-      const params = new URLSearchParams({ limit });
+      const { page, pageSize } = this.state.catalogPagination;
+      const { query, fundType } = this.state.catalogFilters;
+      const params = new URLSearchParams({
+        page: String(page),
+        page_size: String(pageSize),
+      });
       if (query) params.append('query', query);
       if (fundType) params.append('fund_type', fundType);
       const response = await fetch(`/api/v1/fund/catalog?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
       const data = await response.json();
-      this.state.catalogData = Array.isArray(data) ? data : [];
-      this.renderCatalogTable(this.state.catalogData);
+      if (requestToken !== this.state.catalogRequestToken) return;
+      this.state.catalogData = Array.isArray(data.items) ? data.items : [];
+      this.state.catalogPagination = {
+        page: Number(data.page) || page,
+        pageSize: Number(data.page_size) || pageSize,
+        total: Number(data.total) || 0,
+        totalPages: Number(data.total_pages) || 0,
+      };
+      this.updateRefreshTime();
+      this.renderCatalogTable();
     } catch (error) {
+      if (requestToken !== this.state.catalogRequestToken) return;
       console.error('加载基金目录失败:', error);
-      body.innerHTML = '<tr><td colspan="5" class="text-center text-danger">加载失败，请稍后重试</td></tr>';
+      this.clearCatalogState({
+        page: this.state.catalogPagination.page,
+        pageSize: this.state.catalogPagination.pageSize,
+      });
+      body.innerHTML = '<tr><td colspan="5" class="mkt-empty fund-error">加载失败，请稍后重试</td></tr>';
     }
   },
 
-  renderCatalogTable(data) {
+  renderCatalogTable() {
     const body = document.getElementById('fund-catalog-body');
+    const count = document.getElementById('fund-catalog-count');
+    const paginationEl = document.getElementById('fund-catalog-pagination');
+    const data = this.state.catalogData;
+    const { page, total, totalPages } = this.state.catalogPagination;
     if (!body) return;
+    if (count) count.textContent = `${data.length} / ${total} 只`;
     if (!data.length) {
-      body.innerHTML = '<tr><td colspan="5" class="text-center text-muted">暂无数据</td></tr>';
+      body.innerHTML = '<tr><td colspan="5" class="mkt-empty">暂无数据</td></tr>';
+      if (paginationEl) paginationEl.innerHTML = '';
       return;
     }
 
@@ -194,27 +328,72 @@ const FundModule = {
           <td>${item.fund_type || ''}</td>
           <td>${item.exchange || ''}</td>
           <td class="fund-action-cell">
-            <button class="btn btn-sm btn-outline-primary btn-view-nav" type="button" onclick="FundModule.openNavForSymbol('${symbol}')">
+            <button class="mkt-btn mkt-btn-accent btn-view-nav" type="button" onclick="FundModule.openNavForSymbol('${this.escapeJsString(symbol)}')">
               净值
             </button>
-            <button class="btn btn-sm btn-outline-secondary btn-view-nav" type="button" onclick="FundModule.addToWatchlist('${symbol}')">
+            <button class="mkt-btn mkt-btn-outline btn-view-nav" type="button" onclick="FundModule.addToWatchlist('${this.escapeJsString(symbol)}')">
               加入观察
             </button>
           </td>
         </tr>
       `;
     }).join('');
+
+    if (!paginationEl) return;
+    if (totalPages <= 1) {
+      paginationEl.innerHTML = '';
+      return;
+    }
+    paginationEl.innerHTML = `
+      <button type="button" onclick="FundModule.goToCatalogPage(1)" ${page === 1 ? 'disabled' : ''}>&laquo;</button>
+      <button type="button" onclick="FundModule.goToCatalogPage(${page - 1})" ${page === 1 ? 'disabled' : ''}>&lsaquo;</button>
+      <span class="fund-page-info">${page} / ${totalPages}</span>
+      <button type="button" onclick="FundModule.goToCatalogPage(${page + 1})" ${page === totalPages ? 'disabled' : ''}>&rsaquo;</button>
+      <button type="button" onclick="FundModule.goToCatalogPage(${totalPages})" ${page === totalPages ? 'disabled' : ''}>&raquo;</button>
+    `;
+  },
+
+  clearCatalogState({ page = 1, pageSize = this.state.catalogPagination.pageSize } = {}) {
+    this.state.catalogData = [];
+    this.state.catalogPagination = {
+      page,
+      pageSize,
+      total: 0,
+      totalPages: 0,
+    };
+    const count = document.getElementById('fund-catalog-count');
+    const paginationEl = document.getElementById('fund-catalog-pagination');
+    if (count) count.textContent = '0 / 0 只';
+    if (paginationEl) paginationEl.innerHTML = '';
+  },
+
+  resetCatalogPagination() {
+    this.clearCatalogState({ page: 1 });
+  },
+
+  commitCatalogFilters() {
+    this.state.catalogFilters = {
+      query: document.getElementById('fund-search')?.value?.trim() || '',
+      fundType: document.getElementById('fund-type-filter')?.value || '',
+    };
+  },
+
+  goToCatalogPage(page) {
+    const totalPages = this.state.catalogPagination.totalPages || 1;
+    const nextPage = Math.min(Math.max(Number(page) || 1, 1), totalPages);
+    if (nextPage === this.state.catalogPagination.page) return;
+    this.state.catalogPagination.page = nextPage;
+    this.loadFundCatalog();
+    document.getElementById('fund-catalog')?.scrollTo({ top: 0, behavior: 'smooth' });
   },
 
   openNavForSymbol(symbol) {
     if (!symbol) return;
     const input = document.getElementById('nav-symbol');
     if (input) input.value = symbol;
-    this.state.currentSymbol = symbol;
     const navTab = document.getElementById('fund-nav-tab');
-    if (navTab && typeof bootstrap !== 'undefined' && bootstrap.Tab) {
-      bootstrap.Tab.getOrCreateInstance(navTab).show();
-    }
+    this.state.currentSymbol = symbol;
+    if (navTab) this.switchTab(navTab, '#fund-nav', { skipNavReload: true });
     this.queryFundNav(symbol);
   },
 
@@ -230,7 +409,10 @@ const FundModule = {
     const body = document.getElementById('fund-nav-body');
     if (!body) return;
 
-    body.innerHTML = '<tr><td colspan="6" class="text-center"><div class="spinner-border spinner-border-sm" role="status"></div> 加载中...</td></tr>';
+    const requestKey = JSON.stringify({ symbol, startDate, endDate });
+    const requestToken = ++this.state.navRequestToken;
+    this.state.navRequestKey = requestKey;
+    body.innerHTML = '<tr><td colspan="6" class="mkt-empty">加载中...</td></tr>';
 
     try {
       const params = new URLSearchParams();
@@ -239,13 +421,33 @@ const FundModule = {
       const query = params.toString();
       const response = await fetch(`/api/v1/fund/nav/${encodeURIComponent(symbol)}${query ? `?${query}` : ''}`);
       const data = await response.json();
+      if (requestToken !== this.state.navRequestToken || requestKey !== this.state.navRequestKey) return;
+      if (!response.ok) {
+        if (response.status === 422 && data?.detail?.code === 'fund_nav_unsupported') {
+          this.state.currentSymbol = symbol;
+          this.state.navData = [];
+          this.updateCurrentSummary(symbol);
+          body.innerHTML = '<tr><td colspan="6" class="mkt-empty fund-error">该品种仅支持实时行情/K线，不支持净值查询</td></tr>';
+          this.renderNavChart([]);
+          return;
+        }
+        throw new Error(`HTTP ${response.status}`);
+      }
       this.state.currentSymbol = symbol;
       this.state.navData = Array.isArray(data) ? data : [];
+      this.updateCurrentSummary(symbol);
+      this.updateRefreshTime();
       this.renderNavTable(this.state.navData);
-      this.renderNavChart(this.state.navData);
+      try {
+        this.renderNavChart(this.state.navData);
+      } catch (chartError) {
+        console.error('渲染基金净值图表失败:', chartError);
+      }
     } catch (error) {
+      if (requestToken !== this.state.navRequestToken || requestKey !== this.state.navRequestKey) return;
       console.error('查询基金净值失败:', error);
-      body.innerHTML = '<tr><td colspan="6" class="text-center text-danger">查询失败，请稍后重试</td></tr>';
+      this.state.navData = [];
+      body.innerHTML = '<tr><td colspan="6" class="mkt-empty fund-error">查询失败，请稍后重试</td></tr>';
       this.renderNavChart([]);
     }
   },
@@ -254,7 +456,7 @@ const FundModule = {
     const body = document.getElementById('fund-nav-body');
     if (!body) return;
     if (!data.length) {
-      body.innerHTML = '<tr><td colspan="6" class="text-center text-muted">暂无数据</td></tr>';
+      body.innerHTML = '<tr><td colspan="6" class="mkt-empty">暂无数据</td></tr>';
       return;
     }
 
@@ -270,6 +472,20 @@ const FundModule = {
     `).join('');
   },
 
+  updateRefreshTime() {
+    const el = document.getElementById('fund-last-refresh');
+    if (el) el.textContent = `更新于 ${new Date().toLocaleTimeString()}`;
+  },
+
+  updateCurrentSummary(symbol) {
+    const el = document.getElementById('fund-current-summary');
+    if (!el) return;
+    const match = this.state.catalogData.find((item) => (
+      item.symbol === symbol || item.code === symbol
+    ));
+    el.textContent = match ? `${match.code || symbol} · ${match.name || '基金'}` : symbol;
+  },
+
   renderNavChart(data) {
     const container = document.getElementById('nav-chart-container');
     const canvas = document.getElementById('nav-chart');
@@ -281,6 +497,11 @@ const FundModule = {
     }
 
     if (!data.length) {
+      container.style.display = 'none';
+      return;
+    }
+
+    if (typeof Chart === 'undefined') {
       container.style.display = 'none';
       return;
     }
@@ -378,5 +599,9 @@ const FundModule = {
     if (num > 0) return 'change-positive';
     if (num < 0) return 'change-negative';
     return 'change-zero';
+  },
+
+  escapeJsString(value) {
+    return String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   },
 };

@@ -2,9 +2,10 @@ import argparse
 import sys
 from datetime import datetime, timedelta
 from hashlib import sha256
+from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse
 
 from src.a_stock.routes import router as a_stock_router
 from src.agents.llm_client import LLMClient
@@ -16,12 +17,12 @@ from src.api.routes_crypto import router as crypto_router
 from src.api.routes_dashboard import router as dashboard_router
 from src.api.routes_decision_runs import router as decision_runs_router
 from src.api.routes_execution_plans import router as execution_plans_router
+from src.api.routes_fund import router as fund_router
 from src.api.routes_health import router as health_router
 from src.api.routes_kill_switch import router as kill_switch_router
 from src.api.routes_market import router as market_router
 from src.api.routes_portfolio_targets import router as portfolio_targets_router
 from src.api.routes_reconciliation import router as reconciliation_router
-from src.api.routes_fund import router as fund_router
 from src.core.config import Settings
 from src.core.tenant import SYSTEM_TENANT
 from src.decision.decision_runner import build_decision_run_record
@@ -31,6 +32,8 @@ from src.storage.dependencies import get_runtime_engine
 from src.storage.runtime_store import RuntimeStore
 from src.storage.system_runtime_store import SystemRuntimeStore
 from src.us_stock.routes import router as us_stock_router
+
+_FAVICON_PATH = Path(__file__).resolve().parent / "api" / "static" / "favicon.ico"
 
 # CLI 命令在用户未登录时使用 system 账户执行
 CLI_USER_ID = SYSTEM_TENANT.user_id
@@ -130,6 +133,10 @@ def build_app() -> FastAPI:
     @app.get("/", include_in_schema=False)
     def root_redirect(request: Request):
         return RedirectResponse(url="/dashboard" if getattr(request.state, "user", None) else "/login")
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon():
+        return FileResponse(str(_FAVICON_PATH), media_type="image/vnd.microsoft.icon")
 
     settings = Settings()
     if settings.enable_scheduler or settings.app_role == "scheduler":

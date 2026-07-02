@@ -1,7 +1,7 @@
 """基金 API 路由"""
 from fastapi import APIRouter, Depends, HTTPException, Query
 from src.api.dependencies import get_current_user
-from src.fund.catalog_service import FundCatalogService
+from src.fund.catalog_service import FundCatalogService, FundNavUnavailableError, FundNotFoundError
 
 router = APIRouter(prefix="/api/v1/fund", dependencies=[Depends(get_current_user)])
 
@@ -19,11 +19,12 @@ def _get_fund_catalog_service() -> FundCatalogService:
 def get_fund_catalog(
     query: str = Query("", description="搜索关键词（基金名称或代码）"),
     fund_type: str = Query("", description="基金类型筛选"),
-    limit: int = Query(50, ge=1, le=200, description="返回数量限制"),
-) -> list[dict]:
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页返回数量"),
+) -> dict:
     """获取基金目录"""
     service = _get_fund_catalog_service()
-    return service.search_funds(query=query, fund_type=fund_type, limit=limit)
+    return service.search_funds(query=query, fund_type=fund_type, page=page, page_size=page_size)
 
 
 @router.get("/catalog/{symbol}")
@@ -38,12 +39,14 @@ def get_fund_by_symbol(symbol: str) -> dict:
 
 @router.get("/etf/spot")
 def get_etf_spot(
-    limit: int = Query(50, ge=1, le=200, description="返回数量限制"),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页返回数量"),
+    query: str = Query("", description="搜索关键词（基金代码或名称）"),
     force_refresh: bool = Query(False, description="强制刷新缓存"),
-) -> list[dict]:
+) -> dict:
     """获取 ETF 实时行情（带缓存）"""
     service = _get_fund_catalog_service()
-    return service.get_etf_spot(limit=limit, force_refresh=force_refresh)
+    return service.get_etf_spot(page=page, page_size=page_size, query=query, force_refresh=force_refresh)
 
 
 @router.get("/nav/{symbol}")
@@ -55,10 +58,22 @@ def get_fund_nav(
 ) -> list[dict]:
     """获取基金历史净值（带缓存）"""
     service = _get_fund_catalog_service()
-    return service.get_fund_nav(
-        symbol=symbol, start_date=start_date, end_date=end_date,
-        force_refresh=force_refresh
-    )
+    try:
+        return service.get_fund_nav(
+            symbol=symbol, start_date=start_date, end_date=end_date,
+            force_refresh=force_refresh
+        )
+    except FundNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except FundNavUnavailableError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": exc.code,
+                "symbol": exc.symbol,
+                "reason": exc.reason,
+            },
+        ) from exc
 
 
 @router.get("/etf/history/{symbol}")
