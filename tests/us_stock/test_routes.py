@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-from src.main import build_app
+from src.us_stock import routes
 
 
 def test_get_watchlist(authenticated_client, monkeypatch):
@@ -34,3 +34,23 @@ def test_get_quote_not_found(authenticated_client):
     assert resp.status_code == 200
     data = resp.json()
     assert data["price"] == 0.0
+
+
+def test_get_quotes_reuse_polling_cache(authenticated_client):
+    routes._quotes_cache.clear()
+    item = MagicMock()
+    item.symbol = "AAPL"
+    quote = MagicMock()
+    quote.model_dump.return_value = {"symbol": "AAPL", "price": 100.0}
+
+    with patch("src.us_stock.routes._get_watchlist_store") as mock_store:
+        mock_store.return_value.list_items.return_value = ([item], 1)
+        with patch("src.us_stock.routes._get_yahoo_provider") as mock_provider:
+            mock_provider.return_value.get_quotes.return_value = [quote]
+            first = authenticated_client.get("/api/v1/us-stock/quotes")
+            second = authenticated_client.get("/api/v1/us-stock/quotes")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json() == second.json()
+    assert mock_provider.return_value.get_quotes.call_count == 1

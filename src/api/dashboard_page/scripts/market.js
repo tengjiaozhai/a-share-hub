@@ -43,7 +43,7 @@ function marketInit() {
       });
     }
 
-    aRefreshTimer = setInterval(function() {
+    aRefreshTimer = setNonOverlappingInterval('market:a-quotes', function() {
       aLoadQuotes();
     }, 60000);
   }
@@ -65,53 +65,57 @@ function aSwitchCenterTab(btn, paneId) {
 // ── 行情加载 ──
 
 function aLoadQuotes() {
-  var loading = document.getElementById('a-quotes-loading');
+  return runSingleFlightTask('market:a-quotes:load', function() {
+    var loading = document.getElementById('a-quotes-loading');
 
-  fetch('/api/v1/a-stock/watchlist')
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      aWatchlistData = (data && data.items) || [];
-      aWatchlistTotal = (data && typeof data.total === 'number') ? data.total : aWatchlistData.length;
-      aQuotesPage = 1;
-      return aLoadPageQuotes();
-    })
-    .catch(function() {
-      if (loading) loading.textContent = '加载失败，请检查网络';
-    });
+    return fetch('/api/v1/a-stock/watchlist')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        aWatchlistData = (data && data.items) || [];
+        aWatchlistTotal = (data && typeof data.total === 'number') ? data.total : aWatchlistData.length;
+        aQuotesPage = 1;
+        return aLoadPageQuotes();
+      })
+      .catch(function() {
+        if (loading) loading.textContent = '加载失败，请检查网络';
+      });
+  });
 }
 
 function aLoadPageQuotes() {
-  var loading = document.getElementById('a-quotes-loading');
+  return runSingleFlightTask('market:a-quotes:page:' + aQuotesPage + ':' + aIsSearchMode, function() {
+    var loading = document.getElementById('a-quotes-loading');
 
-  if (aIsSearchMode) {
-    return aLoadSearchQuotes();
-  }
+    if (aIsSearchMode) {
+      return aLoadSearchQuotes();
+    }
 
-  var totalPages = Math.ceil(aWatchlistTotal / aQuotesPageSize);
-  if (aQuotesPage > totalPages) aQuotesPage = totalPages;
-  if (aQuotesPage < 1) aQuotesPage = 1;
+    var totalPages = Math.ceil(aWatchlistTotal / aQuotesPageSize);
+    if (aQuotesPage > totalPages) aQuotesPage = totalPages;
+    if (aQuotesPage < 1) aQuotesPage = 1;
 
-  var startIdx = (aQuotesPage - 1) * aQuotesPageSize;
-  var pageSymbols = aWatchlistData.slice(startIdx, startIdx + aQuotesPageSize).map(function(item) { return item.symbol; });
+    var startIdx = (aQuotesPage - 1) * aQuotesPageSize;
+    var pageSymbols = aWatchlistData.slice(startIdx, startIdx + aQuotesPageSize).map(function(item) { return item.symbol; });
 
-  if (pageSymbols.length === 0) {
-    aQuotesPageData = [];
-    aRenderQuotesTable();
-    return;
-  }
+    if (pageSymbols.length === 0) {
+      aQuotesPageData = [];
+      aRenderQuotesTable();
+      return;
+    }
 
-  return fetch('/api/v1/a-stock/quotes', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(pageSymbols),
-  }).then(function(r) { return r.json(); }).then(function(quotes) {
-    var now = new Date();
-    var el = document.getElementById('a-last-refresh');
-    if (el) el.textContent = '更新于 ' + now.toLocaleTimeString();
-    aQuotesPageData = quotes || [];
-    aRenderQuotesTable();
-  }).catch(function() {
-    if (loading) loading.textContent = '加载失败，请检查网络';
+    return fetch('/api/v1/a-stock/quotes', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(pageSymbols),
+    }).then(function(r) { return r.json(); }).then(function(quotes) {
+      var now = new Date();
+      var el = document.getElementById('a-last-refresh');
+      if (el) el.textContent = '更新于 ' + now.toLocaleTimeString();
+      aQuotesPageData = quotes || [];
+      aRenderQuotesTable();
+    }).catch(function() {
+      if (loading) loading.textContent = '加载失败，请检查网络';
+    });
   });
 }
 

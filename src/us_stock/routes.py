@@ -3,14 +3,15 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.api.dependencies import get_current_user, get_tenant_context
+from src.api.polling_cache import PollingCache
 from src.core.tenant import TenantContext
 from src.storage.dependencies import get_runtime_engine
-from src.us_stock.yahoo_provider import get_yahoo_provider
 from src.us_stock.binance_asset import get_binance_us_assets
 from src.us_stock.watchlist import WatchlistStore
-from src.us_stock.yahoo_provider import YahooProvider
+from src.us_stock.yahoo_provider import YahooProvider, get_yahoo_provider
 
 logger = logging.getLogger(__name__)
+_quotes_cache: PollingCache[list[dict]] = PollingCache(ttl_seconds=55)
 
 router = APIRouter(
     prefix="/api/v1/us-stock",
@@ -37,9 +38,14 @@ def get_quotes(tenant: TenantContext = Depends(get_tenant_context)) -> list[dict
     if not items:
         return []
     symbols = [item.symbol for item in items]
-    provider = _get_yahoo_provider()
-    quotes = provider.get_quotes(symbols)
-    return [q.model_dump() for q in quotes]
+    cache_key = ",".join(symbols)
+
+    def refresh() -> list[dict]:
+        provider = _get_yahoo_provider()
+        quotes = provider.get_quotes(symbols)
+        return [q.model_dump() for q in quotes]
+
+    return _quotes_cache.get_or_refresh(cache_key, refresh)
 
 
 @router.get("/quote/{symbol}")

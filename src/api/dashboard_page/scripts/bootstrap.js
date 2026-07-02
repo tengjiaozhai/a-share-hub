@@ -149,9 +149,13 @@ document.getElementById('drawer-backdrop')?.addEventListener('click', closeCaseD
 
 loadDashboard();
 updateModeStatus();
-usInit();
-marketInit();
-setInterval(() => {
+if (document.getElementById('view-market')?.classList.contains('active')) {
+  marketInit();
+}
+if (document.getElementById('view-us-stock')?.classList.contains('active')) {
+  usInit();
+}
+setNonOverlappingInterval('dashboard:load', () => {
   if (!simRunning) {
     loadDashboard();
   }

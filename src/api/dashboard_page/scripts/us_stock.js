@@ -47,7 +47,7 @@ function usInit() {
       });
     }
 
-    usRefreshTimer = setInterval(function() {
+    usRefreshTimer = setNonOverlappingInterval('market:us-quotes', function() {
       usLoadQuotes();
       usLoadBinanceAssets();
     }, 60000);
@@ -71,21 +71,23 @@ function usSwitchCenterTab(btn, paneId) {
 // ── 行情加载 ──
 
 function usLoadQuotes() {
-  var loading = document.getElementById('us-quotes-loading');
+  return runSingleFlightTask('market:us-quotes:load', function() {
+    var loading = document.getElementById('us-quotes-loading');
 
-  fetch('/api/v1/us-stock/quotes')
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      var now = new Date();
-      var el = document.getElementById('us-last-refresh');
-      if (el) el.textContent = '更新于 ' + now.toLocaleTimeString();
+    return fetch('/api/v1/us-stock/quotes')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        var now = new Date();
+        var el = document.getElementById('us-last-refresh');
+        if (el) el.textContent = '更新于 ' + now.toLocaleTimeString();
 
-      usQuotesAllData = data || [];
-      usFilterAndRenderQuotes();
-    })
-    .catch(function() {
-      if (loading) loading.textContent = '加载失败，请检查网络';
-    });
+        usQuotesAllData = data || [];
+        usFilterAndRenderQuotes();
+      })
+      .catch(function() {
+        if (loading) loading.textContent = '加载失败，请检查网络';
+      });
+  });
 }
 
 function usFilterAndRenderQuotes() {

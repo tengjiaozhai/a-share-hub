@@ -1,5 +1,8 @@
-from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pandas as pd
+
+from src.a_stock import routes
 
 
 def test_get_watchlist(authenticated_client):
@@ -16,3 +19,16 @@ def test_get_watchlist(authenticated_client):
 def test_add_watchlist_missing_symbol(authenticated_client):
     resp = authenticated_client.post("/api/v1/a-stock/watchlist", json={"name": "Test"})
     assert resp.status_code == 422
+
+
+def test_quotes_reuse_polling_cache(authenticated_client):
+    routes._quotes_cache.clear()
+    frame = pd.DataFrame([{"symbol": "000001.SZ", "close": 10.0}])
+    with patch("src.data.providers.akshare_provider._fetch_tencent_quotes_batch", return_value=frame) as fetch:
+        first = authenticated_client.post("/api/v1/a-stock/quotes", json=["000001.SZ"])
+        second = authenticated_client.post("/api/v1/a-stock/quotes", json=["000001.SZ"])
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json() == second.json()
+    assert fetch.call_count == 1

@@ -151,6 +151,8 @@ function switchView(btn, viewId) {
   document.getElementById(viewId).classList.add('active');
   if (viewId === 'view-market') {
     marketInit();
+  } else if (viewId === 'view-us-stock') {
+    usInit();
   } else if (viewId === 'view-alpha') {
     loadAlphaWorkbench();
   } else if (viewId === 'view-fund') {
@@ -1487,57 +1489,57 @@ function renderWorkbench(data, killStatus) {
 }
 
 async function loadDashboard() {
-  const market = document.getElementById('cfg-market')?.value || 'a';
-  if (historyPanelMarket !== market) {
-    historyPanelMarket = market;
-    historyPanelNextCursor = null;
-    historyPanelHasMore = false;
-    historyPanelLimit = 0;
-  }
-  try {
-    setPanelLoading('all');
-    const panelLoads = [
-      Promise.resolve().then(() => loadPerformancePanel(market)),
-      Promise.resolve().then(() => loadAutomationPanel(market)),
-      Promise.resolve().then(() => loadHistoryPanel(market)),
-    ];
-    const [workbenchRes, killStatusRes] = await Promise.all([
-      fetch(`${WORKBENCH_API}?market=${market}&account_kind=auto`),
-      fetch(KILL_SWITCH_STATUS_API),
-    ]);
-    const workbenchBody = await parseResponseBody(workbenchRes);
-    const killStatusBody = await parseResponseBody(killStatusRes);
-
-    if (!workbenchRes.ok) {
-      throw new Error(extractErrorMessage(workbenchBody, `工作台加载失败 (${workbenchRes.status})`));
+  return runSingleFlightTask('dashboard:load', async () => {
+    const market = document.getElementById('cfg-market')?.value || 'a';
+    if (historyPanelMarket !== market) {
+      historyPanelMarket = market;
+      historyPanelNextCursor = null;
+      historyPanelHasMore = false;
+      historyPanelLimit = 0;
     }
-    if (!killStatusRes.ok) {
-      throw new Error(extractErrorMessage(killStatusBody, `Kill Switch 状态加载失败 (${killStatusRes.status})`));
-    }
-
-    let serverPrefs = null;
     try {
-      const prefsRes = await fetch(PREFS_API);
-      if (prefsRes.ok) {
-        serverPrefs = await parseResponseBody(prefsRes);
+      setPanelLoading('all');
+      const panelLoads = [
+        Promise.resolve().then(() => loadPerformancePanel(market)),
+        Promise.resolve().then(() => loadAutomationPanel(market)),
+        Promise.resolve().then(() => loadHistoryPanel(market)),
+      ];
+      const [workbenchRes, killStatusRes] = await Promise.all([
+        fetch(`${WORKBENCH_API}?market=${market}&account_kind=auto`),
+        fetch(KILL_SWITCH_STATUS_API),
+      ]);
+      const workbenchBody = await parseResponseBody(workbenchRes);
+      const killStatusBody = await parseResponseBody(killStatusRes);
+
+      if (!workbenchRes.ok) {
+        throw new Error(extractErrorMessage(workbenchBody, `工作台加载失败 (${workbenchRes.status})`));
       }
-    } catch (_) {}
+      if (!killStatusRes.ok) {
+        throw new Error(extractErrorMessage(killStatusBody, `Kill Switch 状态加载失败 (${killStatusRes.status})`));
+      }
 
-    if (serverPrefs && serverPrefs.watchlist) {
-      workbenchBody._serverPrefs = serverPrefs;
+      let serverPrefs = null;
+      try {
+        const prefsRes = await fetch(PREFS_API);
+        if (prefsRes.ok) {
+          serverPrefs = await parseResponseBody(prefsRes);
+        }
+      } catch (_) {}
+
+      if (serverPrefs && serverPrefs.watchlist) {
+        workbenchBody._serverPrefs = serverPrefs;
+      }
+
+      renderWorkbench(workbenchBody, killStatusBody);
+
+      document.querySelectorAll('.run-btn, .save-btn').forEach(addRippleToButton);
+
+      Promise.allSettled(panelLoads).then(() => { clearPanelLoading(); });
+    } catch (error) {
+      clearPanelLoading();
+      addAlert('err', `数据加载失败: ${error.message}`);
     }
-
-    renderWorkbench(workbenchBody, killStatusBody);
-
-    document.querySelectorAll('.run-btn, .save-btn').forEach(addRippleToButton);
-
-    Promise.allSettled(panelLoads).then(() => { clearPanelLoading(); });
-
-    await refreshMarketQuotes();
-  } catch (error) {
-    clearPanelLoading();
-    addAlert('err', `数据加载失败: ${error.message}`);
-  }
+  });
 }
 
 function showPerformanceLoading() {
@@ -1563,59 +1565,65 @@ function showPerformanceLoading() {
 async function loadPerformancePanel(market, window) {
   const win = window || selectedPerformanceWindow || '7d';
   selectedPerformanceWindow = win;
-  showPerformanceLoading();
-  try {
-    const res = await fetch(`${PERFORMANCE_API}?market=${market}&account_kind=auto&window=${win}`);
-    if (!res.ok) return;
-    const data = await parseResponseBody(res);
-    renderPerformance(data);
-  } catch (_) {}
+  return runSingleFlightTask(`dashboard:performance:${market}:${win}`, async () => {
+    showPerformanceLoading();
+    try {
+      const res = await fetch(`${PERFORMANCE_API}?market=${market}&account_kind=auto&window=${win}`);
+      if (!res.ok) return;
+      const data = await parseResponseBody(res);
+      renderPerformance(data);
+    } catch (_) {}
+  });
 }
 
 async function loadAutomationPanel(market) {
-  try {
-    const res = await fetch(`${AUTOMATION_API}?market=${market}&account_kind=auto`);
-    if (!res.ok) return;
-    const data = await parseResponseBody(res);
-    renderAutomation(data);
-  } catch (_) {}
+  return runSingleFlightTask(`dashboard:automation:${market}`, async () => {
+    try {
+      const res = await fetch(`${AUTOMATION_API}?market=${market}&account_kind=auto`);
+      if (!res.ok) return;
+      const data = await parseResponseBody(res);
+      renderAutomation(data);
+    } catch (_) {}
+  });
 }
 
 async function loadHistoryPanel(market, options = {}) {
-  historyPanelLoading = true;
-  historyPanelMarket = market || historyPanelMarket || 'a';
   const append = Boolean(options.append);
-  try {
-    let url = `${HISTORY_API}?market=${historyPanelMarket}&account_kind=auto&source=all&limit=${HISTORY_PANEL_BATCH}`;
-    if (append && historyPanelNextCursor) {
-      url += `&cursor=${encodeURIComponent(historyPanelNextCursor)}`;
+  return runSingleFlightTask(`dashboard:history:${market || historyPanelMarket || 'a'}:${append ? 'append' : 'replace'}`, async () => {
+    historyPanelLoading = true;
+    historyPanelMarket = market || historyPanelMarket || 'a';
+    try {
+      let url = `${HISTORY_API}?market=${historyPanelMarket}&account_kind=auto&source=all&limit=${HISTORY_PANEL_BATCH}`;
+      if (append && historyPanelNextCursor) {
+        url += `&cursor=${encodeURIComponent(historyPanelNextCursor)}`;
+      }
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = await parseResponseBody(res);
+      const runs = toList(data.runs);
+      historyPanelHasMore = Boolean(data.has_more);
+      historyPanelNextCursor = data.next_cursor || null;
+      if (data.total_count != null) {
+        historyCounts = {
+          all: Number(data.total_count) || 0,
+          manual: Number(data.manual_count) || 0,
+          auto: Number(data.auto_count) || 0,
+        };
+      }
+      if (append) {
+        const existingKeys = new Set(historyRuns.map(r => `${r.created_at || ''}::${r.id}`));
+        const newRuns = runs.filter(r => !existingKeys.has(`${r.created_at || ''}::${r.id}`));
+        historyRuns = historyRuns.concat(newRuns.map(buildRunMetaFromListItem));
+      } else {
+        replaceHistoryRuns(runs);
+      }
+      renderRunCenter(historyRuns, { preserveData: true });
+    } catch (_) {
+    } finally {
+      historyPanelLoading = false;
+      renderRunCenter(historyRuns, { preserveData: true });
     }
-    const res = await fetch(url);
-    if (!res.ok) return;
-    const data = await parseResponseBody(res);
-    const runs = toList(data.runs);
-    historyPanelHasMore = Boolean(data.has_more);
-    historyPanelNextCursor = data.next_cursor || null;
-    if (data.total_count != null) {
-      historyCounts = {
-        all: Number(data.total_count) || 0,
-        manual: Number(data.manual_count) || 0,
-        auto: Number(data.auto_count) || 0,
-      };
-    }
-    if (append) {
-      const existingKeys = new Set(historyRuns.map(r => `${r.created_at || ''}::${r.id}`));
-      const newRuns = runs.filter(r => !existingKeys.has(`${r.created_at || ''}::${r.id}`));
-      historyRuns = historyRuns.concat(newRuns.map(buildRunMetaFromListItem));
-    } else {
-      replaceHistoryRuns(runs);
-    }
-    renderRunCenter(historyRuns, { preserveData: true });
-  } catch (_) {
-  } finally {
-    historyPanelLoading = false;
-    renderRunCenter(historyRuns, { preserveData: true });
-  }
+  });
 }
 
 function getFilteredHistoryRuns() {

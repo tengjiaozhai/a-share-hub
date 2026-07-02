@@ -4,10 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.a_stock.watchlist import AShareWatchlistStore
 from src.api.dependencies import get_current_user, get_tenant_context
+from src.api.polling_cache import PollingCache
 from src.core.tenant import TenantContext
 from src.storage.dependencies import get_runtime_engine
 
 logger = logging.getLogger(__name__)
+_quotes_cache: PollingCache[list[dict]] = PollingCache(ttl_seconds=55)
 
 router = APIRouter(
     prefix="/api/v1/a-stock",
@@ -72,12 +74,20 @@ def remove_from_watchlist(
 def get_quotes(symbols: list[str]) -> list[dict]:
     """批量获取 A 股行情。"""
     from src.data.providers.akshare_provider import _fetch_tencent_quotes_batch
-    if not symbols:
+
+    normalized_symbols = [symbol.strip().upper() for symbol in symbols if str(symbol).strip()]
+    if not normalized_symbols:
         return []
-    df = _fetch_tencent_quotes_batch(symbols[:500])
-    if df.empty:
-        return []
-    return df.to_dict("records")
+    limited_symbols = normalized_symbols[:500]
+    cache_key = ",".join(limited_symbols)
+
+    def refresh() -> list[dict]:
+        df = _fetch_tencent_quotes_batch(limited_symbols)
+        if df.empty:
+            return []
+        return df.to_dict("records")
+
+    return _quotes_cache.get_or_refresh(cache_key, refresh)
 
 
 @router.get("/kline/{symbol}")

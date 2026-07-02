@@ -24,6 +24,8 @@ let historyPanelMarket = 'a';
 let historyPanelLimit = 0;
 const HISTORY_PANEL_BATCH = 20;
 const HISTORY_PANEL_LIMIT_CAP = 200;
+const pollingTasks = new Map();
+const singleFlightTasks = new Map();
 
 const PAGE_SIZE = 20;
 const pag = {
@@ -202,4 +204,36 @@ function extractErrorMessage(body, fallback) {
   if (!body) return fallback;
   if (typeof body === 'string') return body;
   return normalizeText(body.detail || body.message || body.error, fallback);
+}
+
+function runSingleFlightTask(key, task) {
+  if (singleFlightTasks.has(key)) {
+    return singleFlightTasks.get(key);
+  }
+  const promise = Promise.resolve()
+    .then(task)
+    .finally(() => {
+      singleFlightTasks.delete(key);
+    });
+  singleFlightTasks.set(key, promise);
+  return promise;
+}
+
+function setNonOverlappingInterval(key, task, intervalMs) {
+  if (pollingTasks.has(key)) {
+    clearInterval(pollingTasks.get(key).timer);
+  }
+  const state = { running: false, timer: null };
+  state.timer = setInterval(() => {
+    if (state.running) return;
+    state.running = true;
+    Promise.resolve()
+      .then(task)
+      .catch(() => {})
+      .finally(() => {
+        state.running = false;
+      });
+  }, intervalMs);
+  pollingTasks.set(key, state);
+  return state.timer;
 }
