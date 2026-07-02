@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 
 from src.api.dashboard_page.render import render_dashboard_html
 
+
 def test_dashboard_is_only_html_entrypoint(authenticated_client):
     assert authenticated_client.get("/dashboard").status_code == 200
     assert authenticated_client.get("/new").status_code == 404
@@ -149,6 +150,12 @@ def test_dashboard_route_uses_rendered_split_html(authenticated_client):
     assert response.status_code == 200
     assert response.text == render_dashboard_html()
 
+
+def test_favicon_route_serves_icon(authenticated_client):
+    response = authenticated_client.get("/favicon.ico")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("image/vnd.microsoft.icon")
+
 def test_dashboard_preferences_and_workbench_stay_server_backed(authenticated_client, pg_store):
     pg_store.set_preference("dashboard", {
             "watchlist": ["600519.SH", "000858.SZ"],
@@ -168,7 +175,11 @@ def test_dashboard_preferences_and_workbench_stay_server_backed(authenticated_cl
         confidence=80,
         target_position_ratio=0.25,
         reason="seed decision",
-        input_snapshot={"symbol": "600519.SH", "features": {"decision_mode": "mock"}, "market_context": {"mode": "shadow"}},
+        input_snapshot={
+            "symbol": "600519.SH",
+            "features": {"decision_mode": "mock"},
+            "market_context": {"mode": "shadow"},
+        },
     )
     target_position_id = pg_store.insert_target_position(decision_run_id=decision_run_id,
         symbol="600519.SH",
@@ -369,9 +380,8 @@ def test_render_dashboard_html_does_not_contain_legacy_run_api():
 
     html = render_dashboard_html()
     legacy_match = re.search(r"/api/v1/dashboard/run(?!s)", html)
-    assert not legacy_match, (
-        f"Legacy /api/v1/dashboard/run reference still in page (matches: {legacy_match.group(0) if legacy_match else None!r})"
-    )
+    legacy_ref = legacy_match.group(0) if legacy_match else None
+    assert not legacy_match, f"Legacy /api/v1/dashboard/run reference still in page (matches: {legacy_ref!r})"
 
 def test_render_dashboard_html_contains_resilient_sse_onerror():
     """SSE onerror 必须有重连容忍，不直接 close 流"""

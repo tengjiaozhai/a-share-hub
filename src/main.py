@@ -1,11 +1,12 @@
 import argparse
+import base64
 import sys
+from contextlib import suppress
 from datetime import datetime, timedelta
 from hashlib import sha256
-from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 
 from src.a_stock.routes import router as a_stock_router
 from src.agents.llm_client import LLMClient
@@ -33,7 +34,31 @@ from src.storage.runtime_store import RuntimeStore
 from src.storage.system_runtime_store import SystemRuntimeStore
 from src.us_stock.routes import router as us_stock_router
 
-_FAVICON_PATH = Path(__file__).resolve().parent / "api" / "static" / "favicon.ico"
+_FAVICON_BYTES = base64.b64decode(
+    "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"
+)
 
 # CLI 命令在用户未登录时使用 system 账户执行
 CLI_USER_ID = SYSTEM_TENANT.user_id
@@ -136,7 +161,7 @@ def build_app() -> FastAPI:
 
     @app.get("/favicon.ico", include_in_schema=False)
     def favicon():
-        return FileResponse(str(_FAVICON_PATH), media_type="image/vnd.microsoft.icon")
+        return Response(content=_FAVICON_BYTES, media_type="image/vnd.microsoft.icon")
 
     settings = Settings()
     if settings.enable_scheduler or settings.app_role == "scheduler":
@@ -164,15 +189,11 @@ def _register_app_lifespan(app: FastAPI) -> None:
             _run_startup_backfill()
             yield
         finally:
-            try:
+            with suppress(Exception):
                 scheduler.stop()
-            except Exception:
-                pass
             # 防御层 3：graceful shutdown 释放所有连接池中的连接
-            try:
+            with suppress(Exception):
                 get_runtime_engine().dispose()
-            except Exception:
-                pass
 
     app.router.lifespan_context = lifespan
 
