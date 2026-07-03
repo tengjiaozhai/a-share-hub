@@ -84,7 +84,8 @@ def test_dashboard_contains_positions_builder_controls(_patch_auth):
     assert "买入日期" in html
     assert "买入价格" in html
     assert "数量" in html
-    assert "新增股票" in html
+    assert "新增标的" in html
+    assert "标的代码" in html
 
 
 def test_dashboard_contains_saved_holdings_history_ui(_patch_auth):

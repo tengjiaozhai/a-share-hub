@@ -241,6 +241,26 @@ def test_render_dashboard_html_contains_market_and_alpha_controls():
         assert marker not in html
 
 
+def test_render_dashboard_html_contains_workspace_symbol_classification_contract():
+    html = render_dashboard_html()
+
+    required_markers = [
+        "WORKSPACE_MARKET_META",
+        "workspaceWatchlistState = []",
+        "function syncWorkspaceWatchlistFromInput(",
+        "function renderWorkspaceWatchlistInput(",
+        "function classifyWorkspaceSymbol(symbol)",
+        "normalized.endsWith('.OTC')",
+        "normalized.endsWith('.US')",
+        "normalized.endsWith('.SH') || normalized.endsWith('.SZ')",
+        r"/^\d{6}$/",
+        "filterWatchlistByMarket()",
+        "validateWatchlistSymbols()",
+    ]
+    for marker in required_markers:
+        assert marker in html
+
+
 def test_render_dashboard_html_contains_fund_catalog_pagination_contract():
     html = render_dashboard_html()
 
@@ -307,8 +327,13 @@ def test_render_dashboard_html_contains_fund_watchlist_contract():
 
     required_markers = [
         "FundModule.addToWatchlist(",
+        "FundModule.openWorkspaceForSymbol(",
+        "FundModule.openAlphaForSymbol(",
+        "openDashboardWorkspaceForSymbol(",
         "/api/v1/fund/watchlist",
-        "添加基金观察失败",
+        "同步到工作台",
+        "选股分析",
+        "持仓分析",
         "基金观察列表",
     ]
     for marker in required_markers:
@@ -525,9 +550,9 @@ def test_render_dashboard_html_removes_shadow_decision_path():
 
 
 def test_render_dashboard_html_alpha_builder_button_order_code_first():
-    """输入区按钮顺序：[代码]→[+新增股票]→[日期/价格/数量]→[+新增批次/删除批次]→[保存]
+    """输入区按钮顺序：[代码]→[+新增标的]→[日期/价格/数量]→[+新增批次/删除批次]→[保存]
 
-    HTML 段（按钮容器）：[+新增股票] < 保存
+    HTML 段（按钮容器）：[+新增标的] < 保存
     """
     html = render_dashboard_html()
     add_stock_idx = html.find('id="alpha-add-stock-card"')

@@ -191,6 +191,10 @@ def _register_app_lifespan(app: FastAPI) -> None:
         finally:
             with suppress(Exception):
                 scheduler.stop()
+            # 停止 ETF 行情预热线程
+            with suppress(Exception):
+                from src.api.routes_fund import _get_fund_catalog_service
+                _get_fund_catalog_service().stop_etf_spot_warmer()
             # 防御层 3：graceful shutdown 释放所有连接池中的连接
             with suppress(Exception):
                 get_runtime_engine().dispose()

@@ -22,14 +22,30 @@ function validateWatchlistSymbols() {
 
   var market = marketEl.value;
   var symbols = watchlistEl.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+  var classify = typeof classifyWorkspaceSymbol === 'function'
+    ? classifyWorkspaceSymbol
+    : function(symbol) {
+        var normalized = String(symbol || '').trim().toUpperCase();
+        if (!normalized) return 'a';
+        if (normalized.endsWith('.OTC') || /^(15|16|18|50|51|52|56|58)\d{4}(\.(SH|SZ))?$/.test(normalized)) return 'fund';
+        if (normalized.endsWith('.US')) return 'us';
+        if (normalized.endsWith('.SH') || normalized.endsWith('.SZ')) return 'a';
+        if (/^\d{6}$/.test(normalized)) return 'a';
+        if (/^[A-Z][A-Z0-9.]*$/.test(normalized)) return 'us';
+        return 'a';
+      };
   
   var mismatched = [];
   symbols.forEach(function(s) {
-    var isUS = !s.endsWith('.SH') && !s.endsWith('.SZ');
-    if (market === 'a' && isUS) {
+    var symbolMarket = classify(s);
+    if (market === 'a' && symbolMarket === 'us') {
       mismatched.push({ symbol: s, type: 'us' });
-    } else if (market === 'us' && !isUS) {
+    } else if (market === 'us' && symbolMarket === 'a') {
       mismatched.push({ symbol: s, type: 'a' });
+    } else if (market !== 'fund' && symbolMarket === 'fund') {
+      mismatched.push({ symbol: s, type: 'fund' });
+    } else if (market === 'fund' && symbolMarket !== 'fund') {
+      mismatched.push({ symbol: s, type: symbolMarket });
     }
   });
 
@@ -42,12 +58,15 @@ function validateWatchlistSymbols() {
   }
 
   if (mismatched.length > 0) {
-    var marketLabel = market === 'a' ? 'A股' : '美股';
+    var marketLabel = market === 'a' ? 'A股' : market === 'us' ? '美股' : '基金';
     var mismatchedSymbols = mismatched.map(function(m) { return m.symbol; }).join(', ');
-    var mismatchedTypes = mismatched.map(function(m) { return m.type === 'us' ? '美股' : 'A股'; }).join(', ');
-    
-    warningEl.innerHTML = '<span style="color:var(--yellow)">⚠️ ' + mismatchedSymbols + ' 是' + mismatchedTypes + '代码，当前市场为' + marketLabel + '，保存后刷新会被过滤。' +
-      '<button onclick="switchMarketToMatch(\'' + mismatched[0].type + '\')" style="margin-left:8px;padding:2px 8px;font-size:11px;background:var(--accent);color:white;border:none;border-radius:4px;cursor:pointer;">切换到' + (mismatched[0].type === 'us' ? '美股' : 'A股') + '</button></span>';
+    var mismatchedTypes = mismatched.map(function(m) {
+      return m.type === 'us' ? '美股' : m.type === 'fund' ? '基金' : 'A股';
+    }).join(', ');
+    var targetLabel = mismatched[0].type === 'us' ? '美股' : mismatched[0].type === 'fund' ? '基金' : 'A股';
+
+    warningEl.innerHTML = '<span style="color:var(--yellow)">⚠️ ' + mismatchedSymbols + ' 属于' + mismatchedTypes + '代码，当前市场为' + marketLabel + '。保存后会保留在对应市场，但只会在切换到对应市场后显示。' +
+      '<button onclick="switchMarketToMatch(\'' + mismatched[0].type + '\')" style="margin-left:8px;padding:2px 8px;font-size:11px;background:var(--accent);color:white;border:none;border-radius:4px;cursor:pointer;">切换到' + targetLabel + '</button></span>';
     warningEl.style.display = 'block';
   } else {
     warningEl.style.display = 'none';
@@ -100,6 +119,9 @@ function switchMarketToMatch(type) {
     validateWatchlistSymbols();
     loadDashboard();
   });
+  if (typeof updateWorkspaceWatchlistPrompts === 'function') {
+    updateWorkspaceWatchlistPrompts(marketEl.value || 'a');
+  }
 })();
 
 // 观察列表输入时实时验证

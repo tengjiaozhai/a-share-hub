@@ -58,10 +58,10 @@ function createAlphaStockCard(position = {}) {
   return `<article class="alpha-stock-card" data-alpha-stock-card>
     <div class="alpha-stock-card-head">
       <label class="alpha-field alpha-stock-symbol-field">
-        <span>股票代码</span>
+        <span>标的代码</span>
         <input data-alpha-symbol value="${escapeHtml(symbol)}" placeholder="如 MU / 600519 / 000001.SZ" />
       </label>
-      <button type="button" class="alpha-builder-remove alpha-builder-remove-stock" data-alpha-remove-stock>删除股票</button>
+      <button type="button" class="alpha-builder-remove alpha-builder-remove-stock" data-alpha-remove-stock>删除标的</button>
     </div>
     <div class="alpha-stock-card-lots" data-alpha-lots>
       ${lots.map((lot) => createAlphaLotRow(lot)).join('')}
@@ -176,6 +176,39 @@ function focusAlphaBuilder() {
   const symbolInput = builder?.querySelector('[data-alpha-symbol]');
   builder?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   setTimeout(() => symbolInput?.focus(), 250);
+}
+
+function openAlphaBuilderForSymbol(symbol, options = {}) {
+  const normalized = String(symbol || '').trim().toUpperCase();
+  if (!normalized) return false;
+
+  const nextMarket = options.market || classifyAlphaMarket(normalized);
+  currentMarket = nextMarket;
+  setAlphaActiveMarketTab();
+
+  const activeViewButton = Array.from(document.querySelectorAll('.status-bar button'))
+    .find((button) => String(button.getAttribute('onclick') || '').includes("view-alpha"));
+  if (activeViewButton && typeof switchView === 'function') {
+    switchView(activeViewButton, 'view-alpha');
+  }
+
+  const symbolInputs = Array.from(document.querySelectorAll('[data-alpha-symbol]'));
+  const existingInput = symbolInputs.find((input) => String(input.value || '').trim().toUpperCase() === normalized);
+  if (existingInput) {
+    existingInput.focus();
+    existingInput.closest('[data-alpha-stock-card]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } else {
+    const emptyInput = symbolInputs.find((input) => !String(input.value || '').trim());
+    if (emptyInput) {
+      emptyInput.value = normalized;
+    } else {
+      appendAlphaStockCard({ symbol: normalized, lots: [{}] });
+    }
+    focusAlphaBuilder();
+  }
+
+  showToast(`${normalized} 已带入持仓分析`, 'success', { position: 'bottom-right', duration: 2500 });
+  return true;
 }
 
 function groupAlphaFillsBySymbol(fills) {

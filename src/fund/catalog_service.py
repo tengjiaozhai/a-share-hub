@@ -1,7 +1,10 @@
 """基金目录服务"""
 import ast
+import logging
 import math
 import re
+import threading
+import time
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -14,9 +17,12 @@ from src.data.providers.akshare_catalog import infer_exchange
 from src.us_stock.cache import TTLMemoryCache
 from src.us_stock.yahoo_provider import _safe_float, _safe_int
 
+logger = logging.getLogger(__name__)
+
 # 缓存 TTL 配置（秒）
-ETF_SPOT_CACHE_TTL_TRADING = 30  # 交易时段：30 秒
-ETF_SPOT_CACHE_TTL_NON_TRADING = 300  # 非交易时段：5 分钟
+ETF_SPOT_CACHE_TTL_TRADING = 120  # 交易时段：120 秒
+ETF_SPOT_WARM_AHEAD_SECONDS = 15  # 缓存过期前 15 秒启动预热
+ETF_SPOT_CACHE_TTL_NON_TRADING = 900  # 非交易时段：15 分钟
 FUND_NAV_CACHE_TTL = 3600  # 基金净值：1 小时
 ETF_HISTORY_CACHE_TTL = 1800  # ETF 历史行情：30 分钟
 FUNDCODE_SEARCH_URL = "https://fund.eastmoney.com/js/fundcode_search.js"
@@ -157,17 +163,21 @@ class FundCatalogService:
         self._cache_ttl = cache_ttl_seconds
         self._cache: Optional[pd.DataFrame] = None
         self._cache_time: Optional[datetime] = None
-        
+
         # ETF 行情缓存
         self._etf_spot_cache = TTLMemoryCache(ttl_seconds=ETF_SPOT_CACHE_TTL_TRADING)
         self._etf_spot_cache_key = "etf_spot:all"
-        
+
         # 基金净值缓存（按 symbol 缓存）
         self._fund_nav_cache = TTLMemoryCache(ttl_seconds=FUND_NAV_CACHE_TTL)
-        
+
         # ETF 历史行情缓存（按 symbol+period 缓存）
         self._etf_history_cache = TTLMemoryCache(ttl_seconds=ETF_HISTORY_CACHE_TTL)
-        
+
+        # ETF 行情后台预热线程
+        self._etf_spot_warm_thread: Optional[threading.Thread] = None
+        self._etf_spot_warm_stop = threading.Event()
+
         # 缓存统计
         self._stats = {
             'etf_spot_hits': 0,
@@ -177,6 +187,8 @@ class FundCatalogService:
             'etf_history_hits': 0,
             'etf_history_misses': 0,
         }
+
+        self._start_etf_spot_warmer()
     
     def _is_cache_valid(self) -> bool:
         """检查缓存是否有效"""
@@ -190,6 +202,82 @@ class FundCatalogService:
             return ETF_SPOT_CACHE_TTL_TRADING
         return ETF_SPOT_CACHE_TTL_NON_TRADING
     
+
+    def _start_etf_spot_warmer(self) -> None:
+        """启动 ETF 行情后台预热线程"""
+        if self._etf_spot_warm_thread is not None and self._etf_spot_warm_thread.is_alive():
+            return
+        self._etf_spot_warm_stop.clear()
+        self._etf_spot_warm_thread = threading.Thread(
+            target=self._etf_spot_warm_loop,
+            daemon=True,
+            name="etf-spot-warmer",
+        )
+        self._etf_spot_warm_thread.start()
+
+    def _etf_spot_warm_loop(self) -> None:
+        """后台预热循环：保持 ETF 行情缓存始终接近最新"""
+        while not self._etf_spot_warm_stop.is_set():
+            try:
+                self._refresh_etf_spot()
+            except Exception as e:
+                logger.warning("ETF spot warm loop refresh failed: %s", e)
+            sleep_seconds = max(30, self._get_etf_spot_ttl() - ETF_SPOT_WARM_AHEAD_SECONDS)
+            self._etf_spot_warm_stop.wait(timeout=sleep_seconds)
+
+    def _refresh_etf_spot(self) -> None:
+        """拉取 ETF 行情并写入缓存（后台线程调用）"""
+        try:
+            current_ttl = self._get_etf_spot_ttl()
+            if self._etf_spot_cache._ttl != current_ttl:
+                self._etf_spot_cache = TTLMemoryCache(ttl_seconds=current_ttl)
+            df = ak.fund_etf_spot_em()
+            column_mapping = {
+                '代码': 'code',
+                '名称': 'name',
+                '最新价': 'price',
+                '涨跌幅': 'change_pct',
+                '涨跌额': 'change',
+                '成交量': 'volume',
+                '成交额': 'amount',
+                '开盘价': 'open',
+                '最高价': 'high',
+                '最低价': 'low',
+                '昨收': 'prev_close',
+            }
+            available_columns = [col for col in column_mapping.keys() if col in df.columns]
+            df = df[available_columns].rename(columns=column_mapping)
+
+            catalog_lookup = self._build_catalog_lookup()
+            if catalog_lookup:
+                df['catalog_meta'] = df['code'].astype(str).map(catalog_lookup)
+                df = df[df['catalog_meta'].notna()].copy()
+                df = df[df['catalog_meta'].apply(lambda meta: bool(meta.get('is_exchange_traded', False)))].copy()
+                df = df[
+                    df['catalog_meta'].apply(
+                        lambda meta: bool(meta.get('exchange')) and meta.get('symbol') == f"{meta.get('code')}.{meta.get('exchange')}"
+                    )
+                ].copy()
+                df['exchange'] = df['catalog_meta'].apply(lambda meta: meta['exchange'])
+                df['symbol'] = df['catalog_meta'].apply(lambda meta: meta['symbol'])
+            else:
+                df = df.iloc[0:0].copy()
+
+            for col in ['price', 'change_pct', 'change', 'open', 'high', 'low', 'prev_close']:
+                if col in df.columns:
+                    df[col] = df[col].apply(lambda x: _safe_float(x, None))
+            for col in ['volume', 'amount']:
+                if col in df.columns:
+                    df[col] = df[col].apply(lambda x: _safe_int(x, 0))
+
+            df = df[df['price'].notna() & (df['price'] > 0)]
+            if 'catalog_meta' in df.columns:
+                df = df.drop(columns=['catalog_meta'])
+            self._etf_spot_cache.set(self._etf_spot_cache_key, df.to_dict('records'))
+        except Exception as e:
+            logger.warning("ETF spot refresh failed: %s", e)
+
+
     def get_fund_catalog(self, force_refresh: bool = False) -> pd.DataFrame:
         """获取基金目录
         
@@ -273,92 +361,33 @@ class FundCatalogService:
         query: str = '',
         force_refresh: bool = False,
     ) -> dict:
-        """获取 ETF 实时行情（带缓存）
-        
+        """获取 ETF 实时行情（读取后台预热缓存，冷启动时降级同步拉取）
+
         Args:
             page: 页码
             page_size: 每页数量
             query: 仅按代码/名称筛选
-            force_refresh: 强制刷新缓存
-        
+            force_refresh: 强制刷新缓存（同步等待）
+
         Returns:
             分页 ETF 实时行情对象
         """
-        # 检查缓存
-        if not force_refresh:
-            cached = self._etf_spot_cache.get(self._etf_spot_cache_key)
-            if cached is not None:
-                self._stats['etf_spot_hits'] += 1
-                return _paginate_records(self._filter_etf_spot_items(cached, query), page=page, page_size=page_size)
-        
-        self._stats['etf_spot_misses'] += 1
-        
-        try:
-            # 动态调整缓存 TTL
-            current_ttl = self._get_etf_spot_ttl()
-            if self._etf_spot_cache._ttl != current_ttl:
-                self._etf_spot_cache = TTLMemoryCache(ttl_seconds=current_ttl)
-            
-            df = ak.fund_etf_spot_em()
-            
-            # 标准化列名
-            column_mapping = {
-                '代码': 'code',
-                '名称': 'name',
-                '最新价': 'price',
-                '涨跌幅': 'change_pct',
-                '涨跌额': 'change',
-                '成交量': 'volume',
-                '成交额': 'amount',
-                '开盘价': 'open',
-                '最高价': 'high',
-                '最低价': 'low',
-                '昨收': 'prev_close',
-            }
-            
-            # 只保留存在的列
-            available_columns = [col for col in column_mapping.keys() if col in df.columns]
-            df = df[available_columns].rename(columns=column_mapping)
+        if force_refresh:
+            self._stats['etf_spot_misses'] += 1
+            self._refresh_etf_spot()
+            cached = self._etf_spot_cache.get(self._etf_spot_cache_key) or []
+            return _paginate_records(self._filter_etf_spot_items(cached, query), page=page, page_size=page_size)
 
-            catalog_lookup = self._build_catalog_lookup()
-            if catalog_lookup:
-                df['catalog_meta'] = df['code'].astype(str).map(catalog_lookup)
-                df = df[df['catalog_meta'].notna()].copy()
-                df = df[df['catalog_meta'].apply(lambda meta: bool(meta.get('is_exchange_traded', False)))].copy()
-                df = df[
-                    df['catalog_meta'].apply(
-                        lambda meta: bool(meta.get('exchange')) and meta.get('symbol') == f"{meta.get('code')}.{meta.get('exchange')}"
-                    )
-                ].copy()
-                df['exchange'] = df['catalog_meta'].apply(lambda meta: meta['exchange'])
-                df['symbol'] = df['catalog_meta'].apply(lambda meta: meta['symbol'])
-            else:
-                df = df.iloc[0:0].copy()
-            
-            # 安全转换数值
-            for col in ['price', 'change_pct', 'change', 'open', 'high', 'low', 'prev_close']:
-                if col in df.columns:
-                    df[col] = df[col].apply(lambda x: _safe_float(x, None))
-            
-            for col in ['volume', 'amount']:
-                if col in df.columns:
-                    df[col] = df[col].apply(lambda x: _safe_int(x, 0))
-            
-            # 过滤无效价格
-            df = df[df['price'].notna() & (df['price'] > 0)]
-            if 'catalog_meta' in df.columns:
-                df = df.drop(columns=['catalog_meta'])
-            
-            # 转换为列表并缓存
-            result = df.to_dict('records')
-            self._etf_spot_cache.set(self._etf_spot_cache_key, result)
-            
-            filtered = self._filter_etf_spot_items(result, query)
-            return _paginate_records(filtered, page=page, page_size=page_size)
-            
-        except Exception as e:
-            print(f"Error fetching ETF spot: {e}")
-            return _paginate_records([], page=page, page_size=page_size)
+        cached = self._etf_spot_cache.get(self._etf_spot_cache_key)
+        if cached is not None:
+            self._stats['etf_spot_hits'] += 1
+            return _paginate_records(self._filter_etf_spot_items(cached, query), page=page, page_size=page_size)
+
+        # 冷启动降级：缓存尚未写好时同步拉取一次
+        self._stats['etf_spot_misses'] += 1
+        self._refresh_etf_spot()
+        cached = self._etf_spot_cache.get(self._etf_spot_cache_key) or []
+        return _paginate_records(self._filter_etf_spot_items(cached, query), page=page, page_size=page_size)
 
     def _resolve_fund_record(self, symbol: str) -> dict:
         df = self.get_fund_catalog()
@@ -584,7 +613,7 @@ class FundCatalogService:
     
     def clear_cache(self, cache_type: str = 'all') -> None:
         """清除缓存
-        
+
         Args:
             cache_type: 缓存类型 ('etf_spot', 'fund_nav', 'etf_history', 'all')
         """
@@ -597,3 +626,11 @@ class FundCatalogService:
         if cache_type in ('catalog', 'all'):
             self._cache = None
             self._cache_time = None
+
+    def stop_etf_spot_warmer(self) -> None:
+        """停止后台预热线程（用于测试或优雅关闭）"""
+        self._etf_spot_warm_stop.set()
+        if self._etf_spot_warm_thread is not None:
+            self._etf_spot_warm_thread.join(timeout=5)
+            self._etf_spot_warm_thread = None
+

@@ -4,7 +4,7 @@
     <div class="alpha-hero-copy">
       <p class="alpha-kicker">持仓分析</p>
       <h2>多标的、多批次的持仓分析台</h2>
-      <p class="alpha-summary">按股票卡片录入买入批次，再对照当前持仓、最近成交与 multi-leg 历史统一复盘。输入区、持仓区和历史区共享同一套卡片化视图。</p>
+      <p class="alpha-summary">按标的卡片录入买入批次，再对照当前持仓、最近成交与 multi-leg 历史统一复盘。输入区、持仓区和历史区共享同一套卡片化视图。</p>
     </div>
     <div class="alpha-market-tabs" role="tablist" id="alpha-market-tabs">
       <button type="button" class="alpha-market-tab active" data-alpha-market="a" role="tab" aria-selected="true">A 股</button>
@@ -18,7 +18,7 @@
       <div class="card-head alpha-report-head">
         <div>
           <span>持仓录入</span>
-          <div class="alpha-report-caption">每个 stock card 维护一个 symbol；点击持仓卡上的「分析」按钮启动单标的分析。</div>
+          <div class="alpha-report-caption">每张标的卡维护一个 symbol；点击持仓卡上的「分析」按钮启动单标的分析。</div>
         </div>
       </div>
       <div class="card-body alpha-report-body alpha-report-body-primary">
@@ -26,9 +26,9 @@
           <div class="alpha-builder-head">
             <div>
               <div class="alpha-builder-title">分析标的</div>
-              <div class="alpha-builder-caption">每个 stock card 维护一个 symbol；每张卡里可继续追加多个加仓批次。</div>
+              <div class="alpha-builder-caption">每张标的卡维护一个 symbol；每张卡里可继续追加多个加仓批次。</div>
             </div>
-            <button type="button" id="alpha-add-stock-card" class="alpha-builder-add-stock">新增股票</button>
+            <button type="button" id="alpha-add-stock-card" class="alpha-builder-add-stock">新增标的</button>
           </div>
           <div id="alpha-stock-cards" class="alpha-stock-cards"></div>
           <div class="alpha-builder-legend">
@@ -70,7 +70,7 @@
       </div>
     </div>
     <div class="alpha-analysis-header">
-      <span class="alpha-analysis-header-symbol" title="股票代码">股票代码</span>
+      <span class="alpha-analysis-header-symbol" title="标的代码">标的代码</span>
       <span class="alpha-analysis-header-stage" title="当前分析阶段：快照→研究→交易→风控→回测→完成">分析阶段</span>
       <span class="alpha-analysis-header-status" title="分析状态：进行中/已完成/失败">状态</span>
       <span class="alpha-analysis-header-action" title="风控建议：加仓/持有/减仓/清仓">操作建议</span>

@@ -331,8 +331,14 @@ const FundModule = {
             <button class="mkt-btn mkt-btn-accent btn-view-nav" type="button" onclick="FundModule.openNavForSymbol('${this.escapeJsString(symbol)}')">
               净值
             </button>
+            <button class="mkt-btn mkt-btn-outline btn-view-nav" type="button" onclick="FundModule.openWorkspaceForSymbol('${this.escapeJsString(symbol)}')">
+              选股分析
+            </button>
             <button class="mkt-btn mkt-btn-outline btn-view-nav" type="button" onclick="FundModule.addToWatchlist('${this.escapeJsString(symbol)}')">
               加入观察
+            </button>
+            <button class="mkt-btn mkt-btn-outline btn-view-nav" type="button" onclick="FundModule.openAlphaForSymbol('${this.escapeJsString(symbol)}')">
+              持仓分析
             </button>
           </td>
         </tr>
@@ -395,6 +401,31 @@ const FundModule = {
     this.state.currentSymbol = symbol;
     if (navTab) this.switchTab(navTab, '#fund-nav', { skipNavReload: true });
     this.queryFundNav(symbol);
+  },
+
+  openWorkspaceForSymbol(symbol) {
+    if (!symbol) return;
+    const match = this.state.catalogData.find((item) => (
+      item.symbol === symbol || item.code === symbol
+    ));
+    if (typeof openDashboardWorkspaceForSymbol === 'function') {
+      openDashboardWorkspaceForSymbol(symbol, {
+        market: 'fund',
+        name: match?.name || symbol,
+        persist: true,
+      });
+      return;
+    }
+    alert('选股分析入口暂不可用');
+  },
+
+  openAlphaForSymbol(symbol) {
+    if (!symbol) return;
+    if (typeof openAlphaBuilderForSymbol === 'function') {
+      openAlphaBuilderForSymbol(symbol, { market: 'fund' });
+      return;
+    }
+    alert('持仓分析入口暂不可用');
   },
 
   async queryFundNav(symbolOverride) {
@@ -562,14 +593,20 @@ const FundModule = {
           name: match?.name || symbol,
         }),
       });
-      if (response.status === 409) {
-        alert(`${symbol} 已在基金观察列表中`);
-        return;
-      }
-      if (!response.ok) {
+      if (!response.ok && response.status !== 409) {
         throw new Error(`HTTP ${response.status}`);
       }
-      alert(`已将 ${symbol} 添加到基金观察列表`);
+      if (typeof addToWorkspaceWatchlist === 'function') {
+        addToWorkspaceWatchlist(symbol, match?.name || symbol, {
+          allowCrossMarket: true,
+          persist: true,
+        });
+      }
+      if (response.status === 409) {
+        showToast(`${symbol} 已在基金观察列表中，已同步到工作台`, 'info', { position: 'bottom-right', duration: 2500 });
+        return;
+      }
+      showToast(`已将 ${symbol} 添加到基金观察列表，并同步到工作台`, 'success', { position: 'bottom-right', duration: 2500 });
     } catch (error) {
       console.error('添加基金观察失败:', error);
       alert('添加基金观察失败，请稍后重试');

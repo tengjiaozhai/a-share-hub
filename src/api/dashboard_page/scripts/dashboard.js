@@ -7,6 +7,25 @@ const PREFS_API = '/api/v1/dashboard/preferences';
 const PERFORMANCE_API = '/api/v1/dashboard/performance';
 const AUTOMATION_API = '/api/v1/dashboard/automation';
 const HISTORY_API = '/api/v1/dashboard/history';
+const WORKSPACE_MARKET_META = {
+  a: {
+    label: 'A股',
+    watchlistPlaceholder: '输入 A 股代码，逗号分隔，如 600519.SH, 000001.SZ',
+    addPlaceholder: '输入 A 股代码后按回车添加，如 600519.SH',
+  },
+  us: {
+    label: '美股',
+    watchlistPlaceholder: '输入美股代码，逗号分隔，如 NVDA, AAPL, MRVL',
+    addPlaceholder: '输入美股代码后按回车添加，如 NVDA',
+  },
+  fund: {
+    label: '基金',
+    watchlistPlaceholder: '输入基金代码，逗号分隔，如 000001.OTC, 511280',
+    addPlaceholder: '输入基金代码后按回车添加，如 000001.OTC',
+  },
+};
+let workspaceWatchlistState = [];
+let activeWorkspaceMarket = 'a';
 
 function displayTimeValue(raw) {
   var formatted = formatTime(raw);
@@ -256,15 +275,65 @@ function showToast(message, type = 'info', options = {}) {
   }, duration);
 }
 
-function savePreferences() {
+function normalizeWorkspaceSymbol(symbol) {
+  return String(symbol || '').trim().toUpperCase();
+}
+
+function dedupeWorkspaceSymbols(symbols) {
+  const seen = new Set();
+  return symbols
+    .map(normalizeWorkspaceSymbol)
+    .filter(Boolean)
+    .filter((symbol) => {
+      if (seen.has(symbol)) return false;
+      seen.add(symbol);
+      return true;
+    });
+}
+
+function getWorkspaceWatchlistByMarket(market = activeWorkspaceMarket) {
+  return workspaceWatchlistState.filter((symbol) => classifyWorkspaceSymbol(symbol) === market);
+}
+
+function updateWorkspaceWatchlistPrompts(market = activeWorkspaceMarket) {
+  const meta = WORKSPACE_MARKET_META[market] || WORKSPACE_MARKET_META.a;
+  const watchlistEl = document.getElementById('cfg-watchlist');
+  const addStockEl = document.getElementById('cfg-add-stock');
+  if (watchlistEl) watchlistEl.placeholder = meta.watchlistPlaceholder;
+  if (addStockEl) addStockEl.placeholder = meta.addPlaceholder;
+}
+
+function renderWorkspaceWatchlistInput(market = activeWorkspaceMarket) {
+  const watchlistEl = document.getElementById('cfg-watchlist');
+  if (!watchlistEl) return;
+  watchlistEl.value = getWorkspaceWatchlistByMarket(market).join(',');
+  updateWorkspaceWatchlistPrompts(market);
+}
+
+function syncWorkspaceWatchlistFromInput(market = activeWorkspaceMarket) {
+  const watchlistEl = document.getElementById('cfg-watchlist');
+  if (!watchlistEl) return workspaceWatchlistState.slice();
+
+  const retained = workspaceWatchlistState.filter((symbol) => classifyWorkspaceSymbol(symbol) !== market);
+  const inputSymbols = dedupeWorkspaceSymbols(watchlistEl.value.split(','));
+  workspaceWatchlistState = dedupeWorkspaceSymbols(retained.concat(inputSymbols));
+  return workspaceWatchlistState.slice();
+}
+
+function setWorkspaceWatchlistState(symbols) {
+  workspaceWatchlistState = dedupeWorkspaceSymbols(Array.isArray(symbols) ? symbols : String(symbols || '').split(','));
+}
+
+function savePreferences(options = {}) {
+  const { silent = false } = options;
   clearTimeout(_savePrefsTimer);
   const statusEl = document.getElementById('save-status');
   statusEl.textContent = '保存中...';
   statusEl.style.color = 'var(--yellow)';
+  syncWorkspaceWatchlistFromInput(activeWorkspaceMarket);
 
   const prefs = {
-    watchlist: document.getElementById('cfg-watchlist').value
-      .split(',').map(s => s.trim()).filter(Boolean),
+    watchlist: workspaceWatchlistState.slice(),
     market: document.getElementById('cfg-market').value,
     capital_base: Number(document.getElementById('cfg-capital').value) * 10000,
     max_position_ratio: Number(document.getElementById('cfg-max-pos').value) / 100,
@@ -281,32 +350,27 @@ function savePreferences() {
     if (res.ok) {
       statusEl.textContent = '已保存';
       statusEl.style.color = 'var(--green)';
-      showToast('配置已保存', 'success');
+      if (!silent) showToast('配置已保存', 'success');
       setTimeout(() => { statusEl.textContent = ''; }, 2000);
     } else {
       statusEl.textContent = '保存失败';
       statusEl.style.color = 'var(--red)';
-      showToast('保存失败', 'error');
+      if (!silent) showToast('保存失败', 'error');
     }
   }).catch(() => {
     statusEl.textContent = '保存失败';
     statusEl.style.color = 'var(--red)';
-    showToast('保存失败', 'error');
+    if (!silent) showToast('保存失败', 'error');
   });
 }
 
 function renderConfig(config) {
   if (!config || configHydrated) return;
 
-  if (config.watchlist && config.watchlist.length > 0) {
-    document.getElementById('cfg-watchlist').value = Array.isArray(config.watchlist)
-      ? config.watchlist.join(',') : config.watchlist;
-  }
-  if (config.market) {
-    document.getElementById('cfg-market').value = config.market;
-  }
-  // 根据市场过滤观察列表
-  filterWatchlistByMarket();
+  setWorkspaceWatchlistState(config.watchlist || []);
+  if (config.market) document.getElementById('cfg-market').value = config.market;
+  activeWorkspaceMarket = document.getElementById('cfg-market').value || 'a';
+  renderWorkspaceWatchlistInput(activeWorkspaceMarket);
   if (config.capital_base !== undefined) {
     const capitalWan = Number(config.capital_base) / 10000;
     document.getElementById('cfg-capital').value = capitalWan;
@@ -2154,52 +2218,98 @@ function setButtonLoading(btn, loading, originalText) {
 
 function isFundSymbol(symbol) {
   const normalized = String(symbol || '').trim().toUpperCase();
-  return /^(15|16|18|50|51|56|58)\d{4}$/.test(normalized);
+  return normalized.endsWith('.OTC') || /^(15|16|18|50|51|52|56|58)\d{4}(\.(SH|SZ))?$/.test(normalized);
 }
 
 function classifyWorkspaceSymbol(symbol) {
   const normalized = String(symbol || '').trim().toUpperCase();
   if (!normalized) return 'a';
-  if (normalized.endsWith('.US')) return 'us';
   if (isFundSymbol(normalized)) return 'fund';
+  if (normalized.endsWith('.US')) return 'us';
+  if (normalized.endsWith('.SH') || normalized.endsWith('.SZ')) return 'a';
+  if (/^\d{6}$/.test(normalized)) return 'a';
+  if (/^[A-Z][A-Z0-9.]*$/.test(normalized)) return 'us';
   return 'a';
 }
 
 function filterWatchlistByMarket() {
-  var market = document.getElementById('cfg-market').value;
-  var watchlistEl = document.getElementById('cfg-watchlist');
-  if (!watchlistEl) return;
-
-  var symbols = watchlistEl.value.split(',').map(s => s.trim()).filter(Boolean);
-  var filtered = symbols.filter(function(s) {
-    return classifyWorkspaceSymbol(s) === market;
-  });
-
-  watchlistEl.value = filtered.join(',');
+  syncWorkspaceWatchlistFromInput(activeWorkspaceMarket);
+  activeWorkspaceMarket = document.getElementById('cfg-market').value || 'a';
+  renderWorkspaceWatchlistInput(activeWorkspaceMarket);
 }
 
-function addToWorkspaceWatchlist(symbol, name) {
-  var watchlistEl = document.getElementById('cfg-watchlist');
-  if (!watchlistEl) return false;
+function addToWorkspaceWatchlist(symbol, name, options = {}) {
+  const { allowCrossMarket = false, persist = false } = options;
+  const normalized = normalizeWorkspaceSymbol(symbol);
+  if (!normalized) return false;
 
-  var market = document.getElementById('cfg-market').value;
-  var symbolMarket = classifyWorkspaceSymbol(symbol);
+  syncWorkspaceWatchlistFromInput(activeWorkspaceMarket);
+  const market = document.getElementById('cfg-market').value || activeWorkspaceMarket;
+  const symbolMarket = classifyWorkspaceSymbol(normalized);
 
-  if (symbolMarket !== market) {
+  if (symbolMarket !== market && !allowCrossMarket) {
     var marketLabel = symbolMarket === 'us' ? '美股' : symbolMarket === 'fund' ? '基金' : 'A股';
     var expectedLabel = market === 'us' ? '美股' : market === 'fund' ? '基金' : 'A股';
-    showToast(symbol + ' 属于' + marketLabel + '，请切换到' + expectedLabel + '市场', 'info');
+    showToast(normalized + ' 属于' + marketLabel + '，请切换到' + expectedLabel + '市场', 'info');
     return false;
   }
 
-  var current = watchlistEl.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-  if (current.indexOf(symbol) !== -1) {
-    showToast(symbol + ' 已在观察列表中', 'info');
+  if (workspaceWatchlistState.indexOf(normalized) !== -1) {
+    const visibleLabel = symbolMarket === market
+      ? '已在观察列表中'
+      : '已在对应市场观察列表中';
+    showToast(normalized + ' ' + visibleLabel, 'info');
     return false;
   }
 
-  current.push(symbol);
-  watchlistEl.value = current.join(',');
-  showToast(symbol + ' 已添加到观察列表', 'success');
+  workspaceWatchlistState = dedupeWorkspaceSymbols(workspaceWatchlistState.concat([normalized]));
+  if (symbolMarket === market) {
+    renderWorkspaceWatchlistInput(market);
+  }
+  if (persist) {
+    savePreferences({ silent: true });
+  }
+  if (symbolMarket === market) {
+    showToast(normalized + ' 已添加到观察列表', 'success');
+  } else {
+    const targetLabel = symbolMarket === 'us' ? '美股' : symbolMarket === 'fund' ? '基金' : 'A股';
+    showToast(normalized + ' 已加入' + targetLabel + '观察列表，切换到' + targetLabel + '市场后可见', 'success');
+  }
+  return true;
+}
+
+function openDashboardWorkspaceForSymbol(symbol, options = {}) {
+  const normalized = normalizeWorkspaceSymbol(symbol);
+  if (!normalized) return false;
+
+  const market = options.market || classifyWorkspaceSymbol(normalized);
+  const dashboardButton = Array.from(document.querySelectorAll('.status-bar button'))
+    .find((button) => String(button.getAttribute('onclick') || '').includes("view-dashboard"));
+  if (dashboardButton && typeof switchView === 'function') {
+    switchView(dashboardButton, 'view-dashboard');
+  }
+
+  const marketEl = document.getElementById('cfg-market');
+  if (marketEl) {
+    syncWorkspaceWatchlistFromInput(activeWorkspaceMarket);
+    marketEl.value = market;
+    activeWorkspaceMarket = market;
+    renderWorkspaceWatchlistInput(market);
+  }
+
+  addToWorkspaceWatchlist(normalized, options.name || normalized, {
+    allowCrossMarket: true,
+    persist: options.persist !== false,
+  });
+
+  if (typeof validateWatchlistSymbols === 'function') {
+    validateWatchlistSymbols();
+  }
+  loadDashboard();
+
+  const watchlistEl = document.getElementById('cfg-watchlist');
+  watchlistEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  watchlistEl?.focus();
+  showToast(`${normalized} 已带入选股分析工作台`, 'success', { position: 'bottom-right', duration: 2500 });
   return true;
 }
