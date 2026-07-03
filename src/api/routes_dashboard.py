@@ -20,7 +20,7 @@ from src.core.market_rules import resolve_lot_size
 from src.core.tenant import TenantContext
 from src.data.providers.akshare_provider import AkshareProvider
 from src.storage.dependencies import get_runtime_engine
-from src.storage.runtime_store import RuntimeStore
+from src.storage.runtime_store import RuntimeStore, _extract_market_from_workbench
 from src.storage.system_runtime_store import SystemRuntimeStore
 
 _CST = timezone(timedelta(hours=8))
@@ -421,10 +421,7 @@ def _build_manual_history_runs(store: RuntimeStore, market: str, limit: int, use
         history = latest_workbench.get("history") or {}
         decisions = history.get("decisions") or latest_run.get("decision_items") or []
         watchlist = latest_run.get("watchlist") or [item.get("symbol") for item in decisions if item.get("symbol")]
-        resolved_market = store.get_dashboard_run_market(
-            summary["run_context_id"],
-            latest_workbench=latest_workbench,
-        )
+        resolved_market = _extract_market_from_workbench(latest_workbench)
         targets = history.get("targets") or latest_run.get("target_items") or []
         orders = history.get("orders") or latest_run.get("order_items") or []
         runs.append(

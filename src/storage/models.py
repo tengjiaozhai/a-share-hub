@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, UniqueConstraint, Index
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 SYSTEM_USER_ID = "system"
@@ -43,6 +43,9 @@ class KillSwitchRow(Base):
 
 class DecisionRunRow(Base):
     __tablename__ = "decision_runs"
+    __table_args__ = (
+        Index("ix_decision_runs_user_ctx_created", "user_id", "run_context_id", "created_at"),
+    )
 
     decision_run_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
@@ -60,6 +63,9 @@ class DecisionRunRow(Base):
 
 class DecisionInputSnapshotRow(Base):
     __tablename__ = "decision_input_snapshots"
+    __table_args__ = (
+        Index("ix_decision_input_user_run", "user_id", "decision_run_id"),
+    )
 
     snapshot_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
@@ -70,6 +76,9 @@ class DecisionInputSnapshotRow(Base):
 
 class TargetPositionRow(Base):
     __tablename__ = "target_positions"
+    __table_args__ = (
+        Index("ix_target_pos_user_ctx_created", "user_id", "run_context_id", "created_at"),
+    )
 
     target_position_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
@@ -92,6 +101,9 @@ class TargetPositionRow(Base):
 
 class ExecutionOrderRow(Base):
     __tablename__ = "execution_orders"
+    __table_args__ = (
+        Index("ix_exec_order_user_ctx_created", "user_id", "run_context_id", "created_at"),
+    )
 
     execution_order_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
@@ -355,6 +367,9 @@ class AlphaAnalysisRunEventRow(Base):
 
 class DashboardRunSummaryRow(Base):
     __tablename__ = "dashboard_run_summaries"
+    __table_args__ = (
+        Index("ix_dash_sum_user_market_started", "user_id", "market", "started_at"),
+    )
 
     run_context_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(64), primary_key=True)

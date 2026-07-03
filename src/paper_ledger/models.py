@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, Float, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Date, DateTime, Float, Integer, String, Text, UniqueConstraint, Index
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -29,6 +29,11 @@ class PaperRunRow(PaperBase):
     """每次运行一条记录"""
     __tablename__ = "paper_runs"
     __table_comment__ = "模拟交易运行记录表，每次运行（自动/手动/回填）生成一条记录"
+    __table_args__ = (
+        Index('ix_paper_runs_user_market_created', 'user_id', 'market', 'created_at'),
+        Index('ix_paper_runs_user_source_created', 'user_id', 'run_source', 'created_at'),
+    )
+
 
     run_id: Mapped[str] = mapped_column(String(64), primary_key=True, comment="运行ID，格式为 'run-{uuid}'")
     user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, comment="运行所属用户ID")

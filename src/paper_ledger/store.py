@@ -3,7 +3,7 @@ import socket
 import uuid
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import and_, func, select, update
+from sqlalchemy import and_, case, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -485,17 +485,21 @@ class PaperLedgerStore:
             PaperRunRow.user_id == self.user_id,
             PaperRunRow.market == market,
         ]
-        total = int(self._session.execute(
-            select(func.count()).select_from(PaperRunRow).where(and_(*base_conditions))
-        ).scalar_one())
-        auto_count = int(self._session.execute(
-            select(func.count()).select_from(PaperRunRow).where(
-                and_(*base_conditions, PaperRunRow.run_source == "auto")
+        stmt = (
+            select(
+                func.count().label("total"),
+                func.sum(
+                    case((PaperRunRow.run_source == "auto", 1), else_=0)
+                ).label("auto"),
+                func.sum(
+                    case((PaperRunRow.run_source == "manual", 1), else_=0)
+                ).label("manual"),
             )
-        ).scalar_one())
-        manual_count = int(self._session.execute(
-            select(func.count()).select_from(PaperRunRow).where(
-                and_(*base_conditions, PaperRunRow.run_source == "manual")
-            )
-        ).scalar_one())
-        return {"total": total, "auto": auto_count, "manual": manual_count}
+            .where(and_(*base_conditions))
+        )
+        row = self._session.execute(stmt).one()
+        return {
+            "total": int(row.total or 0),
+            "auto": int(row.auto or 0),
+            "manual": int(row.manual or 0),
+        }
