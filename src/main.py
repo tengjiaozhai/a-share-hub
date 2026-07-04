@@ -1,6 +1,7 @@
 import argparse
 import base64
 import sys
+import threading
 from contextlib import suppress
 from datetime import datetime, timedelta
 from hashlib import sha256
@@ -187,6 +188,7 @@ def _register_app_lifespan(app: FastAPI) -> None:
         scheduler.start()
         try:
             _run_startup_backfill()
+            _start_fund_startup_prewarm()
             yield
         finally:
             with suppress(Exception):
@@ -205,6 +207,26 @@ def _register_app_lifespan(app: FastAPI) -> None:
 def _register_scheduler_lifecycle(app: FastAPI) -> None:
     """仅调度器进程使用：保留旧 lifespan 兼容（即将废弃）"""
     _register_app_lifespan(app)
+
+
+def _start_fund_startup_prewarm() -> None:
+    thread = threading.Thread(
+        target=_run_fund_startup_prewarm,
+        daemon=True,
+        name="fund-etf-spot-startup-prewarm",
+    )
+    thread.start()
+
+
+def _run_fund_startup_prewarm() -> None:
+    try:
+        from src.api.routes_fund import _get_fund_catalog_service
+
+        _get_fund_catalog_service().prewarm_etf_spot_cache(force_refresh=True)
+    except Exception as e:
+        import logging
+
+        logging.getLogger(__name__).warning(f"startup ETF spot prewarm failed: {e}")
 
 
 def _run_startup_backfill() -> None:

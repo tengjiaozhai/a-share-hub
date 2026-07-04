@@ -1,4 +1,7 @@
 """基金服务测试"""
+import threading
+import time
+
 import pytest
 from unittest.mock import patch, MagicMock
 import pandas as pd
@@ -10,7 +13,12 @@ class TestFundCatalogService:
     
     def setup_method(self):
         """测试前准备"""
-        self.service = FundCatalogService()
+        self._redis_patcher = patch("src.fund.catalog_service.should_use_redis_cache", return_value=False)
+        self._redis_patcher.start()
+        self.service = FundCatalogService(enable_etf_spot_warmer=False)
+
+    def teardown_method(self):
+        self._redis_patcher.stop()
     
     @patch('src.fund.catalog_service.ak')
     @patch.object(FundCatalogService, 'get_fund_catalog')
@@ -140,6 +148,90 @@ class TestFundCatalogService:
             "page_size": 20,
             "total_pages": 0,
         }
+
+    @patch("src.fund.catalog_service.RedisCache")
+    @patch("src.fund.catalog_service.should_use_redis_cache", return_value=True)
+    def test_get_etf_spot_uses_redis_cache_before_remote_fetch(self, _mock_use_redis, mock_redis_cache):
+        """测试内存冷缓存时优先读取 Redis，共享多进程缓存"""
+        mock_redis_cache.return_value.get_json.return_value = {
+            "items": [
+                {"code": "510300", "name": "沪深300ETF", "price": 4.123, "change_pct": 1.23},
+            ]
+        }
+        service = FundCatalogService(enable_etf_spot_warmer=False)
+
+        with patch("src.fund.catalog_service.ak") as mock_ak:
+            result = service.get_etf_spot(page=1, page_size=20)
+
+        assert result["total"] == 1
+        assert result["items"][0]["code"] == "510300"
+        mock_redis_cache.return_value.get_json.assert_called_once()
+        mock_ak.fund_etf_spot_em.assert_not_called()
+
+    @patch('src.fund.catalog_service.ak')
+    @patch.object(FundCatalogService, 'get_fund_catalog')
+    def test_get_etf_spot_waits_for_inflight_refresh_instead_of_duplicate_fetch(self, mock_catalog, mock_ak):
+        """测试冷启动并发请求只触发一次远端 ETF 行情拉取"""
+        service = FundCatalogService(enable_etf_spot_warmer=False)
+        mock_catalog.return_value = pd.DataFrame([
+            {"code": "510300", "name": "沪深300ETF", "fund_type": "ETF", "pinyin_abbr": "hs300", "pinyin_full": "hushen300etf", "is_exchange_traded": True, "exchange": "SH", "symbol": "510300.SH"},
+        ])
+        mock_df = pd.DataFrame({
+            '代码': ['510300'],
+            '名称': ['沪深300ETF'],
+            '最新价': [4.123],
+            '涨跌幅': [1.23],
+            '涨跌额': [0.05],
+            '成交量': [1000000],
+            '成交额': [4123000],
+        })
+        refresh_started = threading.Event()
+
+        def slow_fetch():
+            refresh_started.set()
+            time.sleep(0.1)
+            return mock_df
+
+        mock_ak.fund_etf_spot_em.side_effect = slow_fetch
+
+        worker = threading.Thread(target=service._refresh_etf_spot)
+        worker.start()
+        assert refresh_started.wait(timeout=1)
+
+        result = service.get_etf_spot(page=1, page_size=20)
+        worker.join(timeout=1)
+
+        assert result["total"] == 1
+        assert result["items"][0]["code"] == "510300"
+        assert mock_ak.fund_etf_spot_em.call_count == 1
+
+    @patch('src.fund.catalog_service.ak')
+    @patch.object(FundCatalogService, 'get_fund_catalog')
+    def test_prewarm_etf_spot_cache_populates_cache_and_starts_warmer(self, mock_catalog, mock_ak):
+        """测试启动预热会填充缓存并启动后台维持线程"""
+        service = FundCatalogService(enable_etf_spot_warmer=True)
+        mock_catalog.return_value = pd.DataFrame([
+            {"code": "510300", "name": "沪深300ETF", "fund_type": "ETF", "pinyin_abbr": "hs300", "pinyin_full": "hushen300etf", "is_exchange_traded": True, "exchange": "SH", "symbol": "510300.SH"},
+        ])
+        mock_df = pd.DataFrame({
+            '代码': ['510300'],
+            '名称': ['沪深300ETF'],
+            '最新价': [4.123],
+            '涨跌幅': [1.23],
+            '涨跌额': [0.05],
+            '成交量': [1000000],
+            '成交额': [4123000],
+        })
+        mock_ak.fund_etf_spot_em.return_value = mock_df
+
+        assert service.prewarm_etf_spot_cache(force_refresh=True) is True
+
+        cached = service._get_etf_spot_cached_items()
+        assert cached is not None
+        assert len(cached) == 1
+        assert cached[0]["code"] == "510300"
+        assert service._etf_spot_warm_thread is not None
+        service.stop_etf_spot_warmer()
 
     @patch('src.fund.catalog_service.ak')
     @patch.object(FundCatalogService, 'get_fund_catalog')

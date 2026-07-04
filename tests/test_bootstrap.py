@@ -1,4 +1,8 @@
 from pathlib import Path
+from unittest.mock import patch
+
+from fastapi.testclient import TestClient
+
 from src.core.config import Settings
 from src.main import build_app
 
@@ -41,3 +45,16 @@ def test_kill_switch_status_route():
     app = build_app()
     routes = {route.path for route in app.routes}
     assert "/api/v1/kill-switch/status" in routes
+
+
+def test_app_startup_triggers_fund_etf_spot_prewarm():
+    mock_scheduler = type("MockScheduler", (), {"start": lambda self: None, "stop": lambda self: None})()
+
+    with patch("src.main._run_startup_backfill"), \
+        patch("src.main._start_fund_startup_prewarm") as mock_prewarm, \
+        patch("src.scheduler.daily_scheduler.get_scheduler", return_value=mock_scheduler):
+        app = build_app()
+        with TestClient(app):
+            pass
+
+    mock_prewarm.assert_called_once_with()

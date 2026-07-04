@@ -12,8 +12,10 @@ import akshare as ak
 import pandas as pd
 import requests
 
+from src.core.config import Settings
 from src.core.market_clock import is_continuous_session
 from src.data.providers.akshare_catalog import infer_exchange
+from src.storage.redis_cache import RedisCache, should_use_redis_cache
 from src.us_stock.cache import TTLMemoryCache
 from src.us_stock.yahoo_provider import _safe_float, _safe_int
 
@@ -23,6 +25,7 @@ logger = logging.getLogger(__name__)
 ETF_SPOT_CACHE_TTL_TRADING = 120  # 交易时段：120 秒
 ETF_SPOT_WARM_AHEAD_SECONDS = 15  # 缓存过期前 15 秒启动预热
 ETF_SPOT_CACHE_TTL_NON_TRADING = 900  # 非交易时段：15 分钟
+ETF_SPOT_REFRESH_WAIT_SECONDS = 20
 FUND_NAV_CACHE_TTL = 3600  # 基金净值：1 小时
 ETF_HISTORY_CACHE_TTL = 1800  # ETF 历史行情：30 分钟
 FUNDCODE_SEARCH_URL = "https://fund.eastmoney.com/js/fundcode_search.js"
@@ -37,6 +40,7 @@ _EXCHANGE_TRADED_FUND_KEYWORDS = ("ETF", "LOF", "REIT")
 _FUND_CATALOG_COLUMNS = ["code", "name", "fund_type", "pinyin_abbr", "pinyin_full", "is_exchange_traded", "exchange", "symbol"]
 _SH_EXCHANGE_TRADED_PREFIXES = ("50", "51", "52", "56", "58")
 _SZ_EXCHANGE_TRADED_PREFIXES = ("15", "16", "18")
+_ETF_SPOT_REDIS_CACHE_KEY = "fund:etf_spot:all:v1"
 
 
 class FundNavUnavailableError(Exception):
@@ -159,14 +163,22 @@ def _paginate_records(items: list[dict], page: int, page_size: int) -> dict:
 class FundCatalogService:
     """基金目录服务，提供基金代码查询、净值查询和 ETF 行情"""
     
-    def __init__(self, cache_ttl_seconds: int = 86400):
+    def __init__(self, cache_ttl_seconds: int = 86400, enable_etf_spot_warmer: bool = True):
         self._cache_ttl = cache_ttl_seconds
         self._cache: Optional[pd.DataFrame] = None
         self._cache_time: Optional[datetime] = None
+        self._settings = Settings()
+        self._enable_etf_spot_warmer = enable_etf_spot_warmer
 
         # ETF 行情缓存
         self._etf_spot_cache = TTLMemoryCache(ttl_seconds=ETF_SPOT_CACHE_TTL_TRADING)
         self._etf_spot_cache_key = "etf_spot:all"
+        self._etf_spot_refresh_lock = threading.Lock()
+        self._etf_spot_refresh_done = threading.Event()
+        self._etf_spot_refresh_done.set()
+        self._redis_cache: Optional[RedisCache] = None
+        if should_use_redis_cache(self._settings.redis_enabled, self._settings.redis_role):
+            self._redis_cache = RedisCache(self._settings.redis_url)
 
         # 基金净值缓存（按 symbol 缓存）
         self._fund_nav_cache = TTLMemoryCache(ttl_seconds=FUND_NAV_CACHE_TTL)
@@ -187,8 +199,6 @@ class FundCatalogService:
             'etf_history_hits': 0,
             'etf_history_misses': 0,
         }
-
-        self._start_etf_spot_warmer()
     
     def _is_cache_valid(self) -> bool:
         """检查缓存是否有效"""
@@ -205,6 +215,8 @@ class FundCatalogService:
 
     def _start_etf_spot_warmer(self) -> None:
         """启动 ETF 行情后台预热线程"""
+        if not self._enable_etf_spot_warmer:
+            return
         if self._etf_spot_warm_thread is not None and self._etf_spot_warm_thread.is_alive():
             return
         self._etf_spot_warm_stop.clear()
@@ -225,12 +237,57 @@ class FundCatalogService:
             sleep_seconds = max(30, self._get_etf_spot_ttl() - ETF_SPOT_WARM_AHEAD_SECONDS)
             self._etf_spot_warm_stop.wait(timeout=sleep_seconds)
 
-    def _refresh_etf_spot(self) -> None:
-        """拉取 ETF 行情并写入缓存（后台线程调用）"""
+    def _sync_etf_spot_cache_ttl(self, ttl_seconds: int) -> None:
+        if self._etf_spot_cache._ttl == ttl_seconds:
+            return
+        cached = self._etf_spot_cache.get(self._etf_spot_cache_key)
+        self._etf_spot_cache = TTLMemoryCache(ttl_seconds=ttl_seconds)
+        if cached is not None:
+            self._etf_spot_cache.set(self._etf_spot_cache_key, cached)
+
+    def _load_etf_spot_from_redis(self) -> list[dict] | None:
+        if self._redis_cache is None:
+            return None
+        try:
+            payload = self._redis_cache.get_json(_ETF_SPOT_REDIS_CACHE_KEY)
+        except Exception as e:
+            logger.warning("ETF spot redis cache read failed: %s", e)
+            return None
+        if not isinstance(payload, dict):
+            return None
+        items = payload.get("items")
+        if not isinstance(items, list):
+            return None
+        self._etf_spot_cache.set(self._etf_spot_cache_key, items)
+        return items
+
+    def _write_etf_spot_to_redis(self, items: list[dict], ttl_seconds: int) -> None:
+        if self._redis_cache is None:
+            return
+        try:
+            self._redis_cache.set_json(_ETF_SPOT_REDIS_CACHE_KEY, {"items": items}, ttl_seconds)
+        except Exception as e:
+            logger.warning("ETF spot redis cache write failed: %s", e)
+
+    def _get_etf_spot_cached_items(self) -> list[dict] | None:
+        current_ttl = self._get_etf_spot_ttl()
+        self._sync_etf_spot_cache_ttl(current_ttl)
+        cached = self._etf_spot_cache.get(self._etf_spot_cache_key)
+        if cached is not None:
+            return cached
+        return self._load_etf_spot_from_redis()
+
+    def _refresh_etf_spot(self, wait_for_inflight: bool = False) -> bool:
+        """拉取 ETF 行情并写入缓存。"""
+        acquired = self._etf_spot_refresh_lock.acquire(blocking=False)
+        if not acquired:
+            if wait_for_inflight:
+                self._etf_spot_refresh_done.wait(timeout=ETF_SPOT_REFRESH_WAIT_SECONDS)
+            return False
+        self._etf_spot_refresh_done.clear()
         try:
             current_ttl = self._get_etf_spot_ttl()
-            if self._etf_spot_cache._ttl != current_ttl:
-                self._etf_spot_cache = TTLMemoryCache(ttl_seconds=current_ttl)
+            self._sync_etf_spot_cache_ttl(current_ttl)
             df = ak.fund_etf_spot_em()
             column_mapping = {
                 '代码': 'code',
@@ -273,9 +330,16 @@ class FundCatalogService:
             df = df[df['price'].notna() & (df['price'] > 0)]
             if 'catalog_meta' in df.columns:
                 df = df.drop(columns=['catalog_meta'])
-            self._etf_spot_cache.set(self._etf_spot_cache_key, df.to_dict('records'))
+            items = df.to_dict('records')
+            self._etf_spot_cache.set(self._etf_spot_cache_key, items)
+            self._write_etf_spot_to_redis(items, current_ttl)
+            return True
         except Exception as e:
             logger.warning("ETF spot refresh failed: %s", e)
+            return False
+        finally:
+            self._etf_spot_refresh_done.set()
+            self._etf_spot_refresh_lock.release()
 
 
     def get_fund_catalog(self, force_refresh: bool = False) -> pd.DataFrame:
@@ -374,20 +438,44 @@ class FundCatalogService:
         """
         if force_refresh:
             self._stats['etf_spot_misses'] += 1
-            self._refresh_etf_spot()
-            cached = self._etf_spot_cache.get(self._etf_spot_cache_key) or []
+            refreshed = self._refresh_etf_spot(wait_for_inflight=True)
+            if refreshed:
+                self._start_etf_spot_warmer()
+            cached = self._get_etf_spot_cached_items() or []
             return _paginate_records(self._filter_etf_spot_items(cached, query), page=page, page_size=page_size)
 
-        cached = self._etf_spot_cache.get(self._etf_spot_cache_key)
+        cached = self._get_etf_spot_cached_items()
         if cached is not None:
             self._stats['etf_spot_hits'] += 1
             return _paginate_records(self._filter_etf_spot_items(cached, query), page=page, page_size=page_size)
 
         # 冷启动降级：缓存尚未写好时同步拉取一次
         self._stats['etf_spot_misses'] += 1
-        self._refresh_etf_spot()
-        cached = self._etf_spot_cache.get(self._etf_spot_cache_key) or []
+        refreshed = self._refresh_etf_spot(wait_for_inflight=True)
+        if refreshed:
+            self._start_etf_spot_warmer()
+        cached = self._get_etf_spot_cached_items() or []
         return _paginate_records(self._filter_etf_spot_items(cached, query), page=page, page_size=page_size)
+
+    def prewarm_etf_spot_cache(self, force_refresh: bool = True) -> bool:
+        """启动后预热 ETF 行情缓存，并开启后续后台维持。"""
+        if force_refresh:
+            refreshed = self._refresh_etf_spot(wait_for_inflight=True)
+            if refreshed:
+                self._start_etf_spot_warmer()
+                return True
+            return bool(self._get_etf_spot_cached_items())
+
+        cached = self._get_etf_spot_cached_items()
+        if cached is not None:
+            self._start_etf_spot_warmer()
+            return True
+
+        refreshed = self._refresh_etf_spot(wait_for_inflight=True)
+        if refreshed:
+            self._start_etf_spot_warmer()
+            return True
+        return False
 
     def _resolve_fund_record(self, symbol: str) -> dict:
         df = self.get_fund_catalog()
@@ -633,4 +721,3 @@ class FundCatalogService:
         if self._etf_spot_warm_thread is not None:
             self._etf_spot_warm_thread.join(timeout=5)
             self._etf_spot_warm_thread = None
-
