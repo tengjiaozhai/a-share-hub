@@ -18,6 +18,27 @@ logger = logging.getLogger(__name__)
 CN_TZ = ZoneInfo("Asia/Shanghai")
 DAILY_JOB_LOCK_TTL_SECONDS = 2 * 60 * 60
 
+# 默认自选股（按市场）
+_DEFAULT_WATCHLIST: dict[str, list[str]] = {
+    "a": [
+        "600519.SH",   # 贵州茅台
+        "000858.SZ",   # 五粮液
+        "601318.SH",   # 中国平安
+        "000333.SZ",   # 美的集团
+        "600036.SH",   # 招商银行
+    ],
+    "us": [
+        "AAPL.US",
+        "MSFT.US",
+        "NVDA.US",
+        "GOOGL.US",
+        "AMZN.US",
+    ],
+}
+
+# 默认初始资金
+_DEFAULT_CAPITAL = 1_000_000.0
+
 
 class DailyScheduler:
     """日频自动调度器"""
@@ -155,7 +176,203 @@ class DailyScheduler:
                     store.finish_job_lock(job_key, "failed", str(e))
 
     async def _execute_daily_trading(self, store: PaperLedgerStore, account_id: str, run_id: str, market: str):
-        raise NotImplementedError("daily trading execution is not implemented")
+        """执行日频模拟交易：获取行情 → 计算信号 → 生成目标仓位 → 模拟成交 → 更新持仓 → 记录净值"""
+        from src.core.config import Settings
+        from src.strategy.strategy_config import StrategyConfig
+        from src.strategy.signal_engine import build_signal
+        from src.indicators.technical_indicators import compute_feature_row
+        from src.data.providers.provider_chain import build_provider_chain_from_settings
+        from src.portfolio.target_planner import build_target_positions
+
+        settings = Settings()
+        strategy_config = StrategyConfig.from_settings(settings)
+        provider_chain = build_provider_chain_from_settings()
+
+        # 1. 获取账户当前状态
+        account = store.get_or_create_account(market, "auto")
+        positions = store.get_all_positions(account_id)
+        current_positions: dict[str, dict] = {}
+        positions_value = 0.0
+        for pos in positions:
+            current_positions[pos.symbol] = {
+                "quantity": pos.quantity,
+                "avg_cost": pos.avg_cost,
+            }
+            # 尝试获取最新价格计算市值
+            try:
+                snap = provider_chain.get_realtime_quote(pos.symbol)
+                price = float(snap.close) if snap else pos.avg_cost
+            except Exception:
+                price = pos.avg_cost
+            positions_value += pos.quantity * price
+
+        cash = account.initial_capital - positions_value
+        # 如果有历史净值记录，用更精确的 cash
+        nav_history = store.get_nav_history(account_id, days=1)
+        if nav_history:
+            latest_nav = nav_history[0]
+            cash = float(latest_nav.cash)
+            positions_value = float(latest_nav.positions_value)
+
+        capital_base = cash + positions_value  # 当前总净值
+        logger.info(
+            "Account state: cash=%.2f, positions_value=%.2f, nav=%.2f, positions=%d",
+            cash, positions_value, capital_base, len(current_positions),
+        )
+
+        # 2. 获取 watchlist（优先用 run 参数中的，否则用默认）
+        watchlist = _DEFAULT_WATCHLIST.get(market, _DEFAULT_WATCHLIST["a"])
+        # 也包含当前持仓中不在 watchlist 的标的（以便判断是否卖出）
+        for symbol in current_positions:
+            if symbol not in watchlist:
+                watchlist.append(symbol)
+
+        # 3. 对每个标的计算技术信号
+        decisions: list[dict] = []
+        price_by_symbol: dict[str, float] = {}
+
+        for symbol in watchlist:
+            try:
+                # 获取实时价格
+                snap = provider_chain.get_realtime_quote(symbol)
+                if snap is None:
+                    logger.warning("No quote for %s, skipping", symbol)
+                    continue
+                current_price = float(snap.close)
+                price_by_symbol[symbol] = current_price
+
+                # 获取历史数据计算技术指标（需要至少 60 根 K 线）
+                from datetime import timedelta
+                end_date = datetime.now(CN_TZ)
+                start_date = end_date - timedelta(days=strategy_config.confirm_lookback_days)
+                hist_df = provider_chain.get_history(symbol, start_date, end_date, freq="daily")
+
+                if hist_df is not None and not hist_df.empty and len(hist_df) >= 60:
+                    close_prices = hist_df["close"].astype(float).tolist()
+                    volumes = hist_df["volume"].astype(float).tolist() if "volume" in hist_df.columns else None
+                    features = compute_feature_row(close_prices, volumes)
+                else:
+                    logger.warning("Insufficient history for %s (%d bars), using neutral features", symbol, len(hist_df) if hist_df is not None else 0)
+                    features = compute_feature_row([])  # 返回中性默认值
+
+                # 生成交易信号
+                signal = build_signal(symbol, features, strategy_config)
+                action = signal["action"]
+                confidence = int(min(max(abs(signal["technical_score"]) * 100, 0), 100))
+
+                logger.info(
+                    "Signal for %s: action=%s score=%.4f rsi=%.1f",
+                    symbol, action, signal["technical_score"], signal["rsi_14"],
+                )
+
+                decisions.append({
+                    "symbol": symbol,
+                    "action": action,
+                    "confidence": confidence,
+                    "target_position_ratio": strategy_config.max_position_ratio / max(len(watchlist), 1) if action == "BUY" else 0.0,
+                    "reason": f"technical_score={signal['technical_score']:.4f} rsi={signal['rsi_14']:.1f}",
+                })
+
+            except Exception as e:
+                logger.warning("Failed to process signal for %s: %s", symbol, e)
+                continue
+
+        if not decisions:
+            logger.info("No actionable signals for market=%s, skipping execution", market)
+            return
+
+        # 4. 计算目标仓位
+        targets = build_target_positions(
+            decisions=decisions,
+            prices=price_by_symbol,
+            capital_base=capital_base,
+            max_position_ratio=strategy_config.max_position_ratio,
+            lot_size_a=strategy_config.lot_size_a,
+            lot_size_us=strategy_config.lot_size_us,
+            current_positions=current_positions,
+            market=market,
+        )
+
+        logger.info("Generated %d target positions for market=%s", len(targets), market)
+
+        # 5. 模拟成交：更新持仓 & 记录成交
+        for target in targets:
+            symbol = target["symbol"]
+            action = target["action"]
+            quantity = target["quantity"]
+            price = price_by_symbol.get(symbol, target["price"])
+
+            if quantity <= 0:
+                continue
+
+            # 记录成交
+            store.create_fill(
+                run_id=run_id,
+                account_id=account_id,
+                symbol=symbol,
+                action=action,
+                quantity=quantity,
+                price=price,
+            )
+
+            # 更新持仓
+            current_pos = store.get_position(account_id, symbol)
+            if action == "BUY":
+                if current_pos:
+                    total_cost = current_pos.avg_cost * current_pos.quantity + price * quantity
+                    new_qty = current_pos.quantity + quantity
+                    new_avg = total_cost / new_qty if new_qty > 0 else 0.0
+                    store.update_position(account_id, symbol, new_qty, new_avg)
+                else:
+                    store.update_position(account_id, symbol, quantity, price)
+            elif action == "SELL":
+                if current_pos:
+                    sell_qty = min(quantity, current_pos.quantity)
+                    new_qty = current_pos.quantity - sell_qty
+                    if new_qty <= 0:
+                        store.update_position(account_id, symbol, 0, 0.0)
+                    else:
+                        store.update_position(account_id, symbol, new_qty, current_pos.avg_cost)
+
+            logger.info("Fill: %s %s %d @ %.2f", action, symbol, quantity, price)
+
+        # 6. 计算最终净值并记录快照
+        final_positions = store.get_all_positions(account_id)
+        final_positions_value = 0.0
+        for pos in final_positions:
+            price = price_by_symbol.get(pos.symbol, pos.avg_cost)
+            final_positions_value += pos.quantity * price
+
+        # 重新计算 cash（初始资金 - 所有买入成本 + 所有卖出收入）
+        # 简化：用 NAV 变化来追踪
+        final_cash = cash
+        for target in targets:
+            if target["quantity"] <= 0:
+                continue
+            price = price_by_symbol.get(target["symbol"], target["price"])
+            notional = target["quantity"] * price
+            if target["action"] == "BUY":
+                final_cash -= notional
+            elif target["action"] == "SELL":
+                final_cash += notional
+
+        final_nav = final_cash + final_positions_value
+        trade_date = datetime.now(CN_TZ).date()
+
+        store.create_nav_snapshot(
+            account_id=account_id,
+            trade_date=trade_date,
+            nav=final_nav,
+            cash=final_cash,
+            positions_value=final_positions_value,
+            run_id=run_id,
+            source="auto",
+        )
+
+        logger.info(
+            "Daily trading completed: market=%s nav=%.2f cash=%.2f positions_value=%.2f fills=%d",
+            market, final_nav, final_cash, final_positions_value, len(targets),
+        )
 
 
 _scheduler: DailyScheduler | None = None
