@@ -55,7 +55,11 @@ def test_scheduler_jobs_have_timezone_and_runtime_guards():
 
 
 @pytest.mark.asyncio
-async def test_unimplemented_daily_trading_marks_run_and_lock_failed(monkeypatch):
+async def test_daily_trading_execution_with_mock_data(monkeypatch):
+    """测试日频交易执行流程（使用 mock 数据）"""
+    from unittest.mock import MagicMock, patch
+    from src.paper_ledger.models import PaperFillRow, PaperPositionRow, PaperNavDailyRow
+    
     engine = create_engine("sqlite:///:memory:", future=True)
     PaperBase.metadata.create_all(engine)
 
@@ -64,22 +68,54 @@ async def test_unimplemented_daily_trading_marks_run_and_lock_failed(monkeypatch
         lambda: engine,
     )
 
-    scheduler = DailyScheduler(calendar=FakeCalendar(is_trading_day=True))
-    await scheduler._run_daily_job("a")
+    # Mock 数据提供者
+    mock_snapshot = MagicMock()
+    mock_snapshot.close = 100.0
+    
+    mock_provider = MagicMock()
+    mock_provider.get_realtime_quote.return_value = mock_snapshot
+    
+    # Mock 历史数据（至少 60 根 K 线）
+    import pandas as pd
+    mock_history = pd.DataFrame({
+        'close': [100.0 + i * 0.1 for i in range(100)],
+        'volume': [1000000] * 100,
+    })
+    mock_provider.get_history.return_value = mock_history
+
+    with patch('src.scheduler.daily_scheduler.build_provider_chain_from_settings') as mock_build:
+        mock_build.return_value = mock_provider
+        
+        scheduler = DailyScheduler(calendar=FakeCalendar(is_trading_day=True))
+        await scheduler._run_daily_job("a")
 
     today = datetime.now(CN_TZ).date()
     with Session(engine) as session:
         run = session.execute(select(PaperRunRow)).scalar_one()
         lock = session.execute(select(ScheduledJobLockRow)).scalar_one()
+        fills = session.execute(select(PaperFillRow)).scalars().all()
+        positions = session.execute(select(PaperPositionRow)).scalars().all()
+        nav_snapshots = session.execute(select(PaperNavDailyRow)).scalars().all()
 
+    # 验证运行成功
     assert run.market == "a"
     assert run.run_source == "auto"
-    assert run.status == "failed"
-    assert "daily trading execution is not implemented" in (run.error_message or "")
-    assert lock.job_name == "daily_trading"
-    assert lock.market == "a"
-    assert lock.trade_date == today
-    assert lock.status == "failed"
+    assert run.status == "success"
+    assert run.error_message is None
+    
+    # 验证锁已释放
+    assert lock.status == "success"
+    
+    # 验证生成了成交记录
+    assert len(fills) > 0
+    
+    # 验证更新了持仓
+    assert len(positions) > 0
+    
+    # 验证记录了净值快照
+    assert len(nav_snapshots) > 0
+    assert nav_snapshots[0].trade_date == today
+    assert nav_snapshots[0].nav > 0
 
 
 @pytest.mark.asyncio

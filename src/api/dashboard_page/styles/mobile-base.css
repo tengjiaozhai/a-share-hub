@@ -1,0 +1,236 @@
+/* ═══════════════════════════════════════════════════════════
+   mobile-base.css — 移动端基础样式
+   密度变量 + 安全区 + 触控优化 + 全局重置
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── 密度 Token ── */
+:root {
+  /* 行高 */
+  --row-height-dense: 32px;
+  --row-height-normal: 44px;
+  --row-height-comfortable: 56px;
+
+  /* 字号 */
+  --font-size-dense: 12px;
+  --font-size-normal: 14px;
+  --font-size-comfortable: 16px;
+  --font-size-label: 11px;
+  --font-size-data: 13px;
+
+  /* 间距 */
+  --space-dense: 4px;
+  --space-normal: 8px;
+  --space-comfortable: 12px;
+  --space-section: 16px;
+
+  /* 触控目标 */
+  --touch-target-min: 44px;
+  --touch-target-dense: 32px;
+
+  /* 圆角 */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* 当前激活密度（默认桌面） */
+  --row-height: var(--row-height-dense);
+  --font-size-base: var(--font-size-dense);
+  --space-base: var(--space-dense);
+  --touch-target: var(--touch-target-dense);
+
+  /* 安全区 */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+
+  /* 断点 */
+  --bp-mobile: 768px;
+  --bp-tablet: 1024px;
+  --bp-desktop: 1280px;
+  --bp-wide: 1536px;
+}
+
+/* 平板密度 */
+@media (max-width: 1023px) {
+  :root {
+    --row-height: var(--row-height-normal);
+    --font-size-base: var(--font-size-normal);
+    --space-base: var(--space-normal);
+    --touch-target: var(--touch-target-min);
+  }
+}
+
+/* 移动端密度 */
+@media (max-width: 767px) {
+  :root {
+    --row-height: var(--row-height-comfortable);
+    --font-size-base: var(--font-size-comfortable);
+    --space-base: var(--space-comfortable);
+    --touch-target: var(--touch-target-min);
+  }
+}
+
+/* Power user 手动切换紧凑密度 */
+[data-density="dense"] {
+  --row-height: var(--row-height-dense);
+  --font-size-base: var(--font-size-dense);
+  --space-base: var(--space-dense);
+  --touch-target: var(--touch-target-dense);
+}
+
+[data-density="comfortable"] {
+  --row-height: var(--row-height-comfortable);
+  --font-size-base: var(--font-size-comfortable);
+  --space-base: var(--space-comfortable);
+  --touch-target: var(--touch-target-min);
+}
+
+/* ── 全局移动端重置 ── */
+
+/* 防 iOS 聚焦放大 */
+input,
+select,
+textarea {
+  font-size: 16px;
+}
+
+@media (min-width: 768px) {
+  input,
+  select,
+  textarea {
+    font-size: inherit;
+  }
+}
+
+/* 防 iOS 下拉刷新干扰 */
+body {
+  overscroll-behavior: none;
+}
+
+/* 去除移动端点击高亮 */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 文字大小调整 */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* :focus-visible 替代 :focus，移动端不显示焦点环 */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent, #4dd4c6);
+  outline-offset: 2px;
+}
+
+/* ── 触控优化 ── */
+
+/* 粗指针（触控设备）关闭 hover-only 交互 */
+@media (pointer: coarse) {
+  .run-card:hover,
+  .pill-btn:hover,
+  .mkt-pill:hover,
+  .mkt-btn:hover,
+  .overview-card:hover {
+    transform: none;
+    box-shadow: none;
+    border-color: var(--stroke);
+  }
+
+  /* 确保触控目标 ≥ 44px */
+  .nav-group button,
+  .pill-btn,
+  .mkt-btn,
+  .mkt-pill,
+  .save-btn,
+  .run-btn,
+  .mode-switch button,
+  .pagination button {
+    min-height: var(--touch-target-min, 44px);
+    min-width: var(--touch-target-min, 44px);
+  }
+}
+
+/* ── 安全区应用 ── */
+
+/* 顶部状态栏避开刘海 */
+.status-bar {
+  padding-top: max(var(--space-sm, 8px), var(--safe-top));
+  padding-left: max(var(--space-lg, 16px), var(--safe-left));
+  padding-right: max(var(--space-lg, 16px), var(--safe-right));
+}
+
+/* 底部 Tab Bar 避开 Home Indicator（预留空间，Tab Bar 本身在 mobile-layout.css 中实现） */
+.mobile-tab-bar {
+  padding-bottom: max(8px, var(--safe-bottom));
+}
+
+/* ── 流体排版 ── */
+.fluid-text-sm {
+  font-size: clamp(11px, 2.8vw, 13px);
+}
+
+.fluid-text-md {
+  font-size: clamp(13px, 3.2vw, 16px);
+}
+
+.fluid-text-lg {
+  font-size: clamp(16px, 4vw, 20px);
+}
+
+.fluid-text-xl {
+  font-size: clamp(20px, 5vw, 28px);
+}
+
+/* ── 移动端隐藏/显示控制 ── */
+.mobile-only {
+  display: none;
+}
+
+.desktop-only {
+  display: initial;
+}
+
+@media (max-width: 767px) {
+  .mobile-only {
+    display: initial;
+  }
+
+  .desktop-only {
+    display: none;
+  }
+}
+
+/* ── 移动端滚动优化 ── */
+@media (max-width: 767px) {
+  body {
+    -webkit-overflow-scrolling: touch;
+    overflow-x: hidden;
+  }
+
+  /* 防止表格横向溢出 */
+  .case-stage-pane table,
+  .mkt-table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* ── 动画降级（prefers-reduced-motion）── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

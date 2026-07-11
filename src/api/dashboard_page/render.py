@@ -11,9 +11,11 @@ def render_dashboard_html(theme_id: str = "trading-terminal") -> str:
     html = _read("shell.html")
     replacements = {
         "{{INLINE_STYLES}}": (
-            _read("styles/dashboard.css") + "\n" + 
-            _read("styles/alpha.css") + "\n" + 
-            _read("styles/fund.css")
+            _read("styles/dashboard.css") + "\n" +
+            _read("styles/alpha.css") + "\n" +
+            _read("styles/fund.css") + "\n" +
+            _read("styles/mobile-base.css") + "\n" +
+            _read("styles/mobile-layout.css")
         ),
         "{{STATUS_BAR}}": _read("partials/status_bar.html"),
         "{{VIEW_DASHBOARD}}": _read("partials/view_dashboard.html"),
@@ -29,7 +31,7 @@ def render_dashboard_html(theme_id: str = "trading-terminal") -> str:
         "{{INLINE_ALPHA_JS}}": _read("scripts/alpha.js"),
         "{{INLINE_US_STOCK_JS}}": _read("scripts/us_stock.js"),
         "{{INLINE_FUND_JS}}": _read("scripts/fund.js"),
-        "{{INLINE_BOOTSTRAP_JS}}": _read("scripts/bootstrap.js"),
+        "{{INLINE_BOOTSTRAP_JS}}": _read("scripts/bootstrap.js") + "\n" + _read("scripts/mobile-nav.js"),
     }
     for marker, content in replacements.items():
         html = html.replace(marker, content)

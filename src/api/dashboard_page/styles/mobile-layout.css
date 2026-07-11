@@ -1,0 +1,487 @@
+/* ═══════════════════════════════════════════════════════════
+   mobile-layout.css — 响应式 Grid 布局改造
+   三栏 → 移动端单栏 + 底部 Tab Bar
+   渐进增强：不破坏桌面端现有体验
+   ═══════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════
+   1. 移动端顶栏（粘性 + 汉堡按钮 + 标题缩略）
+   ═══════════════════════════════════════════════════════════ */
+
+/* 移动端顶栏容器 */
+.mobile-top-bar {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .mobile-top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--panel, #101922);
+    border-bottom: 1px solid var(--stroke, rgba(255,255,255,.08));
+    padding: max(8px, var(--safe-top)) 12px max(8px, var(--safe-top));
+    min-height: 56px;
+  }
+
+  /* 隐藏桌面端 status-bar，用移动顶栏替代 */
+  .status-bar {
+    display: none;
+  }
+}
+
+/* 汉堡菜单按钮 */
+.hamburger-btn {
+  display: none;
+  background: transparent;
+  border: none;
+  color: var(--fg, #e7edf5);
+  font-size: 22px;
+  cursor: pointer;
+  padding: 8px;
+  min-width: 44px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm, 4px);
+  transition: background 0.15s ease;
+}
+
+.hamburger-btn:active {
+  background: var(--hover-bg, rgba(255,255,255,.06));
+}
+
+@media (max-width: 767px) {
+  .hamburger-btn {
+    display: flex;
+  }
+}
+
+/* 移动端标题 */
+.mobile-top-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent, #4dd4c6);
+  flex: 1;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 移动端右侧操作区 */
+.mobile-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 44px;
+  justify-content: flex-end;
+}
+
+.mobile-top-actions .pill {
+  font-size: 10px;
+  padding: 2px 6px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   2. Dashboard Shell 响应式 Grid
+   ═══════════════════════════════════════════════════════════ */
+
+/* 移动端：单栏 + 顶栏 + 底部 Tab Bar 空间 */
+@media (max-width: 767px) {
+  .dashboard-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+    grid-template-areas: "center";
+    min-height: calc(100dvh - 56px - 64px);
+    height: calc(100dvh - 56px - 64px);
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  /* 隐藏左右栏（通过抽屉展示） */
+  .rail-left,
+  .rail-right {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    width: 80vw;
+    max-width: 320px;
+    z-index: 200;
+    background: var(--panel, #101922);
+    overflow-y: auto;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: transform;
+    padding: calc(56px + var(--safe-top, 0px)) 12px 12px;
+  }
+
+  /* 左栏从左侧滑出 */
+  .rail-left {
+    left: 0;
+    border-right: 1px solid var(--stroke, rgba(255,255,255,.08));
+    transform: translateX(-100%);
+  }
+
+  .rail-left.drawer-open {
+    transform: translateX(0);
+  }
+
+  /* 右栏从右侧滑出 */
+  .rail-right {
+    right: 0;
+    border-left: 1px solid var(--stroke, rgba(255,255,255,.08));
+    transform: translateX(100%);
+  }
+
+  .rail-right.drawer-open {
+    transform: translateX(0);
+  }
+
+  /* 隐藏 rail-top（信息已整合到移动顶栏） */
+  .rail-top {
+    display: none;
+  }
+
+  /* 中栏占满 */
+  .rail-center {
+    grid-area: center;
+    padding: 8px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* 底部留出 Tab Bar 空间 */
+  .rail-center {
+    padding-bottom: calc(64px + var(--safe-bottom, 0px) + 8px);
+  }
+}
+
+/* 平板：双栏（中栏 + 右栏），左栏抽屉 */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .dashboard-shell {
+    grid-template-columns: 1fr 280px;
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      "top top"
+      "center right";
+  }
+
+  .rail-left {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 320px;
+    z-index: 200;
+    background: var(--panel, #101922);
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: transform;
+  }
+
+  .rail-left.drawer-open {
+    transform: translateX(0);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   3. 底部 Tab Bar
+   ═══════════════════════════════════════════════════════════ */
+
+.mobile-tab-bar {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .mobile-tab-bar {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 64px;
+    background: var(--panel, #101922);
+    border-top: 1px solid var(--stroke, rgba(255,255,255,.08));
+    z-index: 100;
+    padding-bottom: var(--safe-bottom, 0px);
+    padding-top: 4px;
+  }
+
+  .mobile-tab-bar .tab-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    background: transparent;
+    border: none;
+    color: var(--dim, #64748b);
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 0.15s ease;
+    min-height: 44px;
+    padding: 4px 2px;
+  }
+
+  .mobile-tab-bar .tab-item i {
+    font-size: 18px;
+  }
+
+  .mobile-tab-bar .tab-item.active {
+    color: var(--accent, #4dd4c6);
+  }
+
+  .mobile-tab-bar .tab-item:active {
+    color: var(--accent, #4dd4c6);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   4. 抽屉遮罩
+   ═══════════════════════════════════════════════════════════ */
+
+.drawer-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 150;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.drawer-overlay.open {
+  display: block;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   5. Market Shell 响应式
+   ═══════════════════════════════════════════════════════════ */
+
+@media (max-width: 767px) {
+  .market-shell {
+    grid-template-columns: 1fr;
+    grid-template-areas: "center";
+    min-height: calc(100dvh - 56px - 64px);
+  }
+
+  .mkt-rail-left,
+  .mkt-rail-right {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    width: 80vw;
+    max-width: 320px;
+    z-index: 200;
+    background: var(--panel, #101922);
+    overflow-y: auto;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: transform;
+    padding-top: calc(56px + var(--safe-top, 0px));
+  }
+
+  .mkt-rail-left {
+    left: 0;
+    border-right: 1px solid var(--stroke, rgba(255,255,255,.08));
+    transform: translateX(-100%);
+  }
+
+  .mkt-rail-left.drawer-open {
+    transform: translateX(0);
+  }
+
+  .mkt-rail-right {
+    right: 0;
+    border-left: 1px solid var(--stroke, rgba(255,255,255,.08));
+    transform: translateX(100%);
+  }
+
+  .mkt-rail-right.drawer-open {
+    transform: translateX(0);
+  }
+
+  .mkt-rail-center {
+    padding: 8px;
+    padding-bottom: calc(64px + var(--safe-bottom, 0px) + 8px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #view-market,
+  #view-us-stock {
+    height: calc(100dvh - 56px - 64px);
+    overflow: hidden;
+  }
+}
+
+/* 平板 Market Shell */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .market-shell {
+    grid-template-columns: 1fr 260px;
+    grid-template-areas: "center right";
+  }
+
+  .mkt-rail-left {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 320px;
+    z-index: 200;
+    background: var(--panel, #101922);
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: transform;
+  }
+
+  .mkt-rail-left.drawer-open {
+    transform: translateX(0);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   6. 组件级移动端适配
+   ═══════════════════════════════════════════════════════════ */
+
+@media (max-width: 767px) {
+  /* KPI 卡片单列 */
+  .auto-run-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  /* 运行记录列表单列 */
+  .run-center-list {
+    grid-template-columns: 1fr;
+  }
+
+  /* 概览卡片 2 列 */
+  .case-overview-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  /* 区间数据单列 */
+  .range-data {
+    grid-template-columns: 1fr;
+  }
+
+  /* 时间线摘要单列 */
+  .timeline-summary {
+    grid-template-columns: 1fr;
+  }
+
+  /* 案件头部纵向排列 */
+  .case-header {
+    flex-direction: column;
+  }
+
+  .case-summary-chips {
+    justify-content: flex-start;
+  }
+
+  /* 净值曲线高度调整 */
+  .nav-canvas {
+    height: 100px;
+    aspect-ratio: 16 / 9;
+  }
+
+  /* KPI 卡片横向排列 */
+  .kpi-card {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+  }
+
+  .kpi-card .kpi-label {
+    font-size: 11px;
+  }
+
+  .kpi-card .kpi-val {
+    font-size: 14px;
+  }
+
+  /* 运行记录卡片紧凑化 */
+  .run-card {
+    padding: 10px;
+  }
+
+  .run-card-title {
+    font-size: 11px;
+  }
+
+  /* 表格行高增大 */
+  .mkt-table td {
+    padding: 8px 6px;
+    font-size: 12px;
+  }
+
+  .mkt-table th {
+    padding: 8px 6px;
+  }
+
+  /* 搜索行换行 */
+  .mkt-search-row {
+    flex-wrap: wrap;
+  }
+
+  /* 工具栏换行 */
+  .mkt-toolbar {
+    flex-wrap: wrap;
+  }
+
+  /* 案件抽屉全屏 */
+  .case-drawer {
+    width: 100vw !important;
+    max-width: 100vw !important;
+  }
+
+  /* 阶段轨道横向滚动 */
+  .case-stage-rail {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+  }
+
+  .case-stage-rail button {
+    flex-shrink: 0;
+  }
+
+  /* 底部区域高度自适应 */
+  .rail-bottom {
+    height: auto;
+    min-height: 200px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   7. 横屏增强（landscape 且 < 768px 高度）
+   ═══════════════════════════════════════════════════════════ */
+
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 1023px) {
+  .mobile-tab-bar {
+    height: 48px;
+  }
+
+  .mobile-top-bar {
+    min-height: 40px;
+  }
+
+  .dashboard-shell {
+    min-height: calc(100dvh - 40px - 48px);
+    height: calc(100dvh - 40px - 48px);
+  }
+
+  .rail-center {
+    padding-bottom: calc(48px + var(--safe-bottom, 0px) + 4px);
+  }
+}
