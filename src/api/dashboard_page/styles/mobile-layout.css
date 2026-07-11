@@ -231,6 +231,16 @@
 
   .mobile-tab-bar .tab-item i {
     font-size: 18px;
+    line-height: 1;
+  }
+
+  .mobile-tab-bar .tab-item span {
+    font-size: 10px;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 60px;
   }
 
   .mobile-tab-bar .tab-item.active {
@@ -393,12 +403,13 @@
     aspect-ratio: 16 / 9;
   }
 
-  /* KPI 卡片横向排列 */
+  /* KPI 卡片横向排列（密度优化：移动端低密度） */
   .kpi-card {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
     padding: 8px 12px;
+    min-height: var(--touch-target-min, 44px);
   }
 
   .kpi-card .kpi-label {
@@ -418,10 +429,11 @@
     font-size: 11px;
   }
 
-  /* 表格行高增大 */
+  /* 表格行高增大（触控友好） */
   .mkt-table td {
     padding: 8px 6px;
     font-size: 12px;
+    min-height: 44px;
   }
 
   .mkt-table th {
@@ -460,6 +472,94 @@
   .rail-bottom {
     height: auto;
     min-height: 200px;
+  }
+
+  /* === ui-density: 移动端功能优先级降级 === */
+  /* 快速回测区域折叠（P3 功能，移动端仅查看） */
+  .rail-left h2:has(+ .field-row + .field-row + .run-btn.secondary) {
+    display: none;
+  }
+
+  /* 全市场扫描折叠为按钮 */
+  .scan-card .scan-hint {
+    display: none;
+  }
+
+  /* 案件阶段表格转卡片式（减少横向滚动） */
+  .case-stage-pane table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* 区间表现 pills 横向滚动 */
+  .range-pills {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+  }
+
+  .range-pills .pill-btn {
+    flex-shrink: 0;
+  }
+
+  /* 运行记录过滤器横向滚动 */
+  .run-center-filters {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+  }
+
+  .run-center-filters .pill-btn {
+    flex-shrink: 0;
+  }
+
+  /* 卡片间距增大（低密度） */
+  .rail-center {
+    gap: var(--space-comfortable, 12px);
+  }
+
+  /* 卡片头部增大触控目标 */
+  .card-head {
+    padding: 10px 12px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+
+  /* 卡片内容间距 */
+  .card-body {
+    padding: 12px;
+  }
+
+  /* 输入框增大（防 iOS 缩放 + 触控友好） */
+  .field input,
+  .field select,
+  .field textarea {
+    font-size: 16px !important;
+    min-height: 44px;
+    padding: 8px 10px;
+  }
+
+  /* 按钮增大触控目标 */
+  .save-btn,
+  .run-btn {
+    min-height: 48px;
+    font-size: 13px;
+  }
+
+  /* 模式切换按钮增大 */
+  .mode-switch button {
+    min-height: 48px;
+  }
+
+  /* 分页按钮增大 */
+  .pagination button {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 10px 14px;
   }
 }
 
