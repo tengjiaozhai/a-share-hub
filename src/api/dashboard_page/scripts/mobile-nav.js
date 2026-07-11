@@ -39,11 +39,11 @@
     if (document.querySelector('.mobile-tab-bar')) return;
 
     var tabs = [
-      { id: 'view-dashboard', icon: 'bi-search', label: '选股' },
-      { id: 'view-alpha', icon: 'bi-graph-up', label: '持仓' },
-      { id: 'view-market', icon: 'bi-globe', label: 'A股' },
-      { id: 'view-us-stock', icon: 'bi-globe-americas', label: '美股' },
-      { id: 'view-fund', icon: 'bi-bank', label: '基金' }
+      { id: 'view-dashboard', svg: '<svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.342 1.342 4.5 4.5 0 0 1 .795.795 1 1 0 1 0 1.408-1.408 4.5 4.5 0 0 1-.795-.795zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/></svg>', label: '选股' },
+      { id: 'view-alpha', svg: '<svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M2 13.5V2a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v11.5l-3-2-3 2-3-2-3 2z"/></svg>', label: '持仓' },
+      { id: 'view-market', svg: '<svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8zm7.5-6.5a6.5 6.5 0 0 0-5.5 9.9l1.4-1.4 1.5 1.5-1.5 1.5A6.5 6.5 0 0 0 7.5 1.5zm5.5 3.1l-1.4 1.4-1.5-1.5 1.5-1.5a6.5 6.5 0 0 0-3.1-1.5v2h-2v-2a6.5 6.5 0 0 0-3.1 1.5l1.4 1.4-1.5 1.5-1.4-1.4A6.5 6.5 0 0 0 .5 7.5h2v2h-2a6.5 6.5 0 0 0 1.5 3.1l1.4-1.4 1.5 1.5-1.4 1.4a6.5 6.5 0 0 0 3.1 1.5v-2h2v2a6.5 6.5 0 0 0 3.1-1.5l-1.4-1.4 1.5-1.5 1.4 1.4a6.5 6.5 0 0 0 1.5-3.1h-2v-2h2a6.5 6.5 0 0 0-1.5-3.1z"/></svg>', label: 'A股' },
+      { id: 'view-us-stock', svg: '<svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM2.5 5.5l2 2-2 2v-4zm1.5-1.2A6.5 6.5 0 0 1 7 1.5v2L5.5 5l-1.5-1.5-.5.3zm4-2.8a6.5 6.5 0 0 1 3 1.5L9.5 5 8 3.5v-2zm-2 13V13l1.5-1.5L9.5 13l-1.5 1.5zm5-1.5A6.5 6.5 0 0 1 7 14.5v-2L8.5 11 10 12.5l1-.5zm1.5-1.2l-2-2 2-2v4z"/></svg>', label: '美股' },
+      { id: 'view-fund', svg: '<svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1L2 5v2h12V5L8 1zM3 8v5h2V8H3zm4 0v5h2V8H7zm4 0v5h2V8h-2zM2 14v1h12v-1H2z"/></svg>', label: '基金' }
     ];
 
     var bar = document.createElement('nav');
@@ -55,7 +55,7 @@
       btn.className = 'tab-item';
       btn.setAttribute('data-view', tab.id);
       btn.setAttribute('aria-label', tab.label);
-      btn.innerHTML = '<i class="bi ' + tab.icon + '"></i><span>' + tab.label + '</span>';
+      btn.innerHTML = tab.svg + '<span>' + tab.label + '</span>';
 
       var view = document.getElementById(tab.id);
       if (view && view.classList.contains('active')) {

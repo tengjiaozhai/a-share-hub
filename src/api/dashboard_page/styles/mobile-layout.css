@@ -229,9 +229,10 @@
     padding: 4px 2px;
   }
 
-  .mobile-tab-bar .tab-item i {
-    font-size: 18px;
-    line-height: 1;
+  .mobile-tab-bar .tab-item svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
   }
 
   .mobile-tab-bar .tab-item span {
@@ -241,6 +242,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 60px;
+    display: block;
   }
 
   .mobile-tab-bar .tab-item.active {
