@@ -247,6 +247,26 @@
 
   /* ── 10. 初始化 ── */
   function init() {
+    // 如果关键元素不存在（如登录页），延迟重试
+    if (!document.querySelector('.nav-group, .status-bar')) {
+      // 监听 DOM 变化，等 dashboard 元素出现后再注入
+      var retryObserver = new MutationObserver(function (mutations, obs) {
+        if (document.querySelector('.nav-group, .status-bar')) {
+          obs.disconnect();
+          doInject();
+        }
+      });
+      retryObserver.observe(document.body, { childList: true, subtree: true });
+      // 5 秒后超时放弃
+      setTimeout(function () { retryObserver.disconnect(); }, 5000);
+      return;
+    }
+    doInject();
+  }
+
+  function doInject() {
+    // 防止重复注入
+    if (document.querySelector('.mobile-tab-bar')) return;
     injectMobileTopBar();
     injectTabBar();
     injectOverlay();
